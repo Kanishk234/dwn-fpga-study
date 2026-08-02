@@ -103,7 +103,22 @@ difference is architectural** — and reading the paper confirmed it in two plac
 
 | Run | Encoder bits | Layers | Final | Best | Notes |
 |---|---|---|---|---|---|
-| `t200_distributive_50_l_b100` | 200 (3200 bits) | `[50]` learnable | — | — | **Reproduction attempt. Target 74.0%.** |
+| `t200_distributive_50_l_b100` | 200 (3200 bits) | `[50]` learnable | 73.84% | **74.06%** | **Reproduced.** Paper `sm` 1×50 = 74.0%. 50 nodes beat our earlier 400. |
+
+**This is the Gate 1 reference checkpoint.** The paper's `sm` (1× 50) config reproduces to within
+0.1pp, which is what makes it safe to build an exporter and RTL against — any later hardware/software
+disagreement is attributable to the RTL rather than to a model we couldn't explain.
+
+⚠️ **The saved weights are the final epoch (73.84%), not the best epoch (74.06%).** There is no
+best-checkpoint tracking; `torch.save` runs after the loop. This is self-consistent — the `.npz`
+`pred` array was produced by those same final weights, so Gate 1 is unaffected — but **quote 73.84%
+as the model's accuracy**, not 74.06%, when the number has to match the artifact we ship. Epoch-to-
+epoch spread across the run is ~0.2pp, so best-of-32 is a mildly optimistic estimator either way.
+
+**The flat loss curve was never a bug.** This run converged in one epoch (73.71%) and sat at ~0.80
+loss for the remaining 31, exactly like the three starved runs. So the earlier "frozen loss =
+underfitting / stuck optimizer" reading was wrong: a flat loss is simply what DWN training looks like
+on JSC. The starved runs were input-limited, and the loss curve never indicated otherwise.
 
 Everything in the first three runs was the training recipe, which was never the problem. See
 `docs/paper-configs.md`.
