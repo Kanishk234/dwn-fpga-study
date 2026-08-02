@@ -82,7 +82,16 @@ fails to route there is a data point, not a mistake.
 |---|---|---|---|---|---|
 | `t4_distributive_300-100_lr` | 4 (64 bits) | learnable, random | 71.95% | 72.31% | Flat from epoch 1; peaked at 17. sm-10's accuracy from ~6× sm-10's nodes. |
 | `t8_distributive_300-100_lr` | 8 (128 bits) | learnable, random | 72.52% | 72.53% | **2× the encoder bought +0.22pp best-vs-best.** Encoder is not the binding constraint. Train loss frozen ~0.784 from epoch 7. Batch 256. |
-| `t8_distributive_300-100_lr_b32` | 8 (128 bits) | learnable, random | — | — | Batch 256 → **32**, matching upstream. Identical hardware; training-time knob only. |
+| `t8_distributive_300-100_lr_b32` | 8 (128 bits) | learnable, random | 72.60% | 72.60% | Batch 256 → **32**, matching upstream. **+0.07pp.** Loss still only moves when the LR scheduler fires. |
+
+**Three runs, three rejected hypotheses.** Encoder resolution (+0.22pp for 2× area), batch size
+(+0.07pp), and — via the source read — learning rate and layer-1 mapping, both of which turned out to
+already match upstream. Every training-recipe knob now matches `examples/mnist.py` exactly, and the
+model is still ~1.4pp under sm-50.
+
+The loss signature is identical across all three runs: a slow drift, then a step down exactly when
+the LR scheduler fires (epoch 14 and 28), then flat again. It is not the optimizer. **The remaining
+difference is architectural.**
 
 `RUN_NAME` gained a `_b<batch>` suffix from this run on — without it this run and the t=8 run
 collide on the same name. The two earlier files keep their original names.
