@@ -1,8 +1,15 @@
 # DWN on FPGA — Project Brief
 
 **Standalone document.** Everything needed to understand and start this project is here; no other
-files or prior conversation required. Written 2026-08-01 (rev. 2). Intended to become the README of
-the repo.
+files or prior conversation required. Written 2026-08-01, revised 2026-08-02 (rev. 3).
+
+**What changed in rev. 3:** Phase 1's internal ordering was reversed (Verilog templates and the
+golden model now come *before* the exporter and RTL generator — §11); the §6 fit table now carries
+an explicit thermometer-encoder correction; `n` sweep framing was made consistent with the n=6-only
+decision (§10, §12); DSE's training cost was separated from its synthesis cost (§10); a physical
+board-accuracy milestone was added as the Phase 1 exit criterion (§11, Gate 1b); and the two-person
+split-by-axis structure was removed throughout — the team works together at one machine, sequentially
+(§3).
 
 ---
 
@@ -17,8 +24,8 @@ FPGA, and a **controlled comparison (CC)** against the standard FPGA-ML toolchai
 positioned against the published LUT-DNN literature. The goal is a deployed, benchmarked ML model on
 real hardware with results that don't currently exist — not a port, and not a toy.
 
-**Team:** two people, one shared repo, one shared implementation, divided by component and, within
-each study, by axis (see §10–11).
+**Team:** two people working together at one machine, sequentially — one shared repo, one shared
+implementation, no parallel tracks (see §3).
 
 ---
 
@@ -66,12 +73,31 @@ Two undergrads (sophomores). Relevant prior experience:
   shakier than the fact that they worked. Budget real time to actually understand the tools you're
   reusing, not just re-run them.
 - Both completed an **intro digital logic design course** — combinational/sequential logic and basic
-  Verilog are known, but neither of you has built a full RTL generation pipeline, a bit-exact
-  testbench, or done FPGA bring-up before. Treat Phase 1 (§12) as genuinely new territory.
+  Verilog are known, but neither of you has built a full RTL generation pipeline or a bit-exact
+  testbench before. Treat those as genuinely new territory.
+- **Vivado is installed and working, and the Basys 3 has been programmed successfully many times.**
+  Toolchain setup and board bring-up are *not* new work and should not be budgeted as such.
 
-Net effect on planning: CC should go faster than a from-scratch team's would. The RTL core and DSE
-automation should **not** be assumed faster just because there are two of you — that part is new to
-both of you and has a real learning curve baked in.
+### How the two of you actually work
+
+**Together, at one machine, one thing at a time.** There is no parallel track, no per-person
+ownership of components, and no split of the sweep grid across machines. Both people are present for
+each unit of work.
+
+This is a deliberate choice and it has consequences the rest of this document must respect:
+
+- **No silo risk.** The "one person's slice has an unreviewed bug" failure mode (formerly risk #6)
+  cannot occur. Removed from §12.
+- **No coordination overhead.** No export-format contract to negotiate between two people building
+  against it separately — the format can evolve as the code does.
+- **Wall-clock costs do not halve.** Anything bounded by machine time — Vivado synthesis runs above
+  all — takes as long as one machine takes. The DSE estimate in §11 reflects this.
+- **Total throughput is roughly one person's**, with two people's error-catching. Estimate calendar
+  time accordingly; the benefit is correctness and shared understanding, not speed.
+
+Net effect on planning: CC should go faster than a from-scratch team's would, and toolchain setup is
+near-free. The RTL core and DSE automation should **not** be assumed faster for having two people —
+that part is new to both of you, and you are not parallelizing it.
 
 ---
 
@@ -177,17 +203,41 @@ On microcontrollers, bit-packed DWN beats **XGBoost by an average of 5.4% accura
 Both of the paper's target FPGAs are LUT6 architectures like Artix-7, so **LUT counts transfer
 honestly**:
 
-| Model | LUTs | % of Basys 3 |
-|---|---|---|
-| DWN JSC (sm) | 20 | 0.1% |
-| DWN MNIST (sm, out-of-context) | 692 | 3% |
-| DWN MNIST (sm) | 2,100 | 10% |
-| DWN MNIST (lg) | 4,600 | 22% |
-| DWN KWS | 4,800 | 23% |
-| DWN JSC (lg) | 4,972 | 24% |
-| DWN CIFAR-10 | 16,700 | 80% — skip |
+| Model | LUTs (core only) | % of Basys 3 | % **with encoder**, worst case (3.2×) |
+|---|---|---|---|
+| DWN JSC (sm) | 20 | 0.1% | 0.3% |
+| DWN MNIST (sm, out-of-context) | 692 | 3% | 11% |
+| DWN MNIST (sm) | 2,100 | 10% | 32% |
+| DWN MNIST (lg) | 4,600 | 22% | 71% |
+| DWN KWS | 4,800 | 23% | 74% |
+| DWN JSC (lg) | 4,972 | 24% | **76%** |
+| DWN CIFAR-10 | 16,700 | 80% — skip | >100% — skip |
 
-**Everything except CIFAR-10 fits with 75%+ headroom, using zero BRAM and zero DSPs.**
+> ⚠️ **These core-only numbers exclude the thermometer encoder, and that is not a rounding error.**
+> The LUT counts in §5 are the paper's, and the paper does not count the binarization front-end in
+> its resource totals. Mecik & Kumm (§8) measured that front-end directly and found it can add **up
+> to 3.2× more LUTs** than the paper's figures imply. The right-hand column applies that worst case.
+>
+> Read the two columns as a **range, not a point estimate**: JSC-large is somewhere between 24% and
+> 76% of the part depending on thermometer resolution and how the encoder is implemented. The
+> small configs are safe under any assumption; the large ones are not obviously safe.
+>
+> **Plan against the right-hand column, not the left.** Three consequences:
+> 1. Start from the small configs (§12, risk #2 says this anyway) — they hold up under either
+>    assumption.
+> 2. Measure your own encoder cost early, as soon as the first end-to-end model synthesizes. Don't
+>    inherit either number on faith.
+> 3. **Report core and encoder LUTs separately, always.** This makes your numbers directly
+>    comparable to both the paper (core-only) and Mecik & Kumm (encoder-inclusive), and it is the
+>    honest way to present them.
+>
+> There is an upside here. Thermometer resolution is already a DSE sweep axis (§10), so
+> **encoder cost on a resource-constrained part falls out of the sweep you were running anyway** —
+> and it puts your results in direct conversation with the closest related work. Treat it as a
+> headline result, not an accounting nuisance.
+
+**Everything except CIFAR-10 fits, using zero BRAM and zero DSPs** — with comfortable headroom for
+the small configs, and encoder-dependent headroom for the large ones.
 
 ### Two constraints that shape the whole build
 
@@ -354,10 +404,8 @@ Mode selected by a switch. LEDs for status, 7-seg for class or measured throughp
 
 ## 10. The two studies, and how the shared repo is split
 
-Both people work on **one implementation, one repo**. Work is divided by component and, within each
-study, by axis or toolchain — not by duplicating the whole build twice. Both of you should be able to
-run the full flow solo by the end of Phase 1; if only one person understands the pipeline end-to-end,
-that's a silo to fix before moving on.
+Both people work on **one implementation, one repo, together at one machine** (§3). Nothing below is
+split between people; the subsections describe *phases of work*, not assignments.
 
 **Sequencing is fixed: DSE before CC.** To compare at iso-area (Study 2) you need to be able to
 *produce* a DWN at a target area — which is exactly what the sweep (Study 1) gives you. Build CC
@@ -370,17 +418,47 @@ first and you'll redo it once the sweep exists.
 Build the core fully parameterized, plus a scripted flow: **train → export → generate RTL → Vivado →
 parse reports**, looped over dozens of configurations.
 
-Sweep axes: `n` (2/4/6), layer count, layer width, thermometer resolution (bits per feature), Learnable
-Reduction vs plain popcount, pipeline depth.
+**Sweep axes:** layer count, layer width, thermometer resolution (bits per feature), Learnable
+Reduction vs plain popcount, pipeline depth — all at **n=6**.
 
-**Split:** one person owns the architecture axes (n, layer count/width, reduction method), the other
-owns encoding/timing axes (thermometer resolution, pipeline depth). Each of you runs your slice of the
-grid — ideally on separate machines in parallel, since this is wall-clock-bound Vivado time, not
-thinking time — then merge into one combined Pareto frontier.
+#### On `n`: sweep it last, and only to document the wall
+
+`n` is **fixed at 6 for all primary results.** This is not an arbitrary default — a DWN-6 neuron *is*
+a Xilinx LUT6 (§4), and §12 risk #2 records that the paper failed to route several n=2 models on a
+part far larger than yours. Building the frontier at n=6 is the project.
+
+That said, "n=2 congests" is currently a claim you'd be *citing*, not one you'd have *measured* — and
+measuring where the congestion wall sits on a small part is a genuine contribution nobody has
+published. So: **if Phase 2 finishes with time in hand, run an n=2 series purely as a congestion
+characterization.** Report it as a separate finding, not as part of the main Pareto frontier.
+**Failed routing runs are data** — a congestion wall at N LUTs is a result, not a dead end. If time
+is short, drop it; the frontier stands without it.
+
+#### Budget the training separately from the synthesis
+
+Every point on the frontier needs **two** numbers, produced by two different machines' worth of work:
+
+| Number | Where it comes from | Cost driver |
+|---|---|---|
+| accuracy | training that config in PyTorch | GPU time |
+| LUTs / FF / Fmax / latency | synthesizing that config in Vivado | CPU time, serial |
+
+It is easy to read "DSE" as "a lot of Vivado runs" and under-budget the first column. It's a full
+training run per configuration, and there is no shortcut — accuracy cannot be read off the synthesis
+reports.
+
+**Run it in two batches, not interleaved:**
+
+1. **Train the entire grid first.** Cheaper per point, parallelizable on a GPU, and it produces the
+   accuracy axis for every configuration.
+2. **Then filter, then synthesize.** Configurations that are Pareto-dominated on accuracy alone, or
+   whose estimated LUT count obviously overshoots the part, don't need a synthesis run at all.
+
+Interleaving means burning hours of serial Vivado time on configurations you'd have discarded for
+free. Since everything runs on one machine (§3), that waste is not recoverable.
 
 Deliverable: Pareto plots (accuracy vs LUTs, accuracy vs latency, area vs Fmax) plus *"the largest DWN
-that fits an XC7A35T, and what it scores."* **Failed routing runs are data** — a congestion wall at N
-LUTs is a finding, not a dead end.
+that fits an XC7A35T, and what it scores"* — with core and encoder LUTs reported separately (§6).
 
 ### Study 2 — Controlled Comparison (CC)
 
@@ -391,10 +469,10 @@ standard toolchains — and where does it sit against the wider LUT-DNN literatu
 same `xc7a35t` part, same clock constraint, same synthesis strategy. Compare at **iso-accuracy** and
 **iso-area** — not "our one model vs their one model."
 
-**Split:** one person owns the hls4ml design, the other owns conifer — a clean seam, since they're
-genuinely separate toolchains with different setup and different failure modes (see §12, risk #5:
-hls4ml may not fit the part at all). Analysis and writeup happen together once both designs are
-synthesized.
+Do the two toolchains **one at a time** — they have different setup and different failure modes (see
+§12, risk #6: hls4ml may not fit the part at all). Start with conifer, which is the more likely of
+the two to synthesize cleanly at this scale; that gets one valid comparison point banked before
+taking on hls4ml's fitting problem.
 
 Measure: accuracy, LUT/FF/BRAM/DSP, Fmax, latency (cycles + ns), throughput, and Vivado power estimate
 (flag it as an estimate).
@@ -406,37 +484,39 @@ standard flow doesn't fit; the weightless one uses 24%" is a strong result.
 **Literature half.** Build one combined table/plot placing your DWN results alongside the published
 LUT-DNN family from §8 (LogicNets, PolyLUT, PolyLUT-Add, NeuraLUT, NeuraLUT-Assemble, TreeLUT, and the
 Mecik & Kumm thermometer-encoding DWN numbers) on JSC. No resynthesis required — this is a citation
-and plotting exercise, roughly a few days of joint work, done once both of you have your own numbers
-in hand. This is what actually answers "how does DWN compare" for a reader who knows the space, and
-it's the part that's missing if you stop at hls4ml/conifer alone.
+and plotting exercise, roughly a few days, done once your own numbers are in hand. This is what
+actually answers "how does DWN compare" for a reader who knows the space, and it's the part that's
+missing if you stop at hls4ml/conifer alone.
 
 ---
 
 ## 11. Master plan: how the work actually breaks down
 
 ```
-Phase 1 — CORE (joint, both learn the whole flow)
-├─ Weeks 1–2:  toolchain setup, reproduce DWN training in PyTorch,
-│              tiny 2-layer sanity model, verify Vivado maps LUT6s correctly (risk #1)
-├─ Weeks 2–4:  exporter (Person A) + RTL generator (Person B), built against
-│              a jointly-agreed export format
-├─ Weeks 4–6:  Verilog templates + golden-model testbench — pair on this,
-│              Gate 1 is the highest-stakes checkpoint in the project
-└─ Weeks 6–8:  harness — benchmark mode (Person A) + interactive mode (Person B),
-               board bring-up together
+Phase 1 — CORE
+├─ 1a. LUT6 mapping probe — toy 2-layer model, fake tables, no training.
+│      Does Vivado map `TABLE[addr]` to one LUT6? (risk #1)   ← branch point
+├─ 1b. Reproduce DWN training in PyTorch; get a JSC checkpoint you trust
+├─ 1c. Verilog templates, BY HAND, for one small real model
+├─ 1d. Golden software model + bit-exact testbench     ← GATE 1
+├─ 1e. Exporter  (checkpoint → tables/wiring/thresholds)
+├─ 1f. RTL generator (export → the Verilog 1c proved out)
+├─ 1g. Harness — benchmark mode, then interactive mode
+└─ 1h. Board: bitstream reproduces software test-set accuracy  ← GATE 1b
         │
         ▼
-Phase 2 — DSE (split by axis, run in parallel)
-├─ Person A: architecture axes   (n, layer count/width, reduction method)
-├─ Person B: encoding/timing axes (thermometer resolution, pipeline depth)
-└─ Merge into one combined Pareto frontier
+Phase 2 — DSE
+├─ Train the full config grid (GPU-bound)
+├─ Filter, then synthesize the survivors (serial Vivado time)
+├─ Merge into one Pareto frontier
+└─ Optional, time permitting: n=2 congestion characterization
         │
         ▼
-Phase 3 — CC (split by toolchain, converge on analysis)
-├─ Person A: hls4ml design, same part/clock/strategy as conifer track
-├─ Person B: conifer design, same part/clock/strategy as hls4ml track
-├─ Joint: literature-comparison table against the LUT-DNN family (§8)
-└─ Joint: iso-accuracy / iso-area writeup
+Phase 3 — CC
+├─ conifer design, xc7a35t                    (bank the easy one first)
+├─ hls4ml design, same part/clock/strategy    (expect a fitting fight)
+├─ Literature-comparison table vs the LUT-DNN family (§8)
+└─ iso-accuracy / iso-area writeup
         │
         ▼
    [Gate 2 — stop here with a complete project, or continue to stretch]
@@ -445,19 +525,55 @@ Phase 3 — CC (split by toolchain, converge on analysis)
 Stretch — second dataset (§13), explicitly optional
 ```
 
-| Phase | Estimate | Split |
+### Why Phase 1 is ordered this way
+
+Rev. 2 of this document built the exporter and RTL generator *before* the Verilog templates and the
+testbench. That was backwards, for two reasons:
+
+**You cannot write a generator before you know what it generates.** `rtlgen`'s entire job is emitting
+the templates in 1c. Writing it first means designing against an imagined target and discovering the
+mismatch during integration — the most expensive place to find it. Hand-write one small model's
+Verilog, prove it correct, *then* automate reproducing it. The generator becomes close to mechanical
+once a known-good artifact exists to copy.
+
+**It parks Gate 1 in week 6.** Gate 1 is the highest-stakes checkpoint in the project and the only
+correctness signal you have. Every week it sits unreached is a week of work built on an unverified
+assumption. The order above reaches it as early as it can possibly be reached.
+
+The probe (1a) comes first because it is a **branch point, not a task**. If tables don't map to LUT6s
+as expected, the generator's output format, the area model the entire DSE rests on, and the "one
+neuron = one LUT6" claim all change. It costs hours and needs no training, no exporter, and no real
+model. Answer it before planning anything downstream in detail.
+
+1b runs alongside 1a — it's independent, and 1a is mostly waiting on synthesis.
+
+| Phase | Estimate | Notes |
 |---|---|---|
-| 1 — Core | 5–8 wk | Joint; both understand the full flow before Gate 1 |
-| 2 — DSE | 2–3 wk | By axis (architecture vs. encoding/timing), merged |
-| 3 — CC | 1–2 wk, likely faster given prior hls4ml/conifer experience | By toolchain, joint analysis + literature table |
+| 1 — Core | 4–7 wk | Toolchain setup is ~free (§3); the RTL pipeline and testbench are the real cost |
+| 2 — DSE | 4–6 wk | Doubled from rev. 2: one machine, not two (§3), and training is a separate cost from synthesis (§10) |
+| 3 — CC | 1–2 wk | Prior hls4ml/conifer experience should hold here |
 
-**~8–13 weeks**, calendar time. Treat Phase 1's low end as optimistic given neither of you has built a
-full RTL generation pipeline before — better to budget the high end and be pleasantly surprised.
+**~9–15 weeks** calendar time. Phase 1's low end assumes the probe comes back clean; budget the high
+end. Note the rev. 2 total (~8–13 wk) was optimistic in Phase 2 for assuming two machines.
 
-**Gate 1:** do not write the harness until the RTL core matches the bit-exact golden model in
-simulation on every test vector. This matters *more* here than a duplicate-build design would, since
-there's no second independent implementation to cross-check against — the golden-model testbench is
-your only correctness signal. Don't cut corners on it.
+### The two gates
+
+**Gate 1 — bit-exactness in simulation.** Do not write the harness until the RTL core matches the
+golden model on every test vector, including edge cases. There is no second independent
+implementation to cross-check against, so the golden-model testbench is your *only* correctness
+signal. Don't cut corners on it.
+
+**Gate 1b — accuracy on physical silicon.** Gate 1 proves the RTL is correct *in simulation*. It does
+not prove the thing on the board works. Between the two sit UART framing, BRAM addressing, reset and
+clock-domain timing, and bitstream-level surprises — none of which simulation catches, all of which
+are real.
+
+So Phase 1 is not finished until: **the bitstream running on the Basys 3 reproduces the software
+model's JSC test-set accuracy, to the sample.** Not "it lights up the right LED for a few inputs" —
+the full test set, run through benchmark mode, matching the number PyTorch reported.
+
+That is the claim your writeup ultimately makes, so it is the claim Phase 1 has to close. Reaching it
+also means benchmark mode is trustworthy going into Phase 2, where every DSE point depends on it.
 
 **Gate 2:** a second dataset (§13) is an explicit **stretch goal**. After Phase 3 you already have a
 complete, defensible project — a working DWN on hardware, a Pareto frontier nobody has published for a
@@ -479,19 +595,29 @@ implemented."** Learnable Mapping produces irregular wiring, and irregular wirin
 Artix-7 is far smaller than their part, so this is the **top technical risk**. Mitigation: **n=6
 only**; start with the smallest working model and scale up.
 
-**3. Clock/latency claims won't transfer** (§6). Report cycles alongside nanoseconds.
+**3. Thermometer encoder cost is unbudgeted in the paper's numbers** (§6). Mecik & Kumm measured up
+to **3.2×** more LUTs than the paper's core-only figures imply. Every "% of Basys 3" estimate derived
+from §5 is therefore a lower bound. This mostly threatens the *large* configs — JSC-large is 24% or
+76% of the part depending on which number is right. Mitigation: start small, measure your own encoder
+cost as soon as one model synthesizes end to end, and report core and encoder LUTs separately in
+every table you publish.
 
-**4. Exporter format drift.** The repo's checkpoint format is whatever the authors chose. Budget real
+**4. Clock/latency claims won't transfer** (§6). Report cycles alongside nanoseconds.
+
+**5. Exporter format drift.** The repo's checkpoint format is whatever the authors chose. Budget real
 time for the exporter and validate it via the golden model, not by inspection.
 
-**5. hls4ml may not fit the target part at all.** This is a finding, not a blocker — but budget time
+**6. hls4ml may not fit the target part at all.** This is a finding, not a blocker — but budget time
 for shrinking it to get a valid comparison point.
 
-**6. Silo risk from the split-by-axis structure.** With a shared repo split by axis/toolchain rather
-than duplicated, there's no automatic cross-check if one person's slice has a bug. Mitigate with code
-review on each other's parts, not just your own, and treat Gate 1 as a joint responsibility.
+**7. Simulation-correct but board-wrong.** Gate 1 proves bit-exactness in simulation; it says nothing
+about UART framing, BRAM addressing, reset sequencing, or timing closure on real silicon. Mitigation
+is Gate 1b (§11) — Phase 1 doesn't end until full test-set accuracy is reproduced on the board.
 
-**7. Closely related work exists and will be found.** The Mecik & Kumm paper (§8) means "we built the
+*(Rev. 2's risk #6, silo risk from splitting work by axis between two people, no longer applies —
+the team works together at one machine, §3.)*
+
+**8. Closely related work exists and will be found.** The Mecik & Kumm paper (§8) means "we built the
 first DWN hardware" is not an accurate claim — "first on an entry-level FPGA, first with this
 Pareto-frontier scope" is. State it that way from the start rather than getting caught flat-footed by
 a reviewer or classmate who's read the same paper.
@@ -538,8 +664,7 @@ generator too. What's still new here:
 FPGA-ML workshop venue (FCCM/FPL/FPT workshops, ReConFig, or a student research venue) rather than a
 flagship conference, given the scope. Structure follows this section's contribution list directly:
 intro → DWN background → related work (§8, cite Mecik & Kumm explicitly) → implementation → DSE
-results → CC results (toolchain + literature) → discussion, with an author-contributions note
-reflecting the axis/toolchain split in §10–11.
+results → CC results (toolchain + literature) → discussion.
 
 ---
 
