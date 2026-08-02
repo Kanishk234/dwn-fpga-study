@@ -81,7 +81,17 @@ fails to route there is a data point, not a mistake.
 | Run | Encoder bits | Mapping | Final | Best | Notes |
 |---|---|---|---|---|---|
 | `t4_distributive_300-100_lr` | 4 (64 bits) | learnable, random | 71.95% | 72.31% | Flat from epoch 1; peaked at 17. sm-10's accuracy from ~6× sm-10's nodes. |
-| `t8_distributive_300-100_lr` | 8 (128 bits) | learnable, random | — | — | Tests whether the encoder was the bottleneck. |
+| `t8_distributive_300-100_lr` | 8 (128 bits) | learnable, random | 72.52% | 72.53% | **2× the encoder bought +0.22pp best-vs-best.** Encoder is not the binding constraint. Train loss frozen ~0.784 from epoch 7. |
+
+**What the t4 → t8 comparison settled:** doubling thermometer resolution doubles encoder LUTs (brief
+§6 says encoder cost is a headline number, not a footnote) and returned ~0.2pp. That's a bad trade on
+a constrained part, and it's a real Phase 2 data point — the encoder-resolution axis is flatter than
+the §6 discussion assumes, at least at this model size.
+
+**What it did not settle:** why the model is stuck ~1.5pp under sm-50 at comparable node count. The
+new evidence is the *training* loss, which barely moves after epoch 7 and only ever drops when the
+LR scheduler fires (epoch 14: 0.7845 → 0.7691). Test accuracy tracks it flat. Train loss that won't
+fall is underfitting, not a generalization or input-information problem.
 
 Add a row per run. This table is the start of the Phase 2 accuracy axis, and it costs nothing to
 keep up to date now versus reconstructing it from checkpoints later.
