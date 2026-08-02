@@ -1,4 +1,4 @@
-# DSE Plan — what we sweep, and what that means for Phase 1
+# DSE Plan — what we sweep, and what that means for Phase 1 
 
 **Status: planning only. Nothing here runs yet.** The sweep is Phase 2; everything in Phase 1
 (§11 of `project-brief.md`) has to exist and pass both gates first. Written 2026-08-02.
