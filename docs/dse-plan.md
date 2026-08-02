@@ -82,10 +82,10 @@ Changes accuracy *and* area. **Requires a training run per config** (GPU time).
 |---|---|---|
 | LUT input width `n` | Inputs per node. **Fixed at 6 through Phase 1**, a real axis in Phase 2 — see below | 6 first, then 4, 2 |
 | Thermometer resolution `t` | Bits per input feature. JSC has 16 features → input width = `16 × t` | 2, 3, 4, 6, 8 |
-| Encoding scheme | Plain thermometer (evenly spaced thresholds) vs **distributive** (quantile-spaced, fit to the data distribution) | 2 values |
+| Encoding scheme | `Thermometer` (evenly spaced), `GaussianThermometer` (normal icdf), `DistributiveThermometer` (quantile-spaced) — all three ship upstream | 3 values |
 | Layer count `L` | Depth of the LUT stack | 2, 3, 4 |
 | Layer widths `W₁…W_L` | LUT nodes per layer — **the primary area dial** | ~50 → ~4,000 total |
-| Reduction | Learnable Reduction (LUT pyramid) vs plain popcount | 2 values |
+| Reduction | `GroupSum` (popcount) only, for now — see below | **deferred**, 1 value |
 | Spectral reg `λ` | Regularization strength (brief §4) | Tune for accuracy; **not** a hardware axis |
 
 ### Group B — RTL implementation
@@ -128,6 +128,28 @@ reporting: it empirically confirms the architecture/fabric match on an entry-lev
 has measured, and it locates the congestion wall. Frame it as confirmation, not as a search for a
 better operating point. **A config that fails to route is a data point marking the frontier's edge,
 not a mistake.**
+
+#### On reduction — the axis upstream doesn't give us
+
+**`third_party/DWN` ships no Learnable Reduction.** The only reduction in the repo is
+`GroupSum(k, tau)` in `utils.py`: split the final layer's output bits into `k` groups, one per class,
+and score each class by how many of its bits are 1. That's a popcount, and in hardware it's an
+**adder tree** per class.
+
+The paper's Learnable Reduction — a pyramid of shrinking LUT layers that *learns* how to combine the
+final bits into class scores, e.g. 100 → 32 → 10 → 5 — is described in the paper (brief §4) but not
+implemented upstream. Building it means stacking `LUTLayer`s ourselves.
+
+Why it might matter: the adder trees are the **only arithmetic in an otherwise arithmetic-free
+design**. The paper notes that in small models "the popcount circuit can be as large as the network
+itself" — and small models on a constrained part is exactly our regime.
+
+**Decision: deferred.** Phase 1 uses `GroupSum`, because it's what ships, it's less custom code
+between us and Gate 1, and popcount-plus-argmax hardware has to be built either way. The trade can't
+be evaluated without knowing what the popcount actually costs in LUTs on `xc7a35t` — and the first
+end-to-end synthesis produces that number. If it's 40% of area, building the pyramid is obviously
+worth it; if it's 3%, this was never an interesting axis. **Revisit after the first end-to-end
+synthesis, not before.**
 
 ### Group C — fixed
 
@@ -194,12 +216,20 @@ configs that would have been discarded for free.
 
 ## 7. Open questions — resolve during Phase 1
 
-- **Exact `torch_dwn` API.** The axes above are conceptual. The real parameter names, and which are
-  even exposed, must be read off the pinned `third_party/DWN` commit — *not* inferred from the paper
-  or from PyTorch convention (CLAUDE.md; brief risk #5). Believed relevant: `LUTLayer`, `GroupSum`,
-  and a distributive thermometer class — **confirm before relying on any of it.**
+- ~~**Exact `torch_dwn` API.**~~ **RESOLVED 2026-08-02**, read off pinned commit `9f887a0`:
+  - `LUTLayer(input_size, output_size, n, mapping=..., alpha, beta, ste, clamp_luts, lm_tau)`,
+    with `mapping ∈ {'arange', 'random', 'learnable'}` or an explicit `int32` tensor of shape
+    `[output_size, n]`.
+  - LUTs are a float parameter of shape `[output_size, 2**n]`, clamped to [-1, 1] during training.
+    **Only the sign matters at inference** — that's what the exporter reads to build tables.
+  - `GroupSum(k, tau, randperm=False)` in `utils.py` is the reduction. `STE`/`STEFunction` there too.
+  - `LearnableMapping` in `mapping.py`; `layer_mapping(input_size, n, output_size, random=)` builds
+    fixed mappings.
+  - Three thermometers in `binarization.py`, all with `.fit(x)` / `.binarize(x)`.
 - **Real width values** for the ladder in §6 step 2. These should come from what actually trains on
   JSC, not from guesses. Fill in after Phase 1b.
+- **Whether to build Learnable Reduction** (see Group A above). Revisit after the first end-to-end
+  synthesis gives a real popcount area number.
 - **Encoder cost multiplier** for §5. Measure on the first end-to-end synthesis.
 - **Does pipeline depth actually move Fmax here?** The core is combinational LUT chains with free
   wiring; the critical path may be short enough that extra stages buy nothing. Worth one early

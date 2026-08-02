@@ -633,14 +633,29 @@ time for the exporter and validate it via the golden model, not by inspection.
 **6. hls4ml may not fit the target part at all.** This is a finding, not a blocker — but budget time
 for shrinking it to get a valid comparison point.
 
-**7. Simulation-correct but board-wrong.** Gate 1 proves bit-exactness in simulation; it says nothing
+**7. Training requires CUDA, and we have no local NVIDIA GPU.** Confirmed 2026-08-02 by reading
+`third_party/DWN` at pinned commit `9f887a0`: `lut_layer.py` raises `"EFDFunction CPU not
+Implemented"` in **both** forward and backward, and only `custom_operators/cuda/` ships. The
+development machine has an Intel Arc iGPU; PyTorch's XPU backend does not help, since `efd_cuda` is a
+CUDA C++ extension that would need a SYCL rewrite.
+
+Decision: **train on free Colab/Kaggle GPU**; export, RTL generation, verification, and Vivado all
+run locally on CPU. Deliberately *not* writing a CPU EFD fallback — a subtly wrong backward pass
+would silently corrupt training, which is the worst possible failure mode here, and it would be
+throwaway work.
+
+Consequence for §11's Phase 2 estimate: the "train the whole grid first" step becomes a batch job on
+a session-limited free tier, not a local overnight run. Budget for checkpoint shuttling and session
+timeouts. Binarization is pure PyTorch and runs fine locally, so encoder work is unaffected.
+
+**8. Simulation-correct but board-wrong.** Gate 1 proves bit-exactness in simulation; it says nothing
 about UART framing, BRAM addressing, reset sequencing, or timing closure on real silicon. Mitigation
 is Gate 1b (§11) — Phase 1 doesn't end until full test-set accuracy is reproduced on the board.
 
 *(Rev. 2's risk #6, silo risk from splitting work by axis between two people, no longer applies —
 the team works together at one machine, §3.)*
 
-**8. Closely related work exists and will be found.** The Mecik & Kumm paper (§8) means "we built the
+**9. Closely related work exists and will be found.** The Mecik & Kumm paper (§8) means "we built the
 first DWN hardware" is not an accurate claim — "first on an entry-level FPGA, first with this
 Pareto-frontier scope" is. State it that way from the start rather than getting caught flat-footed by
 a reviewer or classmate who's read the same paper.
