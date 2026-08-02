@@ -35,10 +35,18 @@ Rough timing: nvcc build 2–5 min, JSC download 1–2 min, training 5–15 min.
 
 | File | What it is |
 |---|---|
-| `dwn_jsc_checkpoint.pt` | config, `state_dict`, **thermometer thresholds**, scaler params, class names, accuracy history |
-| `dwn_jsc_testvectors.npz` | 1000 test samples: binarized input, raw input, label, model prediction |
+| `dwn_jsc_<run>_checkpoint.pt` | config, `state_dict`, **thermometer thresholds**, scaler params, class names, accuracy + loss history |
+| `dwn_jsc_<run>_testvectors.npz` | 1000 test samples: binarized input, raw input, label, model prediction |
 
 Put both in `training/artifacts/`.
+
+`<run>` is `RUN_NAME`, derived from the config: thermometer bits, thermometer kind, layer widths,
+and one letter per layer's mapping (`l`=learnable, `r`=random). So `t8_distributive_300-100_lr`.
+Runs never overwrite each other, and a checkpoint on disk always names the config that made it.
+
+**Keep losing runs.** Two runs differing in one variable *are* the experiment — the one that scored
+worse is the evidence for the one that scored better, and Phase 2's Pareto frontier is built out of
+exactly these comparisons.
 
 **The thresholds and scaler matter as much as the weights.** `Thermometer` is not an `nn.Module`,
 so its thresholds are *not* in `state_dict` — but the hardware encoder is undefined without them.
@@ -56,11 +64,27 @@ Edit the `CONFIG` dict in one cell. Nothing else should need touching — that's
 the same rule Phase 2 depends on (`docs/dse-plan.md` §1: a sweep point is a config, not a code
 edit). If you find yourself editing code to change a configuration, that's a bug in the notebook.
 
-Default is `t=4`, distributive, layers `[300, 100]`, n=6 — 64 input bits, 400 predicted core LUTs,
-~1.9% of an xc7a35t. Deliberately small: near the paper's sm-50 config so there's a reference number
-to check against, and safely inside the routing risk (brief §12 risk #2).
+Current config is `t=8`, distributive, layers `[300, 100]`, mapping `['learnable', 'random']`, n=6
+— 128 input bits, 400 predicted core LUTs, ~1.9% of an xc7a35t. Deliberately small: near the paper's
+sm-50 config so there's a reference number to check against, and safely inside the routing risk
+(brief §12 risk #2).
 
-Keep `n=6` for Phase 1 (CLAUDE.md). It becomes a sweep axis in Phase 2.
+`mapping` takes one entry per layer, `'learnable'` or `'random'`. It used to be a single
+`first_layer_mapping` key with `'random'` hardcoded for every later layer — which meant changing
+layer 1's wiring required a code edit, in a notebook whose whole premise is that it doesn't.
+
+Use `n=6` for Phase 1 bring-up (CLAUDE.md). It's a real sweep axis in Phase 2, and a config that
+fails to route there is a data point, not a mistake.
+
+### Run log
+
+| Run | Encoder bits | Mapping | Final | Best | Notes |
+|---|---|---|---|---|---|
+| `t4_distributive_300-100_lr` | 4 (64 bits) | learnable, random | 71.95% | 72.31% | Flat from epoch 1; peaked at 17. sm-10's accuracy from ~6× sm-10's nodes. |
+| `t8_distributive_300-100_lr` | 8 (128 bits) | learnable, random | — | — | Tests whether the encoder was the bottleneck. |
+
+Add a row per run. This table is the start of the Phase 2 accuracy axis, and it costs nothing to
+keep up to date now versus reconstructing it from checkpoints later.
 
 ---
 
@@ -85,9 +109,21 @@ at the binarization and the `GroupSum` grouping first, not the learning rate.
 
 ## When it breaks
 
-**`efd_cuda failed to import`** — the CUDA extension didn't compile. Re-run the install cell with
-`--quiet` removed and read the nvcc output. Usually a CUDA-version mismatch between the image's
-toolkit and the one PyTorch was built against.
+**`Failed building wheel for torch_dwn` / `ModuleNotFoundError: No module named 'torch_dwn'`** —
+the wheel build failed, so nothing got installed and the import in the next cell has nothing to
+find. Two things to know:
+
+- The install cell must use `pip install --no-build-isolation .`. Upstream's `pyproject.toml`
+  lists `torch` as a *build* requirement, so a plain `pip install .` builds in an isolated env
+  and pulls a second torch from PyPI — the extension then gets compiled against a torch/CUDA
+  pair that isn't the one the session runs on.
+- **Never pipe the install through `tail`.** Compiler errors appear near the top of the log; the
+  last 20 lines are always the same generic `did not run successfully / See above for output`
+  epilogue, which names no cause.
+
+**`efd_cuda failed to import`** — the wheel built but the extension didn't load. Usually a
+CUDA-version mismatch between the image's toolkit and the one PyTorch was built against; compare
+the two numbers the environment-check cell prints.
 
 **`NameError: efd_cuda` during training** — shouldn't happen; the verification cell exists to catch
 this earlier. If it does, the extension didn't build *and* the verification cell was skipped.
