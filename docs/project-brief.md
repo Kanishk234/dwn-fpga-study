@@ -600,6 +600,16 @@ LUT-DNN literature. If time runs short, stop there with something whole.
 post-synthesis netlist **early**, on a tiny two-layer model, before building anything else. Mitigation:
 `(* rom_style = "distributed" *)`, or restructure as explicit constants.
 
+> ✅ **RETIRED 2026-08-02 — see [`probe-results.md`](./probe-results.md).** Probed on Vivado 2025.2 /
+> `xc7a35tcpg236-1`: `assign out = TABLE[addr]` maps to exactly one LUT6 per node, with
+> `LUT as Memory = 0` and zero FF/BRAM/DSP. Holds with the table width parameterized (needed for the
+> `n` sweep axis), and `rom_style` proved unnecessary — **`rtlgen` should not emit it**. Two-layer
+> irregular permutation cost exactly the sum of its nodes, confirming inter-layer wiring is free and
+> validating the §5 area model in `dse-plan.md` for the core.
+>
+> Scope of that result: **synthesis only, out-of-context, 37–60 nodes.** It says nothing about
+> routing congestion (risk #2), behavior at realistic scale, or encoder cost (risk #3).
+
 **2. Routing congestion — the paper hit this.** Several DiffLogicNet and DWN *n=2* models "could not be
 implemented on our target FPGA," because "it would be infeasibly expensive for FPGAs to implement a
 full crossbar interconnect." Critically: **"all DWNs with n=6 were successfully routed and
