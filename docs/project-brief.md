@@ -418,21 +418,33 @@ first and you'll redo it once the sweep exists.
 Build the core fully parameterized, plus a scripted flow: **train → export → generate RTL → Vivado →
 parse reports**, looped over dozens of configurations.
 
-**Sweep axes:** layer count, layer width, thermometer resolution (bits per feature), Learnable
-Reduction vs plain popcount, pipeline depth — all at **n=6**.
+**Sweep axes:** LUT input width `n`, layer count, layer width, thermometer resolution (bits per
+feature), Learnable Reduction vs plain popcount, pipeline depth.
 
-#### On `n`: sweep it last, and only to document the wall
+#### On `n`: n=6 through Phase 1, a real axis in Phase 2
 
-`n` is **fixed at 6 for all primary results.** This is not an arbitrary default — a DWN-6 neuron *is*
-a Xilinx LUT6 (§4), and §12 risk #2 records that the paper failed to route several n=2 models on a
-part far larger than yours. Building the frontier at n=6 is the project.
+`n` is **fixed at 6 for all of Phase 1.** It's the safest configuration to bring the pipeline up on —
+least likely to hit the routing congestion failure mode in §12 risk #2 — so that an early pipeline
+bug can't be mistaken for a hardware routing limit. Once Gate 1 has passed at n=6 and the sweep
+infrastructure works, `n` becomes a genuine sweep axis alongside the others.
 
-That said, "n=2 congests" is currently a claim you'd be *citing*, not one you'd have *measured* — and
-measuring where the congestion wall sits on a small part is a genuine contribution nobody has
-published. So: **if Phase 2 finishes with time in hand, run an n=2 series purely as a congestion
-characterization.** Report it as a separate finding, not as part of the main Pareto frontier.
-**Failed routing runs are data** — a congestion wall at N LUTs is a result, not a dead end. If time
-is short, drop it; the frontier stands without it.
+**Calibrate what you expect to find, though: smaller `n` is very unlikely to be an area win.** A
+Xilinx LUT6 is physically a 64-entry table with a 6-bit address, so a DWN-6 node *is* one LUT6 (§4)
+and its 64 learned entries are free. An n=2 node consumes roughly the same one LUT while wasting four
+of its six inputs — and needs many more nodes to reach equivalent capacity, which means more wires,
+which means worse congestion. That is precisely why the paper failed to route several n=2 models on a
+part far larger than yours.
+
+| `n` | Trained params/node | FPGA cost/node |
+|---|---|---|
+| 2 | 4 | ~1 LUT6, 4 inputs wasted |
+| 4 | 16 | ~1 LUT6, 2 inputs wasted |
+| **6** | **64** | **1 LUT6 — exact fit** |
+
+So the likely result is that n=2 and n=4 are worse on *both* accuracy-per-LUT and routability. Run
+them anyway: "n=2 congests" is currently something you'd be *citing* rather than *measuring*, and
+locating that wall on an entry-level part is a contribution nobody has published. **Failed routing
+runs are data** — a congestion wall at N LUTs is a result, not a dead end.
 
 #### Budget the training separately from the synthesis
 
@@ -593,7 +605,8 @@ implemented on our target FPGA," because "it would be infeasibly expensive for F
 full crossbar interconnect." Critically: **"all DWNs with n=6 were successfully routed and
 implemented."** Learnable Mapping produces irregular wiring, and irregular wiring congests. The
 Artix-7 is far smaller than their part, so this is the **top technical risk**. Mitigation: **n=6
-only**; start with the smallest working model and scale up.
+throughout Phase 1**, and start with the smallest working model and scale up. In Phase 2, n=2/n=4 get
+swept deliberately — at that point a routing failure is the measurement, not the risk (§10).
 
 **3. Thermometer encoder cost is unbudgeted in the paper's numbers** (§6). Mecik & Kumm measured up
 to **3.2×** more LUTs than the paper's core-only figures imply. Every "% of Basys 3" estimate derived
