@@ -4,8 +4,15 @@
 # own environment -- see training/README.md and project-brief.md §12 risk #7. Don't add
 # torch_dwn or CUDA packages here; they can't build on this machine.
 #
+# REQUIRES PYTHON 3.12. Chosen deliberately, not by default:
+#   - matches Kaggle's image (3.12), which is what writes the checkpoints this env reads;
+#   - numpy 2.3.x requires >=3.11, so 3.10 cannot install this file at all;
+#   - hls4ml and conifer (Phase 3) lag new Python releases more than torch/numpy do, so the
+#     newest release is the wrong default here even though it looks like the safe one.
+# Verified installing cleanly on 3.12.10 / Windows, 2026-08-02.
+#
 # Setup:
-#   python -m venv .venv
+#   py -3.12 -m venv .venv
 #   .venv\Scripts\activate          (Windows)
 #   pip install -r requirements.txt
 #
