@@ -1,0 +1,19 @@
+# Local CPU environment: exporter, RTL generator, golden model, DSE scripts.
+#
+# This does NOT cover training. Training needs CUDA and runs on Kaggle against that image's
+# own environment -- see training/README.md and project-brief.md §12 risk #7. Don't add
+# torch_dwn or CUDA packages here; they can't build on this machine.
+#
+# Setup:
+#   python -m venv .venv
+#   .venv\Scripts\activate          (Windows)
+#   pip install -r requirements.txt
+#
+# Add dependencies as they are actually needed, not speculatively.
+
+# Reading trained checkpoints and building the bit-exact golden model.
+# CPU build: on Windows the default PyPI wheel is CPU-only, which is what we want.
+torch==2.13.0
+
+# Test vectors, LUT table packing, report parsing.
+numpy==2.3.4
