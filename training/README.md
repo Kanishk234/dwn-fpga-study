@@ -91,15 +91,31 @@ model is still ~1.4pp under sm-50.
 
 The loss signature is identical across all three runs: a slow drift, then a step down exactly when
 the LR scheduler fires (epoch 14 and 28), then flat again. It is not the optimizer. **The remaining
-difference is architectural.**
+difference is architectural** — and reading the paper confirmed it in two places at once:
+
+| | Paper (JSC `sm`, 1× 50) | Ours (all three runs) |
+|---|---|---|
+| thermometer bits `z` | **200** (3200 input bits) | 4 or 8 (64 / 128 bits) |
+| layers | **single** `1× 50` | `[300, 100]`, second layer random-wired |
+| tau | 1/0.3 | 1/0.3 ✓ |
+| batch size | 100 | 256 / 32 |
+| LR schedule | 1e-2(14), 1e-3(14), 1e-4(4) | equivalent ✓ |
+
+| Run | Encoder bits | Layers | Final | Best | Notes |
+|---|---|---|---|---|---|
+| `t200_distributive_50_l_b100` | 200 (3200 bits) | `[50]` learnable | — | — | **Reproduction attempt. Target 74.0%.** |
+
+Everything in the first three runs was the training recipe, which was never the problem. See
+`docs/paper-configs.md`.
 
 `RUN_NAME` gained a `_b<batch>` suffix from this run on — without it this run and the t=8 run
 collide on the same name. The two earlier files keep their original names.
 
-**What the t4 → t8 comparison settled:** doubling thermometer resolution doubles encoder LUTs (brief
-§6 says encoder cost is a headline number, not a footnote) and returned ~0.2pp. That's a bad trade on
-a constrained part, and it's a real Phase 2 data point — the encoder-resolution axis is flatter than
-the §6 discussion assumes, at least at this model size.
+**~~What the t4 → t8 comparison settled~~ — RETRACTED.** This previously read: "the encoder-resolution
+axis is flatter than the §6 discussion assumes." That conclusion was wrong. The paper uses **z=200**
+for every JSC config (`docs/paper-configs.md`); testing 4 vs 8 sampled the flat part of a curve whose
+operating point is 25× further out. All three runs below were starved at the input, which is also why
+extra layer capacity bought nothing.
 
 **What it did not settle:** why the model is stuck ~1.5pp under sm-50 at comparable node count. The
 new evidence is the *training* loss, which barely moves after epoch 7 and only ever drops when the
