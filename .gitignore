@@ -1,1 +1,31 @@
 CLAUDE.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Generated build products (Vivado reports, netlists, bitstreams).
+# Everything under build/ is regenerable by re-running the flow that made it.
+build/
+
+# Vivado scratch and per-run droppings
+.Xil/
+*.jou
+*.log
+*.str
+*.backup.jou
+*.backup.log
+vivado_pid*.str
+usage_statistics_webtalk.*
+dfx_runtime.txt
+.cache/
+hs_err_pid*.log
+
+# Vivado project mode (we use the non-project batch flow, but IP or GUI runs leave these)
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.xpr
