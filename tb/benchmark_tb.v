@@ -65,11 +65,13 @@ module benchmark_tb;
     wire [31:0]      cycle_count;
     wire [ADDR_W:0]  correct_count;
 
+    wire [LABEL_W-1:0] last_class;
+
     benchmark_fsm #(.ADDR_W(ADDR_W), .LABEL_W(LABEL_W), .LATENCY(LATENCY))
         u_fsm (.clk(clk), .rst(rst), .start(start), .n_vectors(n_vectors),
                .rd_addr(rd_addr), .rd_label(rd_label), .class_idx(class_idx),
                .busy(busy), .done(done), .cycle_count(cycle_count),
-               .correct_count(correct_count));
+               .correct_count(correct_count), .last_class(last_class));
 
     integer errors = 0;
     integer i;
@@ -150,6 +152,8 @@ module benchmark_tb;
         run_batch(n_run);
         check("cycle_count (single)", cycle_count, n_run + LATENCY + 1);
         check("correct_count (single)", correct_count, 1);
+        // The stub predicts the low bits of the vector, and vector 0 holds 0.
+        check("last_class held after run", last_class, 0);
         $display("  batch 3: %0d vector, %0d cycles, %0d correct",
                  n_run, cycle_count, correct_count);
 

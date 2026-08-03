@@ -51,7 +51,8 @@ module benchmark_fsm #(
     output reg                 busy,
     output reg                 done,         // one-cycle pulse when the batch completes
     output reg  [31:0]         cycle_count,  // issue of first vector -> last result
-    output reg  [ADDR_W:0]     correct_count
+    output reg  [ADDR_W:0]     correct_count,
+    output reg  [LABEL_W-1:0]  last_class    // most recent prediction, held for the display
 );
 
     localparam [1:0] S_IDLE  = 2'd0,
@@ -89,6 +90,7 @@ module benchmark_fsm #(
             done          <= 1'b0;
             cycle_count   <= 32'd0;
             correct_count <= {(ADDR_W+1){1'b0}};
+            last_class    <= {LABEL_W{1'b0}};
             addr_valid    <= 1'b0;
             label_valid   <= 1'b0;
             vld           <= {LATENCY{1'b0}};
@@ -154,7 +156,8 @@ module benchmark_fsm #(
             endcase
 
             if (retire_now) begin
-                retired <= retired + {{ADDR_W{1'b0}}, 1'b1};
+                retired    <= retired + {{ADDR_W{1'b0}}, 1'b1};
+                last_class <= class_idx;    // held after the run for the 7-segment display
                 if (hit)
                     correct_count <= correct_count + {{ADDR_W{1'b0}}, 1'b1};
             end
