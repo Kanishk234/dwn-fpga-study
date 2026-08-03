@@ -14,8 +14,8 @@
 # Usage (via run_synth.py):
 #   vivado -mode batch -source scripts/build.tcl -tclargs <top> <part> <out_dir> <src>...
 
-if {$argc < 5} {
-    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <sources...>"
+if {$argc < 6} {
+    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <impl:0|1> <sources...>"
     exit 1
 }
 
@@ -23,7 +23,8 @@ set top     [lindex $argv 0]
 set part    [lindex $argv 1]
 set out_dir [lindex $argv 2]
 set period  [lindex $argv 3]
-set sources [lrange $argv 4 end]
+set do_impl [lindex $argv 4]
+set sources [lrange $argv 5 end]
 
 file mkdir $out_dir
 
@@ -62,5 +63,25 @@ report_timing -delay_type max -max_paths 10 -nworst 10 -file $out_dir/timing.rpt
 report_design_analysis -logic_level_distribution -file $out_dir/logic_levels.rpt
 
 write_checkpoint -force $out_dir/post_synth.dcp
+
+# Place and route. Post-synthesis timing uses ESTIMATED routing delays and is systematically
+# optimistic; routing is where designs actually fail. Area moves too, since placement enables
+# optimizations synthesis only guesses at. Any number that goes in a paper comes from here,
+# not from the synth-only reports above.
+if {$do_impl} {
+    opt_design
+    place_design
+    phys_opt_design
+    route_design
+
+    report_utilization               -file $out_dir/utilization_routed.rpt
+    report_utilization -hierarchical -file $out_dir/utilization_routed_hier.rpt
+    report_timing_summary            -file $out_dir/timing_summary_routed.rpt
+    report_timing -delay_type max -max_paths 10 -nworst 10 -file $out_dir/timing_routed.rpt
+    report_power                     -file $out_dir/power_routed.rpt
+
+    write_checkpoint -force $out_dir/post_route.dcp
+    puts "BUILD_TCL_IMPL_DONE $top"
+}
 
 puts "BUILD_TCL_DONE $top"

@@ -89,7 +89,7 @@ def parse_logic_levels(path):
     return max(levels) if levels else None
 
 
-def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS):
+def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, impl=False):
     """Synthesize one top. Returns (ok, absolute out_dir).
 
     Everything is passed as a path RELATIVE to the repo root, and Vivado runs with the repo as
@@ -110,7 +110,7 @@ def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS):
     cmd = [tool(vivado_bin, 'vivado'), '-mode', 'batch', '-notrace',
            '-log', f'{out_rel}/vivado.log', '-journal', f'{out_rel}/vivado.jou',
            '-source', 'scripts/build.tcl',
-           '-tclargs', top, part, out_rel, str(period)] + list(sources)
+           '-tclargs', top, part, out_rel, str(period), '1' if impl else '0'] + list(sources)
 
     r = run(cmd, cwd=REPO, env=env, capture=True)
     log = (r.stdout or '') + (r.stderr or '')
@@ -126,25 +126,35 @@ def main():
     ap.add_argument('--part', default=DEFAULT_PART)
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'synth'))
+    ap.add_argument('--impl', action='store_true',
+                    help='place and route too. Slower, but post-synthesis timing uses '
+                         'estimated routing and is systematically optimistic.')
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
+    stage = 'synth + implementation' if args.impl else 'synthesis only'
     print(f'part    : {args.part}  ({DEVICE_LUTS} LUTs)')
     print(f'vivado  : {vivado_bin}')
     print(f'outdir  : {os.path.relpath(args.outdir, REPO)}')
+    print(f'stage   : {stage}')
     print()
 
     results = {}
     for top, sources in TARGETS:
-        print(f'=== synthesizing {top} (out-of-context) ===')
-        ok, out_dir = run_one(vivado_bin, top, sources, args.part, args.outdir)
+        print(f'=== {top} (out-of-context, {stage}) ===')
+        ok, out_dir = run_one(vivado_bin, top, sources, args.part, args.outdir,
+                              impl=args.impl)
         if not ok:
             return 1
-        util = parse_utilization(os.path.join(out_dir, 'utilization.rpt'))
+        # Prefer post-route reports when they exist: they are the numbers that can be quoted.
+        util_rpt = 'utilization_routed.rpt' if args.impl else 'utilization.rpt'
+        tsum_rpt = 'timing_summary_routed.rpt' if args.impl else 'timing_summary.rpt'
+        time_rpt = 'timing_routed.rpt' if args.impl else 'timing.rpt'
+        util = parse_utilization(os.path.join(out_dir, util_rpt))
         results[top] = {
             **util,
-            'delay': parse_timing(os.path.join(out_dir, 'timing.rpt')),
-            'wns': parse_wns(os.path.join(out_dir, 'timing_summary.rpt')),
+            'delay': parse_timing(os.path.join(out_dir, time_rpt)),
+            'wns': parse_wns(os.path.join(out_dir, tsum_rpt)),
             'levels': parse_logic_levels(os.path.join(out_dir, 'logic_levels.rpt')),
         }
         print(f'  LUTs {util.get("luts", "?")}   FF {util.get("ff", "?")}   '
