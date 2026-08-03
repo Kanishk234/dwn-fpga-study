@@ -18,16 +18,35 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_gate1 import REPO, find_vivado_bin, run_xsim, xvlog  # noqa: E402
+from run_gate1 import REPO, find_vivado_bin, python_exe, run, run_xsim, xvlog  # noqa: E402
 
-# name -> (testbench top, sources)
+# Default checkpoint, for suites that need real golden vectors.
+DEFAULT_CHECKPOINT = os.path.join(
+    'training', 'artifacts', 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt')
+
+# name -> {top, sources, [include], [needs_vectors]}
+# needs_vectors: regenerate the golden test vectors into the suite's work dir first, so the
+# testbench can never run against a stale set.
 SUITES = {
-    'uart': ('uart_tb', ['harness/uart_tx.v', 'harness/uart_rx.v', 'tb/uart_tb.v']),
-    'benchmark': ('benchmark_tb', ['harness/vector_store.v', 'harness/benchmark_fsm.v',
-                                   'tb/benchmark_tb.v']),
-    'loader': ('loader_tb', ['harness/uart_tx.v', 'harness/uart_rx.v',
-                             'harness/uart_loader.v', 'harness/vector_store.v',
-                             'tb/loader_tb.v']),
+    'uart': {'top': 'uart_tb',
+             'sources': ['harness/uart_tx.v', 'harness/uart_rx.v', 'tb/uart_tb.v']},
+    'benchmark': {'top': 'benchmark_tb',
+                  'sources': ['harness/vector_store.v', 'harness/benchmark_fsm.v',
+                              'tb/benchmark_tb.v']},
+    'loader': {'top': 'loader_tb',
+               'sources': ['harness/uart_tx.v', 'harness/uart_rx.v',
+                           'harness/uart_loader.v', 'harness/vector_store.v',
+                           'tb/loader_tb.v']},
+    'top': {'top': 'top_tb',
+            'sources': ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
+                        'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v',
+                        'rtl/gen/dwn_top.v',
+                        'harness/uart_tx.v', 'harness/uart_rx.v', 'harness/uart_loader.v',
+                        'harness/vector_store.v', 'harness/benchmark_fsm.v',
+                        'harness/seg7.v', 'harness/dwn_basys3_top.v',
+                        'tb/top_tb.v'],
+            'include': ['rtl/gen'],
+            'needs_vectors': True},
 }
 
 
@@ -39,8 +58,8 @@ def main():
     args = ap.parse_args()
 
     if args.list:
-        for name, (top, _) in SUITES.items():
-            print(f'{name:12s} -> {top}')
+        for name, spec in SUITES.items():
+            print(f'{name:12s} -> {spec["top"]}')
         return 0
 
     names = [args.suite] if args.suite else list(SUITES)
@@ -53,15 +72,28 @@ def main():
     failures = []
 
     for name in names:
-        top, sources = SUITES[name]
+        spec = SUITES[name]
+        top, sources = spec['top'], spec['sources']
         work = os.path.join(REPO, 'build', 'tb', name)
         srcs = [os.path.join(REPO, s) for s in sources]
         missing = [s for s in srcs if not os.path.exists(s)]
         if missing:
-            raise SystemExit('missing sources:\n  ' + '\n  '.join(missing))
+            raise SystemExit('missing sources:\n  ' + '\n  '.join(missing) +
+                             '\n(generated RTL? run exporter/emit_core.py and '
+                             'exporter/emit_encoder.py, or scripts/run_gate1.py)')
 
         print(f'=== {name} ({top}) ===')
-        ok, output = xvlog(vivado_bin, work, srcs)
+
+        if spec.get('needs_vectors'):
+            os.makedirs(work, exist_ok=True)
+            ckpt = os.path.join(REPO, DEFAULT_CHECKPOINT)
+            r = run([python_exe(), os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt,
+                     '--outdir', work])
+            if r.returncode != 0:
+                raise SystemExit('gen_vectors.py failed')
+
+        includes = [os.path.join(REPO, p) for p in spec.get('include', [])]
+        ok, output = xvlog(vivado_bin, work, srcs, include=includes)
         if not ok:
             print(output.strip())
             failures.append(name)
@@ -69,8 +101,8 @@ def main():
 
         ok, output = run_xsim(vivado_bin, work, top)
         for line in output.splitlines():
-            if re.search(r'====|RESULT|MISMATCH|ERROR|bytes|framing|mismatches|test|batch',
-                         line):
+            if re.search(r'====|RESULT|MISMATCH|ERROR|bytes|framing|mismatches|test|batch'
+                         r'|vectors|correct|cycles|path|BOARD|loaded', line):
                 print(line)
 
         verdict = re.search(r'RESULT\s+:\s+(PASS|FAIL)', output)
