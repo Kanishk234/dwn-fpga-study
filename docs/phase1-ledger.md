@@ -30,7 +30,7 @@ reported.
 | `constraints/basys3.xdc` | required for a *bitstream*; OOC synthesis does not need it | ❌ dir empty |
 | `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ✅ |
 | First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ✅ **see below** |
-| Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ❌ **now known to be required, not optional** |
+| Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ✅ 4 stages, 161 MHz, II=1 |
 | Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | ❌ |
 
 ---
@@ -117,19 +117,42 @@ selected thresholds, which drives encoder area directly — and encoder area dom
 fixes z=200 for every JSC config and never reports what it costs. Accuracy vs area vs `z`, on a
 part where it binds, is unmeasured by anyone.
 
-## Timing — pipelining is required, not optional
+## Timing — pipelined, and it clears the board clock
 
-`dwn_top` is **12.314 ns** end to end → **81.2 MHz** unpipelined, against the Basys 3's 100 MHz
-board clock. The design as it stands cannot run at the board's native clock.
+Unpipelined the design was **12.314 ns / 81.2 MHz**, under the Basys 3's 100 MHz. Four pipeline
+stages fixed that.
 
-⚠️ **Correction.** The ledger and my earlier reasoning both assumed the 202 comparators would be
-the critical path, and that pipeline stages should be placed after synthesis showed that. The
-measurement says the opposite: the **core** is 10.194 ns and the **encoder** only 2.962 ns. The
-depth is in the popcount and argmax trees, not the comparators. Stage placement should follow
-the core's structure — after the LUT layer, and inside or after the popcount/argmax reduction.
+⚠️ **Correction (kept visible).** Earlier reasoning assumed the 202 comparators would be the
+critical path. The measurement said the opposite: **core 10.194 ns, encoder 2.962 ns** — the
+depth is in the popcount and argmax trees. Stages were placed accordingly.
 
-(Post-synthesis timing with unrouted nets is pessimistic; the real figure needs implementation.
-The *ranking* of encoder vs core is unlikely to flip, but the absolute numbers will move.)
+Constrained at 10.0 ns (100 MHz), out-of-context, `xc7a35tcpg236-1`:
+
+| Module | LUTs | % dev | FF | WNS | Fmax |
+|---|---|---|---|---|---|
+| `dwn_core` | 108 | 0.52% | 73 | +3.790 ns | 161.0 MHz |
+| `thermometer_encoder` | 1519 | 7.30% | 0 | +7.013 ns | 334.8 MHz |
+| **`dwn_top`** | **1619** | **7.78%** | **269** | **+3.790 ns** | **161.0 MHz** |
+
+- **Pipeline: 4 stages** — after the encoder, the LUT layer, the popcounts, and the argmax.
+  **Latency 4 cycles, II=1.** At the board's 100 MHz that is **40 ns** and **100 M
+  classifications/s** from the core; at the achievable 161 MHz, 24.8 ns.
+- **81.2 → 161.0 MHz**, and LUT count did not move at all (1619 either way). The stages cost
+  flip-flops, not logic — 269 FFs on a part with 41,600.
+- Stage placement is a `pipe_reg` parameter (`PIPE_ENC/LUT/POP/OUT`), not hand-wiring, because
+  pipeline depth is a Phase 2 sweep axis (brief §10). `ENABLE=0` compiles a stage out entirely.
+
+**The FF count confirms the dead-bit prediction.** `dwn_top`'s encoder register is nominally
+3200 bits wide; synthesis kept **196**, having trimmed every bit that feeds no node. `dwn_core`
+is exactly 73 = 50 (layer) + 20 (scores) + 3 (output), as designed.
+
+**There is headroom worth sweeping.** +3.790 ns of slack at 100 MHz means a 3-stage version
+probably still closes, trading a cycle of latency for 20 fewer FFs. That is exactly the
+pipeline-depth axis Phase 2 is meant to explore, so it is a data point to collect rather than a
+decision to make now.
+
+(Still post-synthesis, pre-route. Absolute numbers will move after implementation; the
+encoder-vs-core ranking will not.)
 
 ---
 
@@ -146,7 +169,10 @@ The *ranking* of encoder vs core is unlikely to flip, but the absolute numbers w
 | Gate 1 | core 1504/1504 · top 1518/1518 |
 | Area (OOC, xc7a35t) | core **108** LUTs (paper: 110) · encoder **1519** · top **1619** = 7.78% |
 | Encoder / core | **14.06×** — vs the 3.2× worst case brief §12 risk #3 anticipated |
-| Fmax | **81.2 MHz** unpipelined (12.314 ns), below the board's 100 MHz |
+| Flip-flops | 269 total (196 encoder + 50 layer + 20 scores + 3 out) of 41,600 |
+| Fmax | **161.0 MHz** pipelined (+3.790 ns slack at 100 MHz); 81.2 MHz unpipelined |
+| Latency | **4 cycles**, II=1 → 40 ns at the board's 100 MHz, 24.8 ns at 161 MHz |
+| Throughput | **100 M classifications/s** core-side at 100 MHz — but I/O-bound in practice (brief §6) |
 
 ⚠️ **Quote 73.84%, not 74.06%.** The saved weights are the final epoch; there is no
 best-checkpoint tracking. The `.npz` predictions come from those same weights, so Gate 1 is
