@@ -20,7 +20,7 @@ reported.
 | **1d** | Golden software model + bit-exact testbench — **GATE 1** | ✅ **both levels pass** |
 | **1e** | Exporter (checkpoint → tables/wiring/thresholds) | 🟡 works, one-shot, not generalized |
 | **1f** | RTL generator (export → Verilog) | ❌ `rtlgen/` empty |
-| **1g** | Harness — UART, BRAM vector store, cycle counter, FSM, 7-seg | 🟡 **UART rx/tx done + tested**; BRAM store, FSM, 7-seg outstanding |
+| **1g** | Harness — UART, BRAM vector store, cycle counter, FSM, 7-seg | ✅ **all modules built and tested, incl. board top level** |
 | **1h** | Board: bitstream reproduces test-set accuracy — **GATE 1b** | ❌ |
 
 ### Not in the brief's list, but Phase 1 cannot finish without them
@@ -140,6 +140,45 @@ test set does not fit on the device, so Gate 1b batches and only totals cross th
 
 No CRC or retries: the link is a 10 cm trace, `uart_rx` already flags framing errors, and a
 corrupt load shows up immediately as a wrong accuracy. Cheap to add if that proves optimistic.
+
+---
+
+## Board top level — Gate 1b passes in simulation
+
+`harness/dwn_basys3_top.v` wires loader → vector store → `dwn_top` → benchmark FSM → UART,
+plus `harness/seg7.v` for the display. `scripts/run_tb.py top` drives the whole thing through a
+real UART pair with **real golden vectors and the real classifier — nothing stubbed**:
+
+```
+vectors : 64
+correct : 64 / 64
+cycles  : 69 (expected 69, II=1)
+path    : host UART -> loader -> BRAM -> dwn_top -> counters -> UART
+```
+
+The labels loaded are the golden model's own predictions, so **64/64 means the hardware agrees
+with the software model on every sample, end to end, through the serial protocol.** That is Gate
+1b's claim minus the silicon.
+
+**Still open, and why 1h stays ❌:** real FT2232HQ timing, bitstream-level behaviour, clock and
+reset on actual silicon, and timing closure after place-and-route. Brief §12 risk #7 exists
+because none of that is simulatable.
+
+### One deliberate simplification of brief §9, stated rather than smuggled in
+
+The brief describes benchmark mode and interactive mode as **two datapaths**. The top level
+builds **one**, because the host reproduces interactive behaviour exactly with `L 1 <record>`
+then `R 1` — a single sample over UART, prediction on the display, still honestly slow because
+the link dominates. A second datapath would duplicate the classifier interface and add a second
+thing to verify for no behavioural difference.
+
+The switch therefore selects what the **display** shows — `sw[0]=0` last class, `sw[0]=1` cycle
+count — which is what §9 actually asks the 7-segment for. LEDs: busy, done, sticky framing
+error, and the low byte of `correct_count`.
+
+`LATENCY` is taken from the generated `dwn_top_params.vh`, never hand-copied: `benchmark_fsm`
+aligns labels using it, and a drifted value would silently score every sample against the wrong
+answer — a bug that has already happened once in this project.
 
 ---
 
