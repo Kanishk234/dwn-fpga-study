@@ -33,16 +33,20 @@ from run_gate1 import REPO, find_vivado_bin, run, tool  # noqa: E402
 DEFAULT_PART = 'xc7a35tcpg236-1'
 
 TARGETS = [
-    ('dwn_core', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v',
+    ('dwn_core', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
                   'rtl/gen/dwn_core.v']),
     ('thermometer_encoder', ['rtl/gen/thermometer_encoder.v']),
-    ('dwn_top', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v',
+    ('dwn_top', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
                  'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v',
                  'rtl/gen/dwn_top.v']),
 ]
 
 # Total LUTs on the part, for the "% of device" column that decides what fits.
 DEVICE_LUTS = 20800
+
+# The Basys 3's on-board oscillator is 100 MHz. Constraining at exactly that makes the slack
+# answer the question that matters: does this run on the board as-is?
+BOARD_PERIOD_NS = 10.0
 
 
 def parse_utilization(path):
@@ -60,11 +64,20 @@ def parse_utilization(path):
 
 
 def parse_timing(path):
-    """Longest input-to-output delay, in ns. No registers yet, so this is the comb path."""
+    """Longest path delay, in ns."""
     if not os.path.exists(path):
         return None
     text = open(path, errors='replace').read()
     m = re.search(r'Data Path Delay:\s*([\d.]+)ns', text)
+    return float(m.group(1)) if m else None
+
+
+def parse_wns(path):
+    """Worst negative slack from report_timing_summary, in ns. Negative means failing."""
+    if not os.path.exists(path):
+        return None
+    text = open(path, errors='replace').read()
+    m = re.search(r'WNS\(ns\).*?\n\s*-+.*?\n\s*(-?[\d.]+)', text, re.S)
     return float(m.group(1)) if m else None
 
 
@@ -76,7 +89,7 @@ def parse_logic_levels(path):
     return max(levels) if levels else None
 
 
-def run_one(vivado_bin, top, sources, part, out_root):
+def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS):
     """Synthesize one top. Returns (ok, absolute out_dir).
 
     Everything is passed as a path RELATIVE to the repo root, and Vivado runs with the repo as
@@ -97,7 +110,7 @@ def run_one(vivado_bin, top, sources, part, out_root):
     cmd = [tool(vivado_bin, 'vivado'), '-mode', 'batch', '-notrace',
            '-log', f'{out_rel}/vivado.log', '-journal', f'{out_rel}/vivado.jou',
            '-source', 'scripts/build.tcl',
-           '-tclargs', top, part, out_rel] + list(sources)
+           '-tclargs', top, part, out_rel, str(period)] + list(sources)
 
     r = run(cmd, cwd=REPO, env=env, capture=True)
     log = (r.stdout or '') + (r.stderr or '')
@@ -131,25 +144,32 @@ def main():
         results[top] = {
             **util,
             'delay': parse_timing(os.path.join(out_dir, 'timing.rpt')),
+            'wns': parse_wns(os.path.join(out_dir, 'timing_summary.rpt')),
             'levels': parse_logic_levels(os.path.join(out_dir, 'logic_levels.rpt')),
         }
         print(f'  LUTs {util.get("luts", "?")}   FF {util.get("ff", "?")}   '
               f'BRAM {util.get("bram", "?")}   DSP {util.get("dsp", "?")}')
         print()
 
-    print('=' * 72)
-    print(f'{"module":22s} {"LUTs":>7} {"% dev":>7} {"FF":>5} {"BRAM":>5} {"DSP":>5} '
-          f'{"delay ns":>9}')
-    print('-' * 72)
+    print('=' * 82)
+    print(f'{"module":22s} {"LUTs":>7} {"% dev":>7} {"FF":>6} {"BRAM":>5} {"DSP":>5} '
+          f'{"WNS ns":>8} {"Fmax MHz":>9}')
+    print('-' * 82)
     for top, _ in TARGETS:
         r = results[top]
         luts = r.get('luts')
         pct = f'{100*luts/DEVICE_LUTS:.2f}' if luts is not None else '?'
-        delay = f'{r["delay"]:.3f}' if r.get('delay') else '?'
+        wns = r.get('wns')
+        wns_s = f'{wns:+.3f}' if wns is not None else '?'
+        # Fmax = 1 / (constrained period - slack). Positive slack means headroom.
+        fmax = f'{1000.0/(BOARD_PERIOD_NS - wns):.1f}' if wns is not None else '?'
         print(f'{top:22s} {luts if luts is not None else "?":>7} {pct:>7} '
-              f'{r.get("ff", "?"):>5} {r.get("bram", "?"):>5} {r.get("dsp", "?"):>5} '
-              f'{delay:>9}')
-    print('=' * 72)
+              f'{r.get("ff", "?"):>6} {r.get("bram", "?"):>5} {r.get("dsp", "?"):>5} '
+              f'{wns_s:>8} {fmax:>9}')
+    print('=' * 82)
+    print(f'constrained at {BOARD_PERIOD_NS:.1f} ns '
+          f'({1000/BOARD_PERIOD_NS:.0f} MHz, the Basys 3 board clock). '
+          'WNS >= 0 means it meets timing.')
 
     core = results.get('dwn_core', {}).get('luts')
     enc = results.get('thermometer_encoder', {}).get('luts')
@@ -166,13 +186,18 @@ def main():
         print('every table, which is what makes our numbers comparable to both the paper')
         print('(core-only) and Mecik & Kumm (encoder-inclusive).')
 
-    delay = results.get('dwn_top', {}).get('delay')
-    if delay:
+    wns = results.get('dwn_top', {}).get('wns')
+    if wns is not None:
         print()
-        print(f'Combinational path is {delay:.3f} ns end to end -> '
-              f'{1000/delay:.1f} MHz unpipelined.')
-        print('No registers exist yet. This is the number that decides how many pipeline')
-        print('stages brief §9\'s II=1 target needs, and where to put them.')
+        if wns >= 0:
+            print(f'dwn_top MEETS timing at 100 MHz with {wns:.3f} ns to spare '
+                  f'-> {1000.0/(BOARD_PERIOD_NS - wns):.1f} MHz achievable.')
+        else:
+            print(f'dwn_top FAILS timing at 100 MHz by {-wns:.3f} ns '
+                  f'-> only {1000.0/(BOARD_PERIOD_NS - wns):.1f} MHz. '
+                  'More pipeline stages needed.')
+        print('Report latency in CYCLES as well as ns (brief §6): the paper\'s clock speeds')
+        print('are speed-graded parts and do not transfer to a -1 Artix-7.')
     return 0
 
 

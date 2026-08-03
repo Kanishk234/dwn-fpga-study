@@ -36,6 +36,7 @@ RTL_SOURCES = [
     ('rtl', 'lut_node.v'),
     ('rtl', 'popcount.v'),
     ('rtl', 'argmax.v'),
+    ('rtl', 'pipe_reg.v'),
     ('rtl', 'gen', 'dwn_core.v'),
     ('rtl', 'gen', 'thermometer_encoder.v'),
     ('rtl', 'gen', 'dwn_top.v'),
@@ -103,13 +104,17 @@ def run(cmd, cwd=None, env=None, capture=False):
 
 
 def xvlog(vivado_bin, work, sources, include=None):
-    """Analyze all sources once. Returns (ok, output)."""
+    """Analyze all sources once. Returns (ok, output).
+
+    `include` may be a list: the testbenches pull vector counts from build/gate1 and pipeline
+    latency from rtl/gen, so both directories have to be on the include path.
+    """
     env = dict(os.environ)
     env['PATH'] = vivado_bin + os.pathsep + env.get('PATH', '')
     os.makedirs(work, exist_ok=True)
     cmd = [tool(vivado_bin, 'xvlog')]
-    if include:
-        cmd += ['-i', include]
+    for inc in ([include] if isinstance(include, str) else (include or [])):
+        cmd += ['-i', inc]
     cmd += list(sources)
     r = run(cmd, cwd=work, env=env, capture=True)
     return r.returncode == 0, r.stdout + r.stderr
@@ -163,7 +168,8 @@ def main():
 
     print('\n=== 4/4  simulate (xsim) ===')
     sources = [os.path.join(REPO, *parts) for parts in RTL_SOURCES]
-    ok, output = xvlog(vivado_bin, work, sources, include=work)
+    ok, output = xvlog(vivado_bin, work, sources,
+                       include=[work, os.path.join(REPO, 'rtl', 'gen')])
     if not ok:
         print(output.strip())
         print('\nGATE 1 FAILED (compile error)')
