@@ -11,7 +11,20 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-module dwn_core (
+// Pipeline stages are parameters, not hand-placement: depth is a Phase 2 sweep
+// axis (brief §10). Set any to 0 to compile that register out. LATENCY is the
+// sum of the enabled stages and is emitted into dwn_core_params.vh for the
+// testbench, so the two can never disagree about it.
+//
+// Placement follows measurement, not intuition: out-of-context synthesis put
+// 10.194 ns in this module against 2.962 ns in the encoder, so the depth is in
+// the popcount and argmax trees. Hence a stage after each of them.
+module dwn_core #(
+    parameter integer PIPE_LUT = 1,   // after each LUT layer
+    parameter integer PIPE_POP = 1,   // after the popcounts
+    parameter integer PIPE_OUT = 1    // after the argmax
+)(
+    input  wire clk,
     input  wire [3199:0] x,
     output wire [2:0]    class_idx
 );
@@ -119,15 +132,24 @@ module dwn_core (
     lut_node #(.N(6), .TABLE(64'h066604862E77AAA2))
         u_l0_n49 (.addr({x[754], x[2914], x[753], x[753], x[2954], x[2921]}), .out(layer0[49]));
 
+    wire [49:0] layer0_q;
+    pipe_reg #(.WIDTH(50), .ENABLE(PIPE_LUT)) u_pipe_l0 (.clk(clk), .d(layer0), .q(layer0_q));
+
     // ---- output stage: contiguous per-class popcounts, then argmax ----
     wire [19:0] scores;
-    popcount #(.WIDTH(10)) u_pc0 (.bits(layer0[9:0]), .count(scores[3:0]));
-    popcount #(.WIDTH(10)) u_pc1 (.bits(layer0[19:10]), .count(scores[7:4]));
-    popcount #(.WIDTH(10)) u_pc2 (.bits(layer0[29:20]), .count(scores[11:8]));
-    popcount #(.WIDTH(10)) u_pc3 (.bits(layer0[39:30]), .count(scores[15:12]));
-    popcount #(.WIDTH(10)) u_pc4 (.bits(layer0[49:40]), .count(scores[19:16]));
+    popcount #(.WIDTH(10)) u_pc0 (.bits(layer0_q[9:0]), .count(scores[3:0]));
+    popcount #(.WIDTH(10)) u_pc1 (.bits(layer0_q[19:10]), .count(scores[7:4]));
+    popcount #(.WIDTH(10)) u_pc2 (.bits(layer0_q[29:20]), .count(scores[11:8]));
+    popcount #(.WIDTH(10)) u_pc3 (.bits(layer0_q[39:30]), .count(scores[15:12]));
+    popcount #(.WIDTH(10)) u_pc4 (.bits(layer0_q[49:40]), .count(scores[19:16]));
 
-    argmax #(.K(5), .W(4)) u_argmax (.scores_flat(scores), .index(class_idx));
+    wire [19:0] scores_q;
+    pipe_reg #(.WIDTH(20), .ENABLE(PIPE_POP)) u_pipe_pop (.clk(clk), .d(scores), .q(scores_q));
+
+    wire [2:0] idx;
+    argmax #(.K(5), .W(4)) u_argmax (.scores_flat(scores_q), .index(idx));
+
+    pipe_reg #(.WIDTH(3), .ENABLE(PIPE_OUT)) u_pipe_out (.clk(clk), .d(idx), .q(class_idx));
 
 endmodule
 
