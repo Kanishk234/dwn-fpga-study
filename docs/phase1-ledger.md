@@ -93,6 +93,52 @@ reported.
     benchmark mode streams only after a run completes. `start` while `busy` is ignored, not
     queued — if a caller ever needs continuous streaming, add a FIFO around it rather than
     letting the transmitter drop bytes silently.
+- **Harness: BRAM vector store + benchmark FSM.** `harness/vector_store.v`,
+  `harness/benchmark_fsm.v`, tested by `scripts/run_tb.py benchmark`. Measured II=1 exactly:
+  32 vectors in 37 cycles, 16 in 21, 1 in 6 — always `n + LATENCY + 1`.
+  - **Found and fixed a real alignment bug.** The first version fed the "valid" flag into the
+    label delay line at *issue* time but the label itself two cycles later, so every prediction
+    was scored against the wrong sample's label. It produced a plausible accuracy number rather
+    than an obvious failure — which is exactly why the unit test asserts an exact expected
+    count with some labels deliberately wrong, instead of just checking that it runs.
+  - The BRAM read and the classifier are pipelines with different entry points: a label can
+    first be captured 2 cycles after its address is issued, while the prediction lands at
+    `1 + LATENCY`. So the delay line is `LATENCY` deep and the valid flag has to enter it on
+    the same cycle the label does.
+
+---
+
+## The full test set does not fit on the device
+
+166,000 vectors × 256 bits = **42.5 Mbit**. The Basys 3 has **1.8 Mbit**. This is not a tuning
+problem — Gate 1b has to run in **batches**: load `DEPTH` vectors, classify, accumulate accuracy
+on-chip, repeat. `vector_store` at DEPTH=1024 costs ~265 Kbit (~15% of block RAM).
+
+Only running totals cross the UART, never one prediction per sample. That is what `correct_count`
+inside `benchmark_fsm` is for.
+
+## UART speed ceiling
+
+The FT2232HQ tops out at **~12 Mbaud**. At 100 MHz, `CLKS_PER_BIT = 100/12 = 8.33` — a 4% bit
+error, too much for reliable 8N1. Either derive the UART clock from an MMCM that divides evenly
+(96 MHz → 8, or 120 MHz → 10) or use a fractional accumulator. Clean integer rates from 100 MHz:
+10M, 6.25M, 5M, 4M, 3.125M, 2M, 1M.
+
+**Raising baud does not fix the I/O wall.** At 12 Mbaud a 32-byte sample still takes 26.7 µs
+against the core's 24.8 ns — ~1,000× I/O-bound instead of ~2,600×. Streaming one sample at a
+time can never reach core throughput over a serial link, which is the whole reason benchmark
+mode exists (brief §9) and why quantifying this is a contribution rather than a defect (§14).
+
+Where baud *does* matter is Gate 1b turnaround, since the full test set is 5.3 MB:
+
+| Baud | Full test-set upload |
+|---|---|
+| 115,200 | ~8 min |
+| 1 M | ~53 s |
+| 12 M | ~4.4 s |
+
+Plan: get Gate 1b working at 115200, then raise it — and sweeping baud *is* the I/O-wall
+measurement, not a detour from it.
 
 ---
 
