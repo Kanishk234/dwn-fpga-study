@@ -13,6 +13,7 @@
 // failure Gate 1 exists to catch, and exactly the kind that is invisible to spot-checking a
 // handful of inputs.
 
+`timescale 1ns / 1ps
 `default_nettype none
 
 module argmax #(

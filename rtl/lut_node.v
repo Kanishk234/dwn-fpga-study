@@ -13,6 +13,9 @@
 // n=6 is fixed for Phase 1 bring-up (CLAUDE.md) and TABLE is sized 2**6 accordingly. n
 // becomes a sweep axis in Phase 2, at which point TABLE's width has to follow it.
 
+// timescale is required because the testbench declares one, and xsim rejects a design that
+// mixes modules with and without it. Harmless for synthesis.
+`timescale 1ns / 1ps
 `default_nettype none
 
 module lut_node #(

@@ -67,6 +67,9 @@ def emit(ck, out_path):
     L.append('// from exporter/extract.py -- and synthesis is expected to drop them. The real')
     L.append('// board design wires only the selected bits, from the thermometer encoder.')
     L.append('')
+    # Required: xsim rejects a design mixing modules with and without a timescale, and the
+    # testbench declares one.
+    L.append('`timescale 1ns / 1ps')
     L.append('`default_nettype none')
     L.append('')
     L.append('module dwn_core (')
@@ -169,9 +172,8 @@ def main():
           '(tables + wire indices + address bit order)')
     print('  PASS')
     print()
-    print('NOT YET VERIFIED: nothing has simulated this. Gate 1 needs a Verilog simulator,')
-    print('which this machine does not have. The RTL is unverified until the golden-model')
-    print('testbench runs against it.')
+    print('This check proves the file SAYS what the checkpoint says. It proves nothing about')
+    print('how the Verilog BEHAVES -- only Gate 1 does that. Run: scripts\\run_gate1.ps1')
     return 0
 
 

@@ -8,6 +8,7 @@
 // from exporter/extract.py -- and synthesis is expected to drop them. The real
 // board design wires only the selected bits, from the thermometer encoder.
 
+`timescale 1ns / 1ps
 `default_nettype none
 
 module dwn_core (

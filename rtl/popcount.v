@@ -12,6 +12,7 @@
 // sweep axis (docs/dse-plan.md, Group A); this is the plain-popcount baseline it gets
 // measured against.
 
+`timescale 1ns / 1ps
 `default_nettype none
 
 module popcount #(
