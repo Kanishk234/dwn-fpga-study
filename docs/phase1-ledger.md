@@ -27,10 +27,10 @@ reported.
 
 | Item | Why it matters | Status |
 |---|---|---|
-| `constraints/basys3.xdc` | required for any synthesis targeting the board | ❌ dir empty |
-| `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ❌ |
-| First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ❌ |
-| Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ❌ combinational |
+| `constraints/basys3.xdc` | required for a *bitstream*; OOC synthesis does not need it | ❌ dir empty |
+| `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ✅ |
+| First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ✅ **see below** |
+| Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ❌ **now known to be required, not optional** |
 | Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | ❌ |
 
 ---
@@ -75,6 +75,61 @@ reported.
 - **Thermometer encoder.** `exporter/emit_encoder.py` emits 202 comparators + `dwn_top`, with
   its own read-back check (202/202).
 - **GATE 1 PASSED (top)** — 1518/1518 end to end, quantized features → encoder → core.
+- **First synthesis run** (`scripts/build.tcl`, `scripts/run_synth.py`), out-of-context on
+  `xc7a35tcpg236-1`. Two significant results — see *Area* and *Timing* below.
+
+---
+
+## Area — the encoder costs 14× the core
+
+Out-of-context, post-synthesis, `xc7a35tcpg236-1`:
+
+| Module | LUTs | % of device | FF | BRAM | DSP | comb delay |
+|---|---|---|---|---|---|---|
+| `dwn_core` | **108** | 0.52% | 0 | 0 | 0 | 10.194 ns |
+| `thermometer_encoder` | **1519** | 7.30% | 0 | 0 | 0 | 2.962 ns |
+| `dwn_top` | **1619** | 7.78% | 0 | 0 | 0 | 12.314 ns |
+
+**The core reproduces the paper almost exactly: 108 LUTs against their reported 110** (Table 2,
+`sm` 1×50). Independent confirmation that the extraction, the emitted RTL, and the area model
+are all right — a different structure would not land within 2 LUTs by accident.
+
+Zero DSPs and zero BRAM, as the paper claims for every DWN result. The model really does live
+entirely in logic.
+
+**The encoder is 14.06× the core.** Brief §12 risk #3 anticipated the encoder being
+uncounted, citing Mecik & Kumm's *up to 3.2×*. Measured here it is **more than four times worse
+than that worst case**. The whole design is still only 7.78% of the part, so nothing is at risk
+— but every "% of Basys 3" figure derived from the paper's core-only numbers is a serious
+underestimate, not a mild one.
+
+Two caveats before this gets quoted anywhere:
+
+1. **Our encoder is deliberately naive** — one independent 16-bit comparator per selected
+   threshold, ~7.5 LUTs each. Mecik & Kumm built theirs with FloPoCo and presumably shared
+   logic across thresholds of the same feature. Thermometer bits for one feature are
+   comparisons of the same value against *sorted* constants, so there is real structure to
+   exploit. Some of the 14× is DWN's encoder; some is ours.
+2. **Post-synthesis, not post-implementation.** Routing is not done, so these are estimates.
+
+**This makes `z` the most interesting sweep axis in Phase 2.** `z` drives the number of
+selected thresholds, which drives encoder area directly — and encoder area dominates. The paper
+fixes z=200 for every JSC config and never reports what it costs. Accuracy vs area vs `z`, on a
+part where it binds, is unmeasured by anyone.
+
+## Timing — pipelining is required, not optional
+
+`dwn_top` is **12.314 ns** end to end → **81.2 MHz** unpipelined, against the Basys 3's 100 MHz
+board clock. The design as it stands cannot run at the board's native clock.
+
+⚠️ **Correction.** The ledger and my earlier reasoning both assumed the 202 comparators would be
+the critical path, and that pipeline stages should be placed after synthesis showed that. The
+measurement says the opposite: the **core** is 10.194 ns and the **encoder** only 2.962 ns. The
+depth is in the popcount and argmax trees, not the comparators. Stage placement should follow
+the core's structure — after the LUT layer, and inside or after the popcount/argmax reduction.
+
+(Post-synthesis timing with unrouted nets is pessimistic; the real figure needs implementation.
+The *ranking* of encoder vs core is unlikely to flip, but the absolute numbers will move.)
 
 ---
 
@@ -89,6 +144,9 @@ reported.
 | Input format | Q3.12 signed, 16-bit → **32 bytes/sample**, matching brief §6's UART assumption |
 | Q3.12 vs float32 | 10 encoder bit differences, **0 class changes** |
 | Gate 1 | core 1504/1504 · top 1518/1518 |
+| Area (OOC, xc7a35t) | core **108** LUTs (paper: 110) · encoder **1519** · top **1619** = 7.78% |
+| Encoder / core | **14.06×** — vs the 3.2× worst case brief §12 risk #3 anticipated |
+| Fmax | **81.2 MHz** unpipelined (12.314 ns), below the board's 100 MHz |
 
 ⚠️ **Quote 73.84%, not 74.06%.** The saved weights are the final epoch; there is no
 best-checkpoint tracking. The `.npz` predictions come from those same weights, so Gate 1 is
@@ -119,10 +177,11 @@ seed would likely drop a different feature; confirm it is stable across configs 
 
 | | |
 |---|---|
-| **Encoder area is unmeasured** | 202 comparators against a 50-LUT core. Brief §6 says report core and encoder separately, always; nobody has measured this where it binds. Needs the first synthesis run. |
+| **Is our encoder unnecessarily large?** | 14.06× the core, vs Mecik & Kumm's 3.2×. One 16-bit comparator per threshold is the naive construction; thresholds of one feature are sorted, so shared logic should be possible. Worth one optimization attempt before treating 14× as *DWN's* encoder cost rather than *ours*. |
+| **Post-synth, not post-implementation** | Area and timing are pre-route estimates. Needs `place_design`/`route_design` for numbers that can be published. |
 | **Only 1000 test samples are local** | The full 166k set is on Kaggle. Gate 1b requires all of it, and the Q3.12 "0 class changes" result is 1000-sample evidence, not proof. |
 | **Nothing has touched silicon** | Gate 1 is simulation. Brief §12 risk #7: UART framing, BRAM addressing, reset sequencing and timing closure are all untested. |
-| **No pipelining** | Combinational end to end. Register placement should follow the first synthesis timing report, not precede it — the comparators are the likely critical path. |
+| **No pipelining, and it is now required** | 81.2 MHz < the board's 100 MHz. Stages belong in the core (10.194 ns), not the encoder (2.962 ns). |
 | **Exporter is one-shot** | `emit_core.py` / `emit_encoder.py` target one model. Phase 2 needs `rtlgen/` to generalize over the sweep grid. |
 
 ---
