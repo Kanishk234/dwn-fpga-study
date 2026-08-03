@@ -103,6 +103,52 @@ def forward(x_bits, layers, num_classes):
     return group_sum_argmax(x_bits, num_classes)
 
 
+# ---------------------------------------------------------------------------
+# Fixed-point front end (the thermometer encoder)
+#
+# Quantization is part of the SPECIFICATION, not an error to be minimised away. The golden
+# model quantizes exactly as the hardware does, so Gate 1 stays bit-exact; the difference
+# between this and the float32 model is then a characterization result to report rather than
+# a discrepancy to hide. See exporter/analyze_precision.py for how the format was chosen.
+#
+# Q3.12 signed (16-bit): 10 bit errors and 0 class changes vs float32 on the 1000 local
+# samples. Q3.15 (19-bit) is the zero-bit-error fallback if that ever stops being good enough.
+# ---------------------------------------------------------------------------
+
+FRAC_BITS = 12
+WORD_BITS = 16
+
+
+def quantize(x, frac_bits=FRAC_BITS):
+    """Real features -> fixed point. Truncation, not rounding: free in hardware."""
+    return np.floor(np.asarray(x, dtype=np.float64) * (2 ** frac_bits)).astype(np.int64)
+
+
+def quantize_thresholds(thresholds, frac_bits=FRAC_BITS):
+    """Thresholds -> the integer constants the comparators are built against.
+
+    floor() specifically: with T = floor(t * 2**F), `q_x > T` implies `x > t` exactly, so the
+    encoding can only ever miss a bit, never invent one.
+    """
+    return np.floor(np.asarray(thresholds, dtype=np.float64)
+                    * (2 ** frac_bits)).astype(np.int64)
+
+
+def encode(xq, thr_q):
+    """(N, F) quantized features -> (N, F*z) bits, feature-major.
+
+    Bit index is `feature * z + threshold`, matching how binarization.py flattens
+    (N, features, bits) and therefore how the wiring indices are interpreted.
+    """
+    return (xq[:, :, None] > thr_q[None, :, :]).reshape(xq.shape[0], -1)
+
+
+def fits_in_word(values, word_bits=WORD_BITS):
+    """Range check for the chosen fixed-point word -- silent overflow would be invisible."""
+    lo, hi = -(2 ** (word_bits - 1)), 2 ** (word_bits - 1) - 1
+    return int(np.min(values)) >= lo and int(np.max(values)) <= hi
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('checkpoint')

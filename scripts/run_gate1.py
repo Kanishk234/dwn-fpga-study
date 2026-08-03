@@ -37,7 +37,18 @@ RTL_SOURCES = [
     ('rtl', 'popcount.v'),
     ('rtl', 'argmax.v'),
     ('rtl', 'gen', 'dwn_core.v'),
+    ('rtl', 'gen', 'thermometer_encoder.v'),
+    ('rtl', 'gen', 'dwn_top.v'),
     ('tb', 'dwn_core_tb.v'),
+    ('tb', 'dwn_top_tb.v'),
+]
+
+# Both levels run. The core testbench drives pre-binarized bits; the top testbench drives
+# quantized features through the encoder as well. Keeping them separate is what makes a
+# failure localize itself instead of just saying "the design is wrong".
+TESTBENCHES = [
+    ('dwn_core_tb', 'core  (pre-binarized bits -> class)'),
+    ('dwn_top_tb', 'top   (quantized features -> encoder -> class)'),
 ]
 
 
@@ -91,23 +102,28 @@ def run(cmd, cwd=None, env=None, capture=False):
                           capture_output=capture, check=False)
 
 
-def run_xsim(vivado_bin, work, sources, top, snapshot='gate1_sim', include=None):
-    """Compile, elaborate and run. Returns (ok, combined_output).
+def xvlog(vivado_bin, work, sources, include=None):
+    """Analyze all sources once. Returns (ok, output)."""
+    env = dict(os.environ)
+    env['PATH'] = vivado_bin + os.pathsep + env.get('PATH', '')
+    os.makedirs(work, exist_ok=True)
+    cmd = [tool(vivado_bin, 'xvlog')]
+    if include:
+        cmd += ['-i', include]
+    cmd += list(sources)
+    r = run(cmd, cwd=work, env=env, capture=True)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def run_xsim(vivado_bin, work, top, snapshot=None):
+    """Elaborate and run one top. Returns (ok, combined_output).
 
     Runs with `work` as the working directory: xsim drops xsim.dir/, logs and .pb files into
     the cwd, and nothing outside build/ should accumulate generated artifacts (CLAUDE.md).
     """
     env = dict(os.environ)
     env['PATH'] = vivado_bin + os.pathsep + env.get('PATH', '')
-    os.makedirs(work, exist_ok=True)
-
-    cmd = [tool(vivado_bin, 'xvlog')]
-    if include:
-        cmd += ['-i', include]
-    cmd += list(sources)
-    r = run(cmd, cwd=work, env=env, capture=True)
-    if r.returncode != 0:
-        return False, r.stdout + r.stderr
+    snapshot = snapshot or (top + '_sim')
 
     r = run([tool(vivado_bin, 'xelab'), top, '-s', snapshot, '-debug', 'off'],
             cwd=work, env=env, capture=True)
@@ -133,29 +149,47 @@ def main():
         raise SystemExit(f'checkpoint not found: {ckpt}')
     work = os.path.join(REPO, 'build', 'gate1')
 
-    print('=== 1/3  emit core RTL from checkpoint ===')
+    print('=== 1/4  emit core RTL from checkpoint ===')
     if run([py, os.path.join(REPO, 'exporter', 'emit_core.py'), ckpt]).returncode != 0:
         raise SystemExit('emit_core.py failed')
 
-    print('\n=== 2/3  generate test vectors ===')
+    print('\n=== 2/4  emit encoder + top RTL from checkpoint ===')
+    if run([py, os.path.join(REPO, 'exporter', 'emit_encoder.py'), ckpt]).returncode != 0:
+        raise SystemExit('emit_encoder.py failed')
+
+    print('\n=== 3/4  generate test vectors ===')
     if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt]).returncode != 0:
         raise SystemExit('gen_vectors.py failed')
 
-    print('\n=== 3/3  simulate (xsim) ===')
+    print('\n=== 4/4  simulate (xsim) ===')
     sources = [os.path.join(REPO, *parts) for parts in RTL_SOURCES]
-    ok, output = run_xsim(vivado_bin, work, sources, 'dwn_core_tb', include=work)
-    print(output.strip())
-
-    # The testbench prints its own verdict. $finish always exits 0, so the pass/fail has to be
-    # read out of the output rather than the exit code.
+    ok, output = xvlog(vivado_bin, work, sources, include=work)
     if not ok:
-        print('\nGATE 1 FAILED (simulator error)')
+        print(output.strip())
+        print('\nGATE 1 FAILED (compile error)')
         return 1
-    if re.search(r'RESULT\s+:\s+PASS', output):
-        print('\nGATE 1 PASSED')
-        return 0
-    print('\nGATE 1 FAILED')
-    return 1
+
+    failures = []
+    for top, label in TESTBENCHES:
+        print(f'\n--- {label} ---')
+        ok, output = run_xsim(vivado_bin, work, top)
+        # The testbench prints its own verdict. $finish always exits 0, so pass/fail has to be
+        # read out of the output rather than the exit code.
+        verdict = re.search(r'RESULT\s+:\s+(PASS|FAIL)', output)
+        for line in output.splitlines():
+            if re.search(r'====|GATE 1|vectors tested|mismatches|RESULT|MISMATCH', line):
+                print(line)
+        if not ok or not verdict or verdict.group(1) != 'PASS':
+            failures.append(top)
+            if not ok:
+                print(output.strip()[-2000:])
+
+    print()
+    if failures:
+        print(f'GATE 1 FAILED ({", ".join(failures)})')
+        return 1
+    print('GATE 1 PASSED (both levels)')
+    return 0
 
 
 if __name__ == '__main__':
