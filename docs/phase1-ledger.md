@@ -20,7 +20,7 @@ reported.
 | **1d** | Golden software model + bit-exact testbench — **GATE 1** | ✅ **both levels pass** |
 | **1e** | Exporter (checkpoint → tables/wiring/thresholds) | 🟡 works, one-shot, not generalized |
 | **1f** | RTL generator (export → Verilog) | ❌ `rtlgen/` empty |
-| **1g** | Harness — UART, BRAM vector store, cycle counter, FSM, 7-seg | ❌ `harness/` empty |
+| **1g** | Harness — UART, BRAM vector store, cycle counter, FSM, 7-seg | 🟡 **UART rx/tx done + tested**; BRAM store, FSM, 7-seg outstanding |
 | **1h** | Board: bitstream reproduces test-set accuracy — **GATE 1b** | ❌ |
 
 ### Not in the brief's list, but Phase 1 cannot finish without them
@@ -77,6 +77,22 @@ reported.
 - **GATE 1 PASSED (top)** — 1518/1518 end to end, quantized features → encoder → core.
 - **First synthesis run** (`scripts/build.tcl`, `scripts/run_synth.py`), out-of-context on
   `xc7a35tcpg236-1`. Two significant results — see *Area* and *Timing* below.
+- **Pipelined.** Four stages via a parameterized `pipe_reg`, latency 4 cycles, II=1.
+  81.2 → **161.0 MHz**, LUT count unchanged. Gate 1 re-run and still passing at both levels,
+  now streaming a vector every clock — which is what actually proves II=1.
+- **Harness started: UART.** `harness/uart_rx.v` + `harness/uart_tx.v`, 8N1, loopback-tested
+  (`scripts/run_tb.py uart`): all 256 byte values back-to-back, zero mismatches, and a
+  deliberately corrupted stop bit correctly reported as a framing error.
+  - `BAUD` is a **parameter, defaulting to 115200**. Two reasons: first bring-up should fail
+    for interesting reasons rather than marginal signal integrity, and **sweeping baud is how
+    the I/O wall gets characterized** (brief §14) — so it must not be a constant. Brief §6's
+    ~320 µs/sample figure assumes 1 Mbaud; raise it after Gate 1b.
+  - `uart_rx` synchronizes `rx` through two flops (it is asynchronous to `clk`) and samples at
+    each bit's midpoint, tolerating a half-bit of drift.
+  - `uart_tx` has **no FIFO** by design: interactive mode sends one byte per classification and
+    benchmark mode streams only after a run completes. `start` while `busy` is ignored, not
+    queued — if a caller ever needs continuous streaming, add a FIFO around it rather than
+    letting the transmitter drop bytes silently.
 
 ---
 
@@ -209,6 +225,7 @@ seed would likely drop a different feature; confirm it is stable across configs 
 | **Nothing has touched silicon** | Gate 1 is simulation. Brief §12 risk #7: UART framing, BRAM addressing, reset sequencing and timing closure are all untested. |
 | **No pipelining, and it is now required** | 81.2 MHz < the board's 100 MHz. Stages belong in the core (10.194 ns), not the encoder (2.962 ns). |
 | **Exporter is one-shot** | `emit_core.py` / `emit_encoder.py` target one model. Phase 2 needs `rtlgen/` to generalize over the sweep grid. |
+| **`rtl/gen/` is committed — decide before the first sweep run** | Fine now: one model, and these are the exact files Gate 1 verified and synthesis measured, so history is useful. It does not survive 40–70 sweep configs. Undoing it later is cheap (`git rm --cached rtl/gen/` + a `.gitignore` line, no history rewrite), so the deadline is **before the sweep starts committing configs**, not the start of Phase 2 as such. |
 
 ---
 
