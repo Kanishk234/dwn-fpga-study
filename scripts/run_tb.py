@@ -25,6 +25,9 @@ SUITES = {
     'uart': ('uart_tb', ['harness/uart_tx.v', 'harness/uart_rx.v', 'tb/uart_tb.v']),
     'benchmark': ('benchmark_tb', ['harness/vector_store.v', 'harness/benchmark_fsm.v',
                                    'tb/benchmark_tb.v']),
+    'loader': ('loader_tb', ['harness/uart_tx.v', 'harness/uart_rx.v',
+                             'harness/uart_loader.v', 'harness/vector_store.v',
+                             'tb/loader_tb.v']),
 }
 
 
