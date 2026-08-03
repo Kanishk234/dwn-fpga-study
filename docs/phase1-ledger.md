@@ -105,6 +105,41 @@ reported.
     first be captured 2 cycles after its address is issued, while the prediction lands at
     `1 + LATENCY`. So the delay line is `LATENCY` deep and the valid flag has to enter it on
     the same cycle the label does.
+- **Harness: UART loader + host protocol.** `harness/uart_loader.v`, tested end to end through
+  a real `uart_tx`/`uart_rx` pair in both directions (`scripts/run_tb.py loader`).
+  - **Second alignment bug, same family as the first.** `wr_en` is a registered pulse, so it
+    asserts the cycle *after* it is set — but `wr_addr` was incremented in the same cycle,
+    moving the address out from under the write. Every vector landed one slot late, and slot 0
+    was never written. Caught only because the test reads the store back through
+    `vector_store`'s own read port rather than trusting that the writes happened.
+  - Tested through the real serial modules rather than by driving `rx_valid` directly: the
+    likely board failure is in the *composition* (byte order, a reply racing `tx_busy`), which
+    isolated protocol tests cannot see. Brief §12 risk #7.
+
+### Host protocol
+
+ASCII command bytes, so bring-up can be done from a plain serial terminal before any host
+script exists. When the board goes quiet, typing `P` and seeing `0xA5` separates "the link is
+dead" from "the design is wrong" in seconds.
+
+| Command | Payload | Reply |
+|---|---|---|
+| `P` | — | `0xA5` |
+| `L` | `n_lo n_hi`, then n × 33 bytes | — |
+| `R` | `n_lo n_hi` | — |
+| `S` | — | 9 bytes |
+
+A record is **32 feature bytes then 1 label byte**. Feature bytes are **little-endian and in
+order**: byte k → `x_flat[k*8 +: 8]`, so feature f occupies bytes 2f and 2f+1. This matches how
+`tb/gen_vectors.py` packs `x_quant.hex`; getting it backwards silently transposes every feature,
+which is why the test reads the store back and compares full 256-bit words.
+
+Status reply is little-endian `cycle_count[31:0]`, `correct_count[31:0]`, then a flags byte
+(bit 0 = benchmark busy). **Accuracy returns as a count, never per-sample predictions** — the
+test set does not fit on the device, so Gate 1b batches and only totals cross the link.
+
+No CRC or retries: the link is a 10 cm trace, `uart_rx` already flags framing errors, and a
+corrupt load shows up immediately as a wrong accuracy. Cheap to add if that proves optimistic.
 
 ---
 
