@@ -287,8 +287,26 @@ probably still closes, trading a cycle of latency for 20 fewer FFs. That is exac
 pipeline-depth axis Phase 2 is meant to explore, so it is a data point to collect rather than a
 decision to make now.
 
-(Still post-synthesis, pre-route. Absolute numbers will move after implementation; the
-encoder-vs-core ranking will not.)
+### Post-route: it closes
+
+Placed and routed (`scripts/run_synth.py --impl`), out-of-context, constrained at 100 MHz:
+
+| Module | LUTs | FF | WNS post-synth | WNS post-route | Fmax post-route |
+|---|---|---|---|---|---|
+| `dwn_core` | 108 | 73 | +3.790 ns | +3.708 ns | 158.9 MHz |
+| `thermometer_encoder` | 1519 | 0 | +7.013 ns | +7.084 ns | 342.9 MHz |
+| **`dwn_top`** | **1619** | **269** | +3.790 ns | **+3.572 ns** | **155.6 MHz** |
+
+**Area is identical post-route, and timing barely moved** — 161.0 → 155.6 MHz, still 3.57 ns of
+slack at the board's 100 MHz. Routing did not surprise us, which for a design that is 7.78% of
+the part is what you would hope but not what you can assume.
+
+These are the numbers that can be quoted. The earlier synth-only figures were estimates with
+unrouted nets.
+
+Caveat: still out-of-context, so no I/O buffers. The real bitstream adds pad delays and a clock
+network, which will shave some margin — but the core logic is proven routable and 3.5 ns is a
+lot of headroom to give away.
 
 ---
 
@@ -340,7 +358,7 @@ seed would likely drop a different feature; confirm it is stable across configs 
 | | |
 |---|---|
 | **Is our encoder unnecessarily large?** | 14.06× the core, vs Mecik & Kumm's 3.2×. One 16-bit comparator per threshold is the naive construction; thresholds of one feature are sorted, so shared logic should be possible. Worth one optimization attempt before treating 14× as *DWN's* encoder cost rather than *ours*. |
-| **Post-synth, not post-implementation** | Area and timing are pre-route estimates. Needs `place_design`/`route_design` for numbers that can be published. |
+| ~~Post-synth, not post-implementation~~ | ✅ **Closed.** Placed and routed: area identical, 155.6 MHz, +3.572 ns slack at 100 MHz. Still out-of-context (no I/O buffers); a real bitstream will shave some margin. |
 | **Only 1000 test samples are local** | The full 166k set is on Kaggle. Gate 1b requires all of it, and the Q3.12 "0 class changes" result is 1000-sample evidence, not proof. |
 | **Nothing has touched silicon** | Gate 1 is simulation. Brief §12 risk #7: UART framing, BRAM addressing, reset sequencing and timing closure are all untested. |
 | **No pipelining, and it is now required** | 81.2 MHz < the board's 100 MHz. Stages belong in the core (10.194 ns), not the encoder (2.962 ns). |
