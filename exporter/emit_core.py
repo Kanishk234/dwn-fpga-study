@@ -173,7 +173,7 @@ def main():
     print('  PASS')
     print()
     print('This check proves the file SAYS what the checkpoint says. It proves nothing about')
-    print('how the Verilog BEHAVES -- only Gate 1 does that. Run: scripts\\run_gate1.ps1')
+    print('how the Verilog BEHAVES -- only Gate 1 does that. Run: scripts/run_gate1.py')
     return 0
 
 
