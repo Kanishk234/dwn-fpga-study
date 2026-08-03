@@ -23,6 +23,8 @@ from run_gate1 import REPO, find_vivado_bin, run_xsim, xvlog  # noqa: E402
 # name -> (testbench top, sources)
 SUITES = {
     'uart': ('uart_tb', ['harness/uart_tx.v', 'harness/uart_rx.v', 'tb/uart_tb.v']),
+    'benchmark': ('benchmark_tb', ['harness/vector_store.v', 'harness/benchmark_fsm.v',
+                                   'tb/benchmark_tb.v']),
 }
 
 
@@ -64,7 +66,8 @@ def main():
 
         ok, output = run_xsim(vivado_bin, work, top)
         for line in output.splitlines():
-            if re.search(r'====|RESULT|MISMATCH|ERROR|bytes|framing|mismatches|test', line):
+            if re.search(r'====|RESULT|MISMATCH|ERROR|bytes|framing|mismatches|test|batch',
+                         line):
                 print(line)
 
         verdict = re.search(r'RESULT\s+:\s+(PASS|FAIL)', output)
