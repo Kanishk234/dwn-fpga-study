@@ -42,6 +42,11 @@ def main():
     ap.add_argument('--part', default=DEFAULT_PART)
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'bitstream'))
+    # Overrides the BAUD parameter without editing RTL. Sweeping baud IS the I/O-wall
+    # characterization (brief §14), so it has to be a command-line knob, not a source edit.
+    # 100 MHz divides exactly at 1M(100), 2M(50), 4M(25), 5M(20), 10M(10).
+    ap.add_argument('--baud', type=int, default=None,
+                    help='override the BAUD parameter (default: whatever the RTL says)')
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
@@ -60,8 +65,15 @@ def main():
     print(f'clock  : {BOARD_PERIOD_NS:.1f} ns ({1000/BOARD_PERIOD_NS:.0f} MHz)')
     print()
 
+    generics = [f'BAUD={args.baud}'] if args.baud else None
+    if args.baud:
+        div = 100_000_000 / args.baud
+        print(f'baud   : {args.baud:,} (override) -- {div:g} clocks/bit'
+              + ('' if div == int(div) else '  <- NOT an integer divisor, expect errors'))
+        print()
+
     ok, out_dir = run_one(vivado_bin, TOP, SOURCES, args.part, args.outdir,
-                          impl=True, xdc=XDC, name='basys3')
+                          impl=True, xdc=XDC, name='basys3', generics=generics)
     if not ok:
         return 1
 

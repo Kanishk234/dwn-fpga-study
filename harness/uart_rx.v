@@ -33,7 +33,22 @@ module uart_rx #(
 );
 
     localparam integer CLKS_PER_BIT = CLK_HZ / BAUD;
-    localparam integer HALF_BIT     = CLKS_PER_BIT / 2;
+
+    // SYNCHRONIZER LATENCY IS SUBTRACTED, and it matters more the faster the link runs.
+    //
+    // rx_sync lags the pin by 2 clocks, so a start bit is not seen until 2 clocks after it
+    // begins. Waiting a further CLKS_PER_BIT/2 therefore samples at (2 + half) into the bit,
+    // not at the middle:
+    //
+    //   1 Mbaud   CLKS_PER_BIT=100 -> sample at 52/100 =  52%   harmless
+    //   10 Mbaud  CLKS_PER_BIT=10  -> sample at  7/10  =  70%   near the trailing edge
+    //
+    // At 70% any jitter or ppm drift walks the sample point into the next bit, which is why
+    // 10 Mbaud failed to receive at all while 1 Mbaud was fine. Subtracting the 2 clocks
+    // re-centres it at ~50% for every rate.
+    localparam integer SYNC_LATENCY = 2;
+    localparam integer HALF_BIT     = (CLKS_PER_BIT / 2) > SYNC_LATENCY
+                                      ? (CLKS_PER_BIT / 2) - SYNC_LATENCY : 0;
 
     localparam [1:0] S_IDLE  = 2'd0,
                      S_START = 2'd1,

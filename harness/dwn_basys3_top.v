@@ -29,17 +29,20 @@
 
 module dwn_basys3_top #(
     parameter integer CLK_HZ       = 100_000_000,
-    // 1 Mbaud: 100_000_000 / 1_000_000 = 100 clocks per bit, EXACTLY, with no rounding error
-    // on either side (the FT2232H divides 120 MHz by 120). 115200 needed a divisor of 868.06
-    // and worked, but exact is better and this is 8.7x faster.
+    // 5 Mbaud: 100_000_000 / 5_000_000 = 20 clocks per bit exactly, and the FT2232H divides
+    // 120 MHz by 24 to reach it exactly too. Zero rounding error on either end.
     //
-    // The host must be told to match -- scripts/host.py defaults to the same value. A mismatch
-    // presents as a failed ping, not as corrupted data, so it is at least obvious.
+    // MEASURED CEILING, not a guess. 1 M, 2 M, 4 M and 5 M all work; 10 M does not respond at
+    // all, even though both ends divide it exactly (100/10 and 120/12) -- so the limit is the
+    // FTDI Windows VCP driver, not this design. Chasing higher would mean FTDI's D2XX API
+    // instead of a COM port. See the sweep table in docs/phase1-ledger.md.
     //
-    // Measured effect: the full 166k Gate 1b run goes from 480 s to ~55 s. The protocol was
-    // already ~99% link-efficient at 115200 (475.5 s of pure serial time against 480 s
-    // measured), so baud is the only lever that matters here.
-    parameter integer BAUD         = 1_000_000,
+    // Full 166k Gate 1b run: 480 s at 115200 -> 55 s at 1 M -> 11.2 s here.
+    //
+    // Override per build without editing this file:
+    //     scripts/build_bitstream.py --baud 2000000
+    // The host must match; a mismatch presents as a failed ping rather than corrupt data.
+    parameter integer BAUD         = 5_000_000,
     parameter integer DATA_W       = 256,      // 16 features x 16-bit Q3.12
     parameter integer LABEL_W      = 3,
     parameter integer DEPTH        = 1024,

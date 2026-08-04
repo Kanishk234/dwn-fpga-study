@@ -60,6 +60,8 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
 
     Little-endian per feature and in feature order, so byte k lands at x_flat[k*8 +: 8]. Any
     other order silently transposes the input; --selftest is what catches that.
+
+    Kept for the self-test, which checks one record at a time. Bulk transfers use pack_batch.
     """
     out = bytearray()
     mask = (1 << word_bits) - 1
@@ -67,6 +69,23 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
         out += int(f & mask).to_bytes(word_bits // 8, 'little')
     out.append(int(label) & 0xFF)
     return bytes(out)
+
+
+def pack_batch(features_q, labels):
+    """Vectorized pack_record over a whole batch. Returns one bytes object.
+
+    The per-record version runs 16 int.to_bytes() calls per sample -- 2.7 million of them
+    across the test set, which cost several seconds and was invisible at 115200 baud. Above
+    1 Mbaud the wire stops being the bottleneck and this starts to be, so the packing happens
+    in numpy instead: one dtype cast and one view, no Python loop.
+
+    '<i2' forces little-endian 16-bit regardless of host byte order, so the wire format does
+    not silently depend on what machine the host runs on.
+    """
+    words = np.ascontiguousarray(features_q).astype('<i2')     # (n, 16) LE int16
+    feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, 32)
+    lab = np.asarray(labels, dtype=np.uint8).reshape(-1, 1)    # (n, 1)
+    return np.hstack([feat_bytes, lab]).tobytes()              # row-major = record after record
 
 
 def quantize_features(x_raw, thr_q=None, frac_bits=FRAC_BITS):
@@ -189,13 +208,17 @@ class Board:
         self.ser.write(b'P')
         return self.ser.read(1) == b'\xA5'
 
-    def load(self, records):
-        n = len(records)
+    def load_bytes(self, blob, n):
+        """Load n pre-packed records. One write for the whole batch."""
         if n > DEVICE_DEPTH:
             raise ValueError(f'{n} records exceeds the device store ({DEVICE_DEPTH})')
-        self.ser.write(b'L' + struct.pack('<H', n))
-        self.ser.write(b''.join(records))
+        # Header and payload in a single write: two writes per batch means two chances for the
+        # driver to sit on a partial buffer waiting out the latency timer.
+        self.ser.write(b'L' + struct.pack('<H', n) + blob)
         self.ser.flush()
+
+    def load(self, records):
+        self.load_bytes(b''.join(records), len(records))
 
     def run(self, n):
         self.ser.write(b'R' + struct.pack('<H', n))
@@ -211,13 +234,21 @@ class Board:
         cycles, correct = struct.unpack('<II', raw[:8])
         return cycles, correct, bool(raw[8] & 1)
 
-    def wait_idle(self, timeout=10.0):
+    def status_when_idle(self, timeout=10.0):
+        """Read the result once the run has finished. Returns (cycles, correct).
+
+        One round trip in the common case, not two. The previous code polled with wait_idle()
+        and then read status() again -- but a 1024-sample run takes ~10 us against a round trip
+        measured in milliseconds, so the first read always finds the FSM already idle and the
+        second was pure latency. At 115200 that was noise; at 10 Mbaud it is most of the cost.
+        """
         deadline = time.time() + timeout
-        while time.time() < deadline:
-            _, _, busy = self.status()
+        while True:
+            cycles, correct, busy = self.status()
             if not busy:
-                return True
-        return False
+                return cycles, correct
+            if time.time() > deadline:
+                raise SystemExit('board never went idle -- run stalled')
 
 
 # ---------------------------------------------------------------------------
@@ -361,17 +392,15 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     t0 = time.time()
 
     for start in range(0, total, batch):
-        chunk = slice(start, min(start + batch, total))
-        recs = [pack_record(q[i], y_ref[i]) for i in range(chunk.start, chunk.stop)]
-        board.load(recs)
-        board.run(len(recs))
-        if not board.wait_idle():
-            raise SystemExit('board never went idle -- run stalled')
-        cycles, correct, _ = board.status()
+        stop = min(start + batch, total)
+        n = stop - start
+        board.load_bytes(pack_batch(q[start:stop], y_ref[start:stop]), n)
+        board.run(n)
+        cycles, correct = board.status_when_idle()
         agree += correct
         cycles_total += cycles
-        print(f'  batch {start:6d}..{chunk.stop-1:6d}  agree {correct}/{len(recs)}  '
-              f'{cycles} cycles')
+        if correct != n or start == 0 or stop == total:
+            print(f'  batch {start:6d}..{stop-1:6d}  agree {correct}/{n}  {cycles} cycles')
 
     elapsed = time.time() - t0
     print()
@@ -417,7 +446,7 @@ def main():
                                    'Omit to auto-detect.')
     # Must match the BAUD parameter the bitstream was built with (harness/dwn_basys3_top.v).
     # A mismatch shows up as a failed ping rather than as corrupted data.
-    ap.add_argument('--baud', type=int, default=1000000)
+    ap.add_argument('--baud', type=int, default=5000000)
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT)
     ap.add_argument('--selftest', action='store_true', help='verify encoding, no board needed')
     ap.add_argument('--list-ports', action='store_true', help='show serial ports and exit')
