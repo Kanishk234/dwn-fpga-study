@@ -33,7 +33,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 | Item | Status |
 |---|---|
-| Machine passes `scripts\verify_phase1.py --with-board` (22/22) | ✅ on the current laptop |
+| Machine passes `scripts\verify_phase1.py --with-board` (22/22) | ✅ 2026-08-04, this machine |
 | **All sweep synthesis from ONE machine and ONE Vivado version** | decide before 2e |
 | Full 166k test set present (gitignored, does not travel) | ✅ here |
 | `rtl/gen/` retired in favour of `build/<config>/rtl/` | part of 2a |
@@ -212,7 +212,59 @@ are interpreter-independent.
   is what proves it is the same dump rather than a re-derived one.
 
 **Verdict: this machine is safe to run Phase 2 sweeps on**, and its points are comparable to
-Phase 1's.
+Phase 1's. Re-run afterwards as the single scripted command: **22/22 passed.**
+
+### 2026-08-04 — Encoder sharing: measured, and it is a dead end ❌
+
+`exporter/analyze_encoder_sharing.py`. Phase 1 left one encoder question genuinely open: Vivado
+is near-optimal *inside* a comparator (7.5 LUTs ≈ W/2), but nothing has ever been shared
+*between* the comparators of one feature, which all compare the same value against sorted
+constants. Mecik & Kumm's FloPoCo encoder presumably did exactly that, and at `md`/`lg` sizes
+the encoder is what decides whether a config fits — so this is worth more than curiosity.
+
+**Two ideas, both dead, and the reasoning is recorded so nobody re-derives them.**
+
+**1. Binary search for the bucket index — arithmetically worse, not better.** The appeal is
+obvious: 46 sorted thresholds is one question ("which of 47 buckets?"), seemingly worth
+`log2 k ≈ 6` comparisons rather than 46. It does not work, because each level must *select*
+which threshold to compare against next, and that is a multiplexer over 16-bit constants whose
+input count doubles per level. For k=46 the level-5 mux alone is 32-to-1 over 16 bits, on the
+order of 176 LUTs — more than the 345 the 46 direct comparators cost in total. Instantiating
+the whole tree instead needs `1+2+4+...+32 = 63` comparators, worse than the 46 you started
+with. **The mux cost is fundamental to any combinational bucket decode.**
+
+**2. Shared high-bit prefixes — only pays if thresholds cluster, and they do not.** Measured
+across every split point, with a cost model calibrated on the measured 1519/202:
+
+| Feature | k | direct | best split | groups | shared bound |
+|---|---|---|---|---|---|
+| 14 (`mass_mmdt`) | 46 | 346 | 5/11 | 8 | 321 (−7%) |
+| 15 (`multiplicity`) | 39 | 293 | 4/12 | 5 | 278 (−5%) |
+| 0 (`zlogz`) | 37 | 278 | 4/12 | 5 | 264 (−5%) |
+| 3 (`c1_b2_mmdt`) | 31 | 233 | 5/11 | 4 | 210 (−10%) |
+| **total** | **202** | **1519** | | | **1441 (−5%)** |
+
+**−5%, and that is an optimistic ceiling** — the model ignores routing and the combine's
+fan-in, and was deliberately written to flatter the shared scheme. The cause is the encoding
+itself: `DistributiveThermometer` places thresholds at **quantiles**, so they spread across the
+data distribution and their high bits rarely agree. 46 thresholds land in 8 distinct high-bit
+groups; 37 land in 5. There is nothing to share.
+
+**Conclusion: the encoder is at its floor for this scheme.** Phase 1's *"most of the 14× is
+real, not naive construction"* is now measured rather than asserted. The three levers that
+remain, in order of value:
+
+1. **`z`** — sets how many thresholds exist at all, and encoder cost saturates at
+   `features × z`. A **config** change, no RTL. Still the most valuable unswept axis.
+2. **Per-feature narrowing** — already measured at −17.1%, still not worth a spec change at
+   `sm`, still possibly decisive at `md`/`lg`.
+3. **A different encoding scheme** — `Thermometer` (evenly spaced) would cluster in high bits
+   far better than `DistributiveThermometer` does, so sharing might pay there. But encoding
+   scheme is a Group A axis that changes accuracy, so it is a sweep point, not an optimization.
+
+⚠️ **Retraction, kept visible:** an earlier estimate in conversation put bucket-decode at ~2.3×
+(1519 → ~670 LUTs). That was wrong — it counted `log2 k` comparators and ignored the
+multiplexer cost entirely. The measured ceiling is −5%.
 
 ---
 
@@ -229,7 +281,8 @@ Phase 1's.
 | **Is the reduction really ~54% of the core?** | Inferred by subtraction; Vivado inlined the submodules. Synthesize `popcount`+`argmax` standalone to confirm before deciding on Learnable Reduction. |
 | **Does `md` actually fit?** | The bound says ~80% of the part, which is tight enough that routing (not LUT count) may decide it. A failure to route is a data point, not a mistake (brief §12 risk #2). |
 | **How many thresholds does a bigger model really select?** | `sm` chose 202 of 300 slots (67% unique). If that ratio holds, `md`/`lg` encoder estimates drop. Only training says. |
-| **Per-feature comparator narrowing** | Measured −17.1% at `sm` and not adopted — 260 LUTs did not justify a spec change. **At `md`/`lg` it may decide whether a config fits at all.** Revisit when a config is marginal. |
+| **Per-feature comparator narrowing** | Measured −17.1% at `sm` and not adopted — 260 LUTs did not justify a spec change. **At `md`/`lg` it may decide whether a config fits at all.** Revisit when a config is marginal. Now the *largest* remaining RTL-side lever, since sharing is dead (below). |
+| ~~Can comparators share logic across thresholds of a feature?~~ | ❌ **Closed 2026-08-04, negative.** Binary-search decode is arithmetically worse (mux cost doubles per level); shared high-bit prefixes bound at **−5%** because quantile-spaced thresholds do not cluster. See the log entry. `exporter/analyze_encoder_sharing.py` re-runs it for any checkpoint — worth repeating if a config ever uses evenly-spaced `Thermometer`, where clustering should be much stronger. |
 | **`z` is the axis nobody has swept** | The paper fixes z=200 for every JSC config and never reports its cost. `z` sets the saturation ceiling on encoder area, which dominates. Accuracy vs area vs `z`, on a part where it binds, is unmeasured by anyone — probably the single most publishable axis here. |
 | **3-stage pipeline** | Closes 100 MHz post-synthesis but was never re-verified post-route. One cheap Group B point. |
 | **FTDI D2XX for >5 Mbaud** | Optional; the VCP driver, not the design, is the wall. Two more I/O-wall points if Phase 3 leaves time. |
