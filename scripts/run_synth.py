@@ -89,7 +89,8 @@ def parse_logic_levels(path):
     return max(levels) if levels else None
 
 
-def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, impl=False):
+def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, impl=False,
+            generics=None, name=None):
     """Synthesize one top. Returns (ok, absolute out_dir).
 
     Everything is passed as a path RELATIVE to the repo root, and Vivado runs with the repo as
@@ -97,7 +98,7 @@ def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, im
     and the repo lives under "Coding Projects", so absolute paths arrive in the Tcl script
     chopped in half at the space. Relative paths here contain no spaces.
     """
-    out_rel = os.path.relpath(os.path.join(out_root, top), REPO).replace('\\', '/')
+    out_rel = os.path.relpath(os.path.join(out_root, name or top), REPO).replace('\\', '/')
     out_abs = os.path.join(REPO, out_rel)
     os.makedirs(out_abs, exist_ok=True)
 
@@ -110,7 +111,10 @@ def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, im
     cmd = [tool(vivado_bin, 'vivado'), '-mode', 'batch', '-notrace',
            '-log', f'{out_rel}/vivado.log', '-journal', f'{out_rel}/vivado.jou',
            '-source', 'scripts/build.tcl',
-           '-tclargs', top, part, out_rel, str(period), '1' if impl else '0'] + list(sources)
+           '-tclargs', top, part, out_rel, str(period), '1' if impl else '0',
+           # NAME:VALUE+NAME:VALUE -- see build.tcl for why not '=' or ','.
+           '+'.join(g.replace('=', ':') for g in generics) if generics else '-'
+           ] + list(sources)
 
     r = run(cmd, cwd=REPO, env=env, capture=True)
     log = (r.stdout or '') + (r.stderr or '')

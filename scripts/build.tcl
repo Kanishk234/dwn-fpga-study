@@ -14,17 +14,22 @@
 # Usage (via run_synth.py):
 #   vivado -mode batch -source scripts/build.tcl -tclargs <top> <part> <out_dir> <src>...
 
-if {$argc < 6} {
-    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <impl:0|1> <sources...>"
+if {$argc < 7} {
+    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <impl:0|1> <generics> <sources...>"
     exit 1
 }
 
-set top     [lindex $argv 0]
-set part    [lindex $argv 1]
-set out_dir [lindex $argv 2]
-set period  [lindex $argv 3]
-set do_impl [lindex $argv 4]
-set sources [lrange $argv 5 end]
+set top      [lindex $argv 0]
+set part     [lindex $argv 1]
+set out_dir  [lindex $argv 2]
+set period   [lindex $argv 3]
+set do_impl  [lindex $argv 4]
+# Generics arrive as NAME:VALUE+NAME:VALUE, or "-" for none. Neither ' ' nor '=' nor ',' can
+# be used as separators here: Vivado splits -tclargs on whitespace, and cmd.exe (which has to
+# launch vivado.bat on Windows) treats '=' and ',' as argument delimiters, so "PIPE_POP=0"
+# arrives as two arguments and Vivado tries to open a file called "0".
+set generics [lindex $argv 5]
+set sources  [lrange $argv 6 end]
 
 file mkdir $out_dir
 
@@ -36,7 +41,16 @@ foreach f $sources {
 # -flatten_hierarchy none keeps module boundaries so report_utilization -hierarchical can
 # attribute LUTs to the encoder vs the core. Brief §6 requires reporting them separately in
 # every table we publish, so the flow has to be able to tell them apart.
-synth_design -top $top -part $part -mode out_of_context -flatten_hierarchy none
+set synth_args [list -top $top -part $part -mode out_of_context -flatten_hierarchy none]
+if {$generics ne "-" && $generics ne ""} {
+    foreach g [split $generics "+"] {
+        set kv [split $g ":"]
+        set assign "[lindex $kv 0]=[lindex $kv 1]"
+        lappend synth_args -generic $assign
+        puts "generic: $assign"
+    }
+}
+synth_design {*}$synth_args
 
 # Constrain at the board clock (100 MHz), so the slack reported is directly the question that
 # matters: does this run on a Basys 3 as-is? Fmax is then derived from WNS by run_synth.py.
@@ -48,7 +62,21 @@ synth_design -top $top -part $part -mode out_of_context -flatten_hierarchy none
 set clk_ports [get_ports -quiet clk]
 if {[llength $clk_ports] > 0} {
     create_clock -name clk -period $period $clk_ports
-    puts "TIMING_MODE registered (real clock, period $period ns)"
+
+    # I/O delays are NOT optional here. Without them, input-to-first-register and
+    # last-register-to-output paths are UNCONSTRAINED and simply vanish from the timing
+    # report -- so a design with fewer pipeline stages reports BETTER slack, because the
+    # long paths it just created are the ones no longer being checked. That artifact made a
+    # 2-stage variant look 3x faster than the 4-stage one it is strictly slower than.
+    #
+    # Zero delay is the strict choice: it budgets the entire period to on-chip logic and
+    # assumes the outside world is infinitely fast. Pessimistic for a real board, but it is
+    # the same assumption for every variant, which is what makes them comparable.
+    # get_ports -filter, not remove_from_collection: the latter is Synopsys-style and does
+    # not exist in Vivado's Tcl.
+    set_input_delay  0.000 -clock clk [get_ports -filter {DIRECTION == IN && NAME != "clk"}]
+    set_output_delay 0.000 -clock clk [all_outputs]
+    puts "TIMING_MODE registered (real clock, period $period ns, I/O constrained)"
 } else {
     create_clock -name vclk -period $period
     set_input_delay  0.000 -clock vclk [all_inputs]
