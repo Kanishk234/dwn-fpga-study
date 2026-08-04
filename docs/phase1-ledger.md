@@ -445,14 +445,23 @@ only the pin letters were reused.
 
 | | Out-of-context | **On the board** |
 |---|---|---|
-| LUTs | 1619 (7.78%) | **2054 (9.88%)** |
+| LUTs | 1619 (7.78%) | **2058 (9.89%)** |
 | FF | 269 | **865** |
 | BRAM | 0 | **8** |
 | DSP | 0 | **0** |
-| WNS @ 100 MHz | +3.200 ns | **+1.662 ns** ✅ |
+| WNS @ 100 MHz | +3.200 ns | **+1.753 ns** ✅ |
 
 The growth is the harness (UART, loader, benchmark FSM, seg7) plus I/O buffers; the 8 BRAMs are
 the vector store. Slack fell as expected once the clock network and pads were real.
+
+⚠️ **Correction (kept visible): this table previously read 2054 LUTs (9.88%) and +1.662 ns.**
+Those came from an intermediate bitstream build, not the one that was frozen. Every other record
+of this design — `docs/phase1-report.md`, `docs/phase2-handoff.md`,
+`releases/phase1/MANIFEST.md` and the `EXPECTED` table in `scripts/verify_phase1.py` — says
+**2058 (9.89%)**, and the frozen manifest records **+1.753 ns**. The reproduction run of
+2026-08-04 rebuilt the bitstream from committed defaults and measured exactly 2058 LUTs and
++1.753 ns, confirming the ledger row was the stale one. FF/BRAM/DSP were never in dispute.
+Slack is placement-dependent and allowed to drift by tens of picoseconds; the LUT count is not.
 
 **Report both, never one as the other.** The out-of-context figures are the ones comparable to
 the paper (its Table 2 is out-of-context too); these are what is actually on the silicon.
