@@ -1,12 +1,14 @@
 # Phase 1 — CORE: running ledger
 
+# ✅ PHASE 1 COMPLETE — Gate 1b passed 2026-08-04, 166,000/166,000 on hardware
+
 **Live document. Update it as work lands, not afterwards.** Status table first, then the
 chronological log, then the numbers worth quoting, then what is still open.
 
 Phase 1's exit condition is Gate 1b (brief §11): *the bitstream running on the Basys 3
 reproduces the software model's JSC test-set accuracy, to the sample.* Not "it lights the right
 LED for a few inputs" — the full test set through benchmark mode, matching what PyTorch
-reported.
+reported. **That is now done.**
 
 ---
 
@@ -21,7 +23,7 @@ reported.
 | **1e** | Exporter (checkpoint → tables/wiring/thresholds) | 🟡 works, one-shot, not generalized |
 | **1f** | RTL generator (export → Verilog) | ❌ `rtlgen/` empty |
 | **1g** | Harness — UART, BRAM vector store, cycle counter, FSM, 7-seg | ✅ **all modules built and tested, incl. board top level** |
-| **1h** | Board: bitstream reproduces test-set accuracy — **GATE 1b** | ❌ |
+| **1h** | Board: bitstream reproduces test-set accuracy — **GATE 1b** | ✅ **166,000/166,000** |
 
 ### Not in the brief's list, but Phase 1 cannot finish without them
 
@@ -473,6 +475,61 @@ against the current checkpoint stands.
   the training notebook used sklearn's `scaler.transform()`, the dump notebook the equivalent
   `(x-mean)/scale`. Harmless, and provably so — **0 of 16,000 values differ once quantized to
   Q3.12**, which is the only precision the hardware sees.
+
+## GATE 1b — PASSED on hardware
+
+```
+samples              : 166000
+hardware == software : 166000/166000
+core cycles          : 166815
+wall clock           : 480.0 s
+accuracy, float32 model     : 73.8361%
+accuracy, Q3.12 (on hardware): 73.8349%
+```
+
+Every sample of the JSC test set, through the real bitstream on a real Basys 3, over the real
+UART. `166815 = 166000 + 162 batches × (LATENCY + 1)`, so **II=1 held on silicon**, not just in
+simulation.
+
+### The I/O wall, measured
+
+| | |
+|---|---|
+| core throughput | **99.5 M samples/s** (from the on-chip cycle counter) |
+| over the link | **346 samples/s** |
+| **ratio** | **287,770×** |
+
+Both numbers are measurements — the core figure comes from the hardware cycle counter, not from
+a datasheet. Brief §6 estimated ~2,600× at 1 Mbaud against a 50 M/s core; at 115200 baud against
+a 99.5 M/s core it is two orders of magnitude worse. **The link is essentially the entire cost
+of running this model.** That is contribution #4 in brief §14, now quantified rather than
+argued.
+
+### Two things Gate 1b exposed that 1,000 samples could not
+
+**1. The reference model was wrong, not the hardware.** The first full run reported 5
+disagreements in 20,480. Cause: `pred` in the test set came from PyTorch on **float32**
+features, while the hardware implements **Q3.12** — a deliberate part of the spec. Scoring
+hardware against the float model measures the quantization decision, not the hardware.
+
+Confirmed in software before changing anything: the numpy **float** model agreed with the
+reference on 20,480/20,480, and the numpy **Q3.12** model disagreed on exactly 5 — the same
+count the hardware reported. `scripts/host.py` now computes the Q3.12 reference itself and
+reports the float-vs-fixed divergence separately, as the characterization number it is.
+
+Across the full set the two models differ on **30 of 166,000 samples (0.018%)**, worth
+**−0.0012 pp** of accuracy. Q3.12 stands; the Q3.15 fallback was not needed.
+
+**2. One feature value in 2,656,000 overflows Q3.12.** The full set contains a scaled feature at
+8.08, past Q3.12's +8 ceiling — the 1,000-sample subset topped out at 5.92, so it never
+appeared. Fixed by **saturating** in `extract.quantize()`, which is lossless here and proven so:
+thresholds span [−18618, +17782] against a word range of [−32768, +32767], so a clamped value
+stays on the same side of every threshold. Verified by comparing encoder bits with and without
+clamping across all 166,000 samples — **identical**.
+
+⚠️ **Correction to an earlier note in this ledger: Q3.15 would NOT have fixed this.** It has the
+same 3 integer bits and therefore the same ±8 range; it buys precision, not headroom. The
+overflow fix is saturation, or Q4.12 if a threshold ever sat near the edge.
 
 ## Numbers worth quoting
 
