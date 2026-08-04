@@ -14,6 +14,18 @@ Only training leaves the machine.
 | Notebook | What it does |
 |---|---|
 | `dwn_jsc_kaggle.ipynb` | Trains one n=6 DWN on JSC, saves a checkpoint + test vectors |
+| `dump_testset_kaggle.ipynb` | **Inference only.** Loads an existing checkpoint and dumps the full 166k test set for Gate 1b |
+
+⚠️ **Use `dump_testset_kaggle.ipynb`, not a re-run of the training notebook, to get the full test
+set.** Re-training produces a *different model* — seeds are fixed but CUDA kernels accumulate
+non-deterministically — which would invalidate every number measured against the current
+checkpoint (108 core LUTs, 202 comparators, 147.1 MHz, the passing Gate 1 runs). The dump
+notebook loads the checkpoint and only runs forward passes, and it verifies the reconstruction
+two ways before saving: recomputed accuracy must equal the recorded `final_acc` exactly, and the
+first 1000 predictions must match the committed `testvectors.npz` sample for sample.
+
+It still needs Kaggle because upstream `torch_dwn` has no CPU path — even inference requires a
+GPU.
 
 ---
 
