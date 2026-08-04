@@ -20,7 +20,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 | Step | What | Status |
 |---|---|---|
-| **2a** | Restructure: `rtlgen/`, per-config output under `build/`, one config drives the flow | ❌ |
+| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ❌ |
 | **2b** | Recalibrate the area model against measured encoder cost | ❌ |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ❌ |
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
@@ -39,6 +39,41 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | `rtl/gen/` retired in favour of `build/<config>/rtl/` | part of 2a |
 
 ---
+
+## Step 2a in detail — what "config-driven" actually means
+
+Roughly 20% file moves, 80% code. `docs/phase2-handoff.md` Part 2 has the directory decision;
+this is the work behind it.
+
+**The mechanical part** (minutes): `exporter/emit_core.py` and `emit_encoder.py` move to
+`rtlgen/` — brief §11 splits *exporter* (checkpoint → tables/wiring/thresholds) from *rtlgen*
+(that export → Verilog), and Phase 2 needs them separable because the filtering step estimates
+area from a checkpoint **without** emitting RTL. `rtl/gen/` is deleted; output moves to
+`build/<config>/rtl/`. `rtl/` (the hand-written primitives) does not change.
+
+**The actual work** — four things are hardcoded today that a sweep must vary:
+
+| Hardcoded now | Needs to become |
+|---|---|
+| `emit_core.py` writes to `rtl/gen/dwn_core.v` | an output directory argument — otherwise sweep point #7 overwrites #8 |
+| `PIPE_LUT/POP/OUT = 1` as module-level constants | config fields, since Group B sweeps exactly these |
+| `run_gate1.py`'s `RTL_SOURCES`, `run_synth.py`'s `TARGETS` | derived from the config's build directory |
+| "config" = the `CONFIG` dict inside a checkpoint | a first-class object spanning **training params + hardware params** (pipeline depth, clock target, strategy) — the checkpoint knows nothing about the latter |
+
+Then `dse/` is written on top: the grid, the loop over configs, report parsing into a results
+table, Pareto computation, plots. It should **import** `run_xsim()`/`find_vivado_bin()` from
+`scripts/run_gate1.py` and `run_one()` from `scripts/run_synth.py` rather than shelling out and
+parsing stdout — those were exposed in Phase 1 for this.
+
+**Why this is load-bearing, not tidying:** `dse-plan.md` §1 requires that a sweep point be a
+config, not a code edit. If changing configuration means editing a `.py` or `.v`, every sweep
+point synthesizes code that has not passed Gate 1 — forty points would mean forty
+re-verifications.
+
+**What is already done:** `extract.py` and both emitters handle arbitrary layer counts, widths,
+`n` and class counts — Phase 1 proved it by running the same code over a `[300,100]` two-layer
+model and a `[50]` single-layer one. What is missing is plumbing: where they write, and what
+tells them what to build.
 
 ## What Phase 1 already answered
 
