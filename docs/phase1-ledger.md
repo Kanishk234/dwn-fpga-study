@@ -357,18 +357,61 @@ Placed and routed (`scripts/run_synth.py --impl`), out-of-context, constrained a
 |---|---|---|---|---|---|
 | `dwn_core` | 108 | 73 | +3.790 ns | +3.708 ns | 158.9 MHz |
 | `thermometer_encoder` | 1519 | 0 | +7.013 ns | +7.084 ns | 342.9 MHz |
-| **`dwn_top`** | **1619** | **269** | +3.790 ns | **+3.572 ns** | **155.6 MHz** |
+| **`dwn_top`** | **1619** | **269** | +3.790 ns | **+3.200 ns** | **147.1 MHz** |
 
-**Area is identical post-route, and timing barely moved** — 161.0 → 155.6 MHz, still 3.57 ns of
-slack at the board's 100 MHz. Routing did not surprise us, which for a design that is 7.78% of
-the part is what you would hope but not what you can assume.
+**Area is identical post-route, and timing moved only modestly** — still 3.2 ns of slack at the
+board's 100 MHz. Routing did not surprise us, which for a design at 7.78% of the part is what
+you would hope but cannot assume.
 
-These are the numbers that can be quoted. The earlier synth-only figures were estimates with
-unrouted nets.
+⚠️ **Correction: this table previously read 155.6 MHz / +3.572 ns.** Those numbers were measured
+with **unconstrained I/O paths** — `build.tcl` created a clock but set no `set_input_delay` or
+`set_output_delay`, so input-to-first-register and last-register-to-output paths were excluded
+from timing analysis entirely. The correct figure is **147.1 MHz**. The bug was caught by the
+pipeline sweep below, where it produced an impossible result rather than a merely optimistic
+one; see *Methodology* there. `dwn_core` and the encoder are unaffected — their worst paths were
+internal either way.
 
 Caveat: still out-of-context, so no I/O buffers. The real bitstream adds pad delays and a clock
-network, which will shave some margin — but the core logic is proven routable and 3.5 ns is a
-lot of headroom to give away.
+network, which will shave more margin.
+
+### Pipeline depth: 3 stages is the minimum that closes 100 MHz
+
+`scripts/experiment_pipeline.py` sweeps the `pipe_reg` ENABLE parameters — a config is a
+synthesis generic, not a code edit, which is exactly why the stages were parameterized
+(brief §10).
+
+| Variant | Cycles | LUTs | FF | WNS | Fmax | Latency @100 MHz |
+|---|---|---|---|---|---|---|
+| 4-stage (shipped) | 4 | 1619 | 269 | +3.790 | 161.0 MHz | 40 ns |
+| 3-stage: no OUT reg | 3 | 1619 | 266 | +1.864 | 122.9 MHz | 30 ns |
+| 3-stage: no POP reg | 3 | 1619 | 249 | +1.355 | 115.7 MHz | 30 ns |
+| 2-stage | 2 | 1619 | 246 | **−0.571** | 94.6 MHz | ❌ fails |
+| 1-stage (encoder only) | 1 | 1619 | 196 | **−1.883** | 84.2 MHz | ❌ fails |
+
+- **LUT count never changes.** Pipelining costs flip-flops, not logic — 196 to 269 across the
+  whole range, on a part with 41,600.
+- **3 stages is the floor at 100 MHz.** Dropping to 2 misses by 0.571 ns.
+- The 1-stage figure (84.2 MHz) closely matches the 81.2 MHz measured before any pipelining
+  existed — an independent check that the sweep is measuring what it claims.
+- **Not adopted.** Changing depth changes `DWN_TOP_LATENCY`, which `benchmark_fsm` uses to align
+  labels, so it requires a Gate 1 re-run. 10 ns of latency is worth having for a trigger
+  application, but not worth spending on the day before board bring-up. It is a Phase 2 data
+  point, collected early.
+
+#### Methodology: a bug this sweep exposed
+
+The first run of this sweep reported the **2-stage variant as 3× faster than the 4-stage one**.
+Removing pipeline registers cannot improve timing, so the measurement was wrong, not the design.
+
+Cause: with no `set_input_delay`/`set_output_delay`, paths from input ports to the first
+register and from the last register to output ports are unconstrained and silently omitted from
+the report. Removing the output register moves a long path into that unanalyzed set, so slack
+*improves* as the design gets worse. Fixed by constraining I/O against the same clock; zero
+delay is pessimistic for a real board but identical across variants, which is what makes them
+comparable.
+
+The lesson generalizes: a result that is impossible in the right direction is easier to catch
+than one that is merely optimistic. The post-route correction above came out of the same fix.
 
 ---
 
@@ -404,8 +447,8 @@ lot of headroom to give away.
 | Area (OOC, xc7a35t) | core **108** LUTs (paper: 110) · encoder **1519** · top **1619** = 7.78% |
 | Encoder / core | **14.06×** — vs the 3.2× worst case brief §12 risk #3 anticipated |
 | Flip-flops | 269 total (196 encoder + 50 layer + 20 scores + 3 out) of 41,600 |
-| Fmax | **161.0 MHz** pipelined (+3.790 ns slack at 100 MHz); 81.2 MHz unpipelined |
-| Latency | **4 cycles**, II=1 → 40 ns at the board's 100 MHz, 24.8 ns at 161 MHz |
+| Fmax | **147.1 MHz** post-route (+3.200 ns slack at 100 MHz); 84.2 MHz with a single stage |
+| Latency | **4 cycles**, II=1 → 40 ns at the board's 100 MHz. 3 stages also closes (30 ns) |
 | Throughput | **100 M classifications/s** core-side at 100 MHz — but I/O-bound in practice (brief §6) |
 
 ⚠️ **Quote 73.84%, not 74.06%.** The saved weights are the final epoch; there is no
