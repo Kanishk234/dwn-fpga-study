@@ -648,9 +648,28 @@ seed would likely drop a different feature; confirm it is stable across configs 
 | **Nothing has touched silicon** | Gate 1 is simulation. Brief §12 risk #7: UART framing, BRAM addressing, reset sequencing and timing closure are all untested. |
 | **No pipelining, and it is now required** | 81.2 MHz < the board's 100 MHz. Stages belong in the core (10.194 ns), not the encoder (2.962 ns). |
 | **Exporter is one-shot** | `emit_core.py` / `emit_encoder.py` target one model. Phase 2 needs `rtlgen/` to generalize over the sweep grid. |
+| **Try FTDI D2XX to get past 5 Mbaud** — *optional, revisit if Phase 3 leaves time* | 10 Mbaud divides exactly on both ends (100 MHz ÷10, FT2232H 120 MHz ÷12) and the chip is rated to 12 M, yet the board does not respond at all while 4 M and 5 M are perfect. The wall is the **Windows VCP driver**, not the design — so an MMCM would not help. Driving the chip through FTDI's **D2XX** API instead of a COM port might reach 12 M: 11.2 s → ~4.6 s. Cost: rewrite the host transport, add a dependency, lose `--list-ports` simplicity. **Payoff is ~2× on a run that already takes 11 s**, so it is a curiosity, not a need — but it would add two more points to the I/O-wall curve, which *is* a stated contribution (brief §14). |
 | **`rtl/gen/` is committed — decide before the first sweep run** | Fine now: one model, and these are the exact files Gate 1 verified and synthesis measured, so history is useful. It does not survive 40–70 sweep configs. Undoing it later is cheap (`git rm --cached rtl/gen/` + a `.gitignore` line, no history rewrite), so the deadline is **before the sweep starts committing configs**, not the start of Phase 2 as such. |
 
 ---
+
+## Frozen: `releases/phase1/`
+
+The bitstream that passed Gate 1b, plus a manifest recording the commit, checkpoint hashes, tool
+versions and measured results. Phase 2 will churn the emitters and the RTL; this directory does
+not change.
+
+Its real job is diagnostic. **If a Phase 2 change makes the board misbehave, reflashing this
+tells you in a minute whether the board and toolchain are fine and the change is at fault** —
+otherwise that is an afternoon of bisecting.
+
+```
+.venv\Scripts\python.exe scripts\program.py --bit releases\phase1\dwn_basys3_top.bit
+```
+
+Built from committed defaults with no flags, then programmed and re-verified at 166000/166000
+before being copied here — so the manifest describes an artifact that was actually tested, not
+one that merely came out of the same directory.
 
 ## Pointers
 
