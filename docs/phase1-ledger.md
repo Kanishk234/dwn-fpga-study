@@ -673,6 +673,9 @@ one that merely came out of the same directory.
 
 ## Pointers
 
+- `docs/phase1-report.md` — **the written-up account**: results, the five things that cost time,
+  and full reproduction steps for another machine. This ledger is the raw log it was built from.
+- `releases/phase1/MANIFEST.md` — the frozen bitstream and its provenance
 - `docs/project-brief.md` — the full plan; §6 resource budgets, §11 phase breakdown, §12 risks
 - `docs/checkpoint-format.md` — what the exporter reads, verified against the pinned submodule
 - `docs/paper-configs.md` — the paper's JSC configs (Table 14 / Table 2) and what they changed
