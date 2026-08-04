@@ -415,7 +415,9 @@ def main():
     ap = argparse.ArgumentParser(description='Drive the DWN board over UART.')
     ap.add_argument('--port', help='serial port, e.g. COM3 or /dev/ttyUSB1. '
                                    'Omit to auto-detect.')
-    ap.add_argument('--baud', type=int, default=115200)
+    # Must match the BAUD parameter the bitstream was built with (harness/dwn_basys3_top.v).
+    # A mismatch shows up as a failed ping rather than as corrupted data.
+    ap.add_argument('--baud', type=int, default=1000000)
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT)
     ap.add_argument('--selftest', action='store_true', help='verify encoding, no board needed')
     ap.add_argument('--list-ports', action='store_true', help='show serial ports and exit')

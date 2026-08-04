@@ -29,7 +29,17 @@
 
 module dwn_basys3_top #(
     parameter integer CLK_HZ       = 100_000_000,
-    parameter integer BAUD         = 115_200,
+    // 1 Mbaud: 100_000_000 / 1_000_000 = 100 clocks per bit, EXACTLY, with no rounding error
+    // on either side (the FT2232H divides 120 MHz by 120). 115200 needed a divisor of 868.06
+    // and worked, but exact is better and this is 8.7x faster.
+    //
+    // The host must be told to match -- scripts/host.py defaults to the same value. A mismatch
+    // presents as a failed ping, not as corrupted data, so it is at least obvious.
+    //
+    // Measured effect: the full 166k Gate 1b run goes from 480 s to ~55 s. The protocol was
+    // already ~99% link-efficient at 115200 (475.5 s of pure serial time against 480 s
+    // measured), so baud is the only lever that matters here.
+    parameter integer BAUD         = 1_000_000,
     parameter integer DATA_W       = 256,      // 16 features x 16-bit Q3.12
     parameter integer LABEL_W      = 3,
     parameter integer DEPTH        = 1024,
@@ -125,8 +135,22 @@ module dwn_basys3_top #(
     // ---- display ----
     // sw[0] picks class vs throughput; the class is shown in the low digit so a single-sample
     // run reads directly off the board with no host involved.
-    wire [15:0] disp_value = sw[0] ? cycle_count[15:0]
-                                   : {13'd0, last_class};
+    // sw[1:0] selects what the four hex digits show. correct_count gets a slot because it is
+    // the number that actually matters during a run and the LED byte below truncates it: a
+    // perfect 1024-sample batch is 0x400, whose low byte is 0x00, i.e. all LEDs dark.
+    //   00  last predicted class   0=g 1=q 2=t 3=w 4=z (alphabetical, NOT physics order)
+    //   01  cycle count, low 16    1029 = 0x0405 for a full 1024-sample batch
+    //   10  correct count          0x0400 when a 1024-sample batch is perfect
+    //   11  cycle count, high 16   nonzero only past 65535 cycles
+    reg [15:0] disp_value;
+    always @* begin
+        case (sw)
+            2'b00:   disp_value = {13'd0, last_class};
+            2'b01:   disp_value = cycle_count[15:0];
+            2'b10:   disp_value = {{(16-ADDR_W-1){1'b0}}, correct_count};
+            default: disp_value = cycle_count[31:16];
+        endcase
+    end
 
     seg7 #(.REFRESH_BITS(REFRESH_BITS)) u_seg (
         .clk(clk), .rst(rst), .value(disp_value), .seg(seg), .an(an));
@@ -148,11 +172,14 @@ module dwn_basys3_top #(
         end
     end
 
-    assign led[0]    = bench_busy;
-    assign led[1]    = done_sticky;
-    assign led[2]    = frame_err_sticky;
-    assign led[3]    = sw[0];
-    assign led[7:4]  = 4'd0;
+    assign led[0]    = bench_busy;        // a run is in progress
+    assign led[1]    = done_sticky;       // at least one run has completed since reset
+    assign led[2]    = frame_err_sticky;  // a UART framing error happened -- bytes are corrupt
+    assign led[3]    = sw[0];             // display selector, echoed so the mode is visible
+    assign led[4]    = sw[1];
+    assign led[7:5]  = 3'd0;
+    // Low byte only, so this wraps: a perfect 1024-sample batch reads 0x00. Use sw=10 on the
+    // seven-segment for the real value; this is a coarse "something is happening" indicator.
     assign led[15:8] = correct_count[7:0];
 
 endmodule
