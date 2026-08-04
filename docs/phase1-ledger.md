@@ -27,11 +27,12 @@ reported.
 
 | Item | Why it matters | Status |
 |---|---|---|
-| `constraints/basys3.xdc` | required for a *bitstream*; OOC synthesis does not need it | ❌ dir empty |
+| `constraints/basys3.xdc` | required for a *bitstream*; OOC synthesis does not need it | ✅ |
+| Bitstream | the real design, pins and all | ✅ **builds, meets timing** |
 | `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ✅ |
 | First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ✅ **see below** |
 | Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ✅ 4 stages, 161 MHz, II=1 |
-| Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | 🟡 **never produced.** `training/dump_testset_kaggle.ipynb` is ready — needs one Kaggle run |
+| Full 166k test set | Gate 1b needs the whole set | ✅ produced and verified — see below |
 | Host driver (`scripts/host.py`) | drives the `L`/`R`/`S` protocol, batches Gate 1b | ✅ encoding self-tested |
 
 ---
@@ -432,6 +433,46 @@ than one that is merely optimistic. The post-route correction above came out of 
   features into bits. Gitignored: tens of MB and fully regenerable.
 
 ---
+
+## On the board: bitstream built, timing met
+
+`constraints/basys3.xdc` + `scripts/build_bitstream.py`. Pin assignments come from Digilent's
+Basys-3 master XDC — but written fresh, not copied: the master file in circulation had been
+edited for an unrelated lab project (ports named `signal`, `outedge`, `slow_clk`, `sseg`), so
+only the pin letters were reused.
+
+| | Out-of-context | **On the board** |
+|---|---|---|
+| LUTs | 1619 (7.78%) | **2054 (9.88%)** |
+| FF | 269 | **865** |
+| BRAM | 0 | **8** |
+| DSP | 0 | **0** |
+| WNS @ 100 MHz | +3.200 ns | **+1.662 ns** ✅ |
+
+The growth is the harness (UART, loader, benchmark FSM, seg7) plus I/O buffers; the 8 BRAMs are
+the vector store. Slack fell as expected once the clock network and pads were real.
+
+**Report both, never one as the other.** The out-of-context figures are the ones comparable to
+the paper (its Table 2 is out-of-context too); these are what is actually on the silicon.
+
+Timing exceptions live in the XDC rather than in `build.tcl`: `RsRx`, `btnC` and `sw` are
+asynchronous (each passes through a two-flop synchronizer in RTL, which is what actually makes
+them safe), and `RsTx`/LEDs/7-seg are human-speed. Constraining them against a 100 MHz clock
+would report failures that mean nothing and bury the ones that do.
+
+## Full test set: produced and verified
+
+`training/dump_testset_kaggle.ipynb`, inference only — no retraining, so every number measured
+against the current checkpoint stands.
+
+- 166,000 samples, 9.4 MB, **software accuracy 73.8361%** — an exact match for the recorded
+  `final_acc`, which is the notebook's own first self-check.
+- First 1000 predictions match the committed `testvectors.npz` **1000/1000**, so this is
+  provably the same model Gate 1 was verified against.
+- `x_raw` differs from the committed 1000-sample file by up to **4.77e-7** (≈1 float32 ULP):
+  the training notebook used sklearn's `scaler.transform()`, the dump notebook the equivalent
+  `(x-mean)/scale`. Harmless, and provably so — **0 of 16,000 values differ once quantized to
+  Q3.12**, which is the only precision the hardware sees.
 
 ## Numbers worth quoting
 
