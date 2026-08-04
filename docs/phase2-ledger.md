@@ -164,7 +164,55 @@ Things that will silently produce wrong sweep points if forgotten:
 
 ## Log
 
-*(empty — first entry goes here)*
+### 2026-08-04 — Phase 1 reproduced on this machine (the Phase 2 entry gate)
+
+`scripts/verify_phase1.py` exists to answer one question before any sweep starts: *are this
+machine's numbers comparable to Phase 1's?* A Pareto frontier assembled from two toolchains is
+two half-frontiers with an unknown offset. Run here from a clean tree, no cached `build/`.
+
+**Everything deterministic matched exactly.** Simulation and out-of-context synthesis:
+12/12 checks. Then bitstream, program, and Gate 1b across the full test set:
+
+```
+Gate 1               : core 1504/1504 · top 1518/1518 · 50 nodes · 202 comparators
+harness unit tests   : PASS
+dwn_core             : 108 LUT   73 FF
+thermometer_encoder  : 1519 LUT   0 FF
+dwn_top              : 1619 LUT 269 FF
+board design         : 2058 LUT 865 FF 8 BRAM 0 DSP · WNS +1.753 ns
+Gate 1b              : 166000/166000 · 166815 core cycles
+accuracy             : float32 73.8361% · Q3.12 73.8349%
+float-vs-fixed       : 30/166000 (0.0181%) · 1 saturation event
+```
+
+`166815 = 166000 + 162 × (LATENCY+1)`, so **II=1 held on silicon again**. Only the stochastic
+quantities moved, all within the tolerance the script allows: wall clock 11.4 s (was 11.2),
+link rate 14,537/s (was 14,823), I/O wall 6,846× (was 6,713×).
+
+**Python 3.14, not the documented 3.12 — and it was not a confound.** The `.venv` here was
+empty and this machine no longer has 3.12 registered (`py --list` shows only 3.14 and 3.11).
+Installed the *exact* pins (`numpy==2.3.4`, `torch==2.13.0`, `pyserial==3.5`), which have cp314
+wheels, and every bit-exact result held. Reasoning: LUT/FF counts are pure Vivado 2025.2 with no
+Python involved, and the golden model's numerics come from numpy's compiled kernels, which do
+not change across interpreter minor versions. **Do not read this as permission to drop the 3.12
+pin** — `requirements.txt` justifies it on Kaggle parity and on Phase 3's hls4ml/conifer lagging
+new Python releases, and neither claim was tested here. It means only that Phase 1's *results*
+are interpreter-independent.
+
+**Two corrections came out of this run:**
+
+- `docs/phase1-ledger.md`'s board table read **2054 LUTs / +1.662 ns**; the measured value is
+  **2058 / +1.753 ns**, matching the report, handoff, manifest and `verify_phase1.py`. Ledger
+  corrected in place with the retraction kept visible.
+- The 166k test set is gitignored and **does not travel with the repo**. It was absent here and
+  cannot be regenerated locally — upstream `torch_dwn` has no CPU path, so even inference needs
+  a GPU. Copied from the Phase 1 machine and verified before use: 166,000 samples, software
+  accuracy 73.8361%, first 1000 predictions 1000/1000 against the committed `testvectors.npz`,
+  and `x_raw` max diff 4.768e-07 — the recorded 1-ULP `scaler.transform()` fingerprint, which
+  is what proves it is the same dump rather than a re-derived one.
+
+**Verdict: this machine is safe to run Phase 2 sweeps on**, and its points are comparable to
+Phase 1's.
 
 ---
 
