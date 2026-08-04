@@ -31,7 +31,7 @@ reported.
 | `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ✅ |
 | First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ✅ **see below** |
 | Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ✅ 4 stages, 161 MHz, II=1 |
-| Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | 🟡 notebook now dumps it — **needs a Kaggle re-run** |
+| Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | 🟡 **never produced.** `training/dump_testset_kaggle.ipynb` is ready — needs one Kaggle run |
 | Host driver (`scripts/host.py`) | drives the `L`/`R`/`S` protocol, batches Gate 1b | ✅ encoding self-tested |
 
 ---
