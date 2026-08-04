@@ -4,9 +4,14 @@ This is the other half of harness/uart_loader.v. It exists to make Gate 1b runna
 JSC test set is 166,000 samples and the device holds ~1024, so the run has to be batched, with
 accuracy accumulated on-chip and only totals coming back.
 
-    python scripts/host.py --selftest                     # no board needed
-    python scripts/host.py --port COM4 --ping
-    python scripts/host.py --port COM4 --gate1b
+    python scripts/host.py --selftest        # no board needed
+    python scripts/host.py --list-ports      # what is actually plugged in
+    python scripts/host.py --ping            # auto-detects the board
+    python scripts/host.py --gate1b --limit 1024
+    python scripts/host.py --gate1b          # the full test set
+
+The COM number is assigned by Windows per machine and per USB socket -- the same board is COM3
+on one laptop and COM8 on another -- so --port is optional and detection is the default.
 
 --selftest is the important one today. It rebuilds the exact byte stream this script would put
 on the wire and checks it against the vectors the RTL testbenches were verified with. If the
@@ -77,13 +82,95 @@ def quantize_features(x_raw, frac_bits=FRAC_BITS):
 # board link
 # ---------------------------------------------------------------------------
 
+# The Basys 3 talks through an FT2232HQ. The chip exposes two interfaces -- one for JTAG
+# programming, one for the UART -- so more than one port can appear for a single board, and
+# which is which is not guaranteed. That is why detection pings rather than trusting the IDs.
+FTDI_VID = 0x0403
+FT2232_PID = 0x6010
+
+
+def _serial():
+    try:
+        import serial
+        return serial
+    except ImportError:
+        raise SystemExit('pyserial not installed. pip install -r requirements.txt')
+
+
+def list_candidate_ports():
+    """Every serial port, FTDI ones first.
+
+    The COM number is assigned by Windows per machine and per USB port -- COM3 on one laptop,
+    COM8 on another -- so it can never be hardcoded. Ranking by USB vendor/product ID finds the
+    board wherever it landed.
+    """
+    from serial.tools import list_ports
+    ports = list(list_ports.comports())
+
+    def rank(p):
+        if p.vid == FTDI_VID and p.pid == FT2232_PID:
+            return 0
+        if p.vid == FTDI_VID:
+            return 1
+        return 2
+
+    return sorted(ports, key=rank)
+
+
+def autodetect(baud, timeout=1.0, verbose=True):
+    """Find the board by pinging candidates. Returns (Board, port_info).
+
+    Pinging is the detection: a port with the right USB IDs may still be the JTAG interface, or
+    held open by Vivado's Hardware Manager, or belong to some other FTDI device entirely. Only
+    a 0xA5 coming back proves it is the DWN bitstream on the other end.
+    """
+    cands = list_candidate_ports()
+    if not cands:
+        raise SystemExit(
+            'No serial ports found at all.\n'
+            '  - Is the board plugged in and powered on?\n'
+            '  - Windows: Device Manager -> Ports (COM & LPT)')
+
+    for p in cands:
+        if verbose:
+            print(f'  trying {p.device:8s} {p.description}')
+        try:
+            board = Board(p.device, baud, timeout=timeout)
+        except SystemExit:
+            raise
+        except Exception as e:
+            if verbose:
+                print(f'    cannot open ({type(e).__name__})')
+            continue
+        try:
+            if board.ping():
+                return board, p
+        except Exception:
+            pass
+        board.close()
+        if verbose:
+            print('    no response to ping')
+
+    raise SystemExit(
+        'No board responded to a ping on any port.\n'
+        '  - Is the bitstream loaded? Programming is lost on power cycle.\n'
+        '  - Is Vivado\'s Hardware Manager holding the port open? Close it.\n'
+        f'  - Baud mismatch? Host is at {baud}; the bitstream is built with the BAUD\n'
+        '    parameter in harness/dwn_basys3_top.v (default 115200).\n'
+        '  Ports tried: ' + ', '.join(p.device for p in cands))
+
+
 class Board:
     def __init__(self, port, baud=115200, timeout=5.0):
+        serial = _serial()
         try:
-            import serial
-        except ImportError:
-            raise SystemExit('pyserial not installed. pip install -r requirements.txt')
-        self.ser = serial.Serial(port, baud, timeout=timeout)
+            self.ser = serial.Serial(port, baud, timeout=timeout)
+        except serial.SerialException as e:
+            raise SystemExit(
+                f'Could not open {port}: {e}\n'
+                '  Run with --list-ports to see what is actually present, or omit --port\n'
+                '  entirely to auto-detect.')
+        self.port = port
         self.baud = baud
 
     def close(self):
@@ -243,14 +330,29 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
 
 def main():
     ap = argparse.ArgumentParser(description='Drive the DWN board over UART.')
-    ap.add_argument('--port', help='serial port, e.g. COM4 or /dev/ttyUSB1')
+    ap.add_argument('--port', help='serial port, e.g. COM3 or /dev/ttyUSB1. '
+                                   'Omit to auto-detect.')
     ap.add_argument('--baud', type=int, default=115200)
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT)
     ap.add_argument('--selftest', action='store_true', help='verify encoding, no board needed')
+    ap.add_argument('--list-ports', action='store_true', help='show serial ports and exit')
     ap.add_argument('--ping', action='store_true')
     ap.add_argument('--gate1b', action='store_true')
     ap.add_argument('--limit', type=int, help='only run the first N samples')
     args = ap.parse_args()
+
+    if args.list_ports:
+        _serial()
+        ports = list_candidate_ports()
+        if not ports:
+            print('no serial ports found')
+            return 1
+        print(f'{"port":10s} {"VID:PID":10s} description')
+        for p in ports:
+            ids = f'{p.vid:04X}:{p.pid:04X}' if p.vid is not None else '-'
+            mark = '  <- FT2232H (Basys 3)' if (p.vid, p.pid) == (FTDI_VID, FT2232_PID) else ''
+            print(f'{p.device:10s} {ids:10s} {p.description}{mark}')
+        return 0
 
     ckpt = args.checkpoint if os.path.isabs(args.checkpoint) \
         else os.path.join(REPO, args.checkpoint)
@@ -261,16 +363,21 @@ def main():
         print('=== host encoding self-test (no board) ===')
         return selftest(ckpt)
 
-    if not args.port:
-        raise SystemExit('--port is required (or use --selftest)')
-
-    board = Board(args.port, args.baud)
-    try:
+    if args.port:
+        board = Board(args.port, args.baud)
         if not board.ping():
-            raise SystemExit('ping failed -- no 0xA5. Check the port, the baud rate, and '
-                             'that the bitstream is loaded.')
+            board.close()
+            raise SystemExit(
+                f'No 0xA5 from {args.port}. The port opened, so it exists -- but nothing on\n'
+                '  the other end answered. Check the bitstream is loaded and the baud matches,\n'
+                '  or omit --port to auto-detect.')
         print(f'ping OK on {args.port} at {args.baud} baud')
+    else:
+        print(f'auto-detecting board at {args.baud} baud...')
+        board, info = autodetect(args.baud)
+        print(f'ping OK on {info.device} ({info.description}) at {args.baud} baud')
 
+    try:
         if args.gate1b:
             print('\n=== Gate 1b ===')
             return gate1b(board, ckpt, limit=args.limit)
