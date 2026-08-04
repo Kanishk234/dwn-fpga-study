@@ -90,7 +90,7 @@ def parse_logic_levels(path):
 
 
 def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, impl=False,
-            generics=None, name=None):
+            generics=None, name=None, xdc=None):
     """Synthesize one top. Returns (ok, absolute out_dir).
 
     Everything is passed as a path RELATIVE to the repo root, and Vivado runs with the repo as
@@ -113,8 +113,8 @@ def run_one(vivado_bin, top, sources, part, out_root, period=BOARD_PERIOD_NS, im
            '-source', 'scripts/build.tcl',
            '-tclargs', top, part, out_rel, str(period), '1' if impl else '0',
            # NAME:VALUE+NAME:VALUE -- see build.tcl for why not '=' or ','.
-           '+'.join(g.replace('=', ':') for g in generics) if generics else '-'
-           ] + list(sources)
+           '+'.join(g.replace('=', ':') for g in generics) if generics else '-',
+           xdc or '-'] + list(sources)
 
     r = run(cmd, cwd=REPO, env=env, capture=True)
     log = (r.stdout or '') + (r.stderr or '')

@@ -14,8 +14,8 @@
 # Usage (via run_synth.py):
 #   vivado -mode batch -source scripts/build.tcl -tclargs <top> <part> <out_dir> <src>...
 
-if {$argc < 7} {
-    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <impl:0|1> <generics> <sources...>"
+if {$argc < 8} {
+    puts "ERROR: expected <top> <part> <out_dir> <period_ns> <impl:0|1> <generics> <xdc> <sources...>"
     exit 1
 }
 
@@ -29,7 +29,12 @@ set do_impl  [lindex $argv 4]
 # launch vivado.bat on Windows) treats '=' and ',' as argument delimiters, so "PIPE_POP=0"
 # arrives as two arguments and Vivado tries to open a file called "0".
 set generics [lindex $argv 5]
-set sources  [lrange $argv 6 end]
+# Constraints file, or "-" for none. Its presence is what switches this from an out-of-context
+# area/timing measurement into a real pin-assigned design that can become a bitstream.
+set xdc      [lindex $argv 6]
+set sources  [lrange $argv 7 end]
+
+set is_ooc [expr {$xdc eq "-" || $xdc eq ""}]
 
 file mkdir $out_dir
 
@@ -38,10 +43,24 @@ foreach f $sources {
     read_verilog $f
 }
 
+if {!$is_ooc} {
+    puts "read_xdc $xdc"
+    read_xdc $xdc
+}
+
 # -flatten_hierarchy none keeps module boundaries so report_utilization -hierarchical can
 # attribute LUTs to the encoder vs the core. Brief §6 requires reporting them separately in
 # every table we publish, so the flow has to be able to tell them apart.
-set synth_args [list -top $top -part $part -mode out_of_context -flatten_hierarchy none]
+set synth_args [list -top $top -part $part -flatten_hierarchy none]
+if {$is_ooc} {
+    lappend synth_args -mode out_of_context
+}
+# synth_design does not search anywhere for `include by default, and the harness pulls the
+# pipeline latency out of the GENERATED header rather than hardcoding it -- deliberately, so
+# benchmark_fsm and the emitted pipeline cannot disagree about depth.
+if {[file isdirectory rtl/gen]} {
+    lappend synth_args -include_dirs rtl/gen
+}
 if {$generics ne "-" && $generics ne ""} {
     foreach g [split $generics "+"] {
         set kv [split $g ":"]
@@ -60,7 +79,13 @@ synth_design {*}$synth_args
 # the report into an input-to-output path delay instead. Both are useful; they are just not
 # the same measurement, and the reports say which is which.
 set clk_ports [get_ports -quiet clk]
-if {[llength $clk_ports] > 0} {
+if {!$is_ooc} {
+    # The XDC owns all timing for a real design: it creates the clock on the actual pin and
+    # declares false paths for the asynchronous and human-speed I/O. Adding the constraints
+    # below on top would double-create the clock and re-constrain paths the XDC deliberately
+    # excluded, so this branch does nothing.
+    puts "TIMING_MODE constrained by $xdc"
+} elseif {[llength $clk_ports] > 0} {
     create_clock -name clk -period $period $clk_ports
 
     # I/O delays are NOT optional here. Without them, input-to-first-register and
@@ -101,6 +126,11 @@ if {$do_impl} {
     place_design
     phys_opt_design
     route_design
+
+    if {!$is_ooc} {
+        write_bitstream -force $out_dir/$top.bit
+        puts "BUILD_TCL_BITSTREAM $out_dir/$top.bit"
+    }
 
     report_utilization               -file $out_dir/utilization_routed.rpt
     report_utilization -hierarchical -file $out_dir/utilization_routed_hier.rpt
