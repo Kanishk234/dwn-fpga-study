@@ -116,6 +116,73 @@ FTDI_VID = 0x0403
 FT2232_PID = 0x6010
 
 
+def ftdi_latency(port_name):
+    """Read the FTDI VCP latency timer (ms) for a COM port. None if unknown.
+
+    Windows buffers a short USB read until either the packet fills or this timer expires, so
+    every small reply -- our 9-byte status, one per batch -- can cost up to the timer. At the
+    16 ms default that is ~2.6 s added to a 166k run, about 21%, with no other symptom. It is a
+    per-machine driver setting and does not travel with the repo, so the least this script can
+    do is notice and say so.
+    """
+    if os.name != 'nt':
+        return None
+    try:
+        import winreg
+    except ImportError:
+        return None
+    base = r'SYSTEM\CurrentControlSet\Enum\FTDIBUS'
+    try:
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
+    except OSError:
+        return None
+    try:
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            dev = winreg.EnumKey(root, i)
+            try:
+                params = winreg.OpenKey(root, dev + r'\0000\Device Parameters')
+                name, _ = winreg.QueryValueEx(params, 'PortName')
+                if name.upper() != port_name.upper():
+                    continue
+                return int(winreg.QueryValueEx(params, 'LatencyTimer')[0])
+            except OSError:
+                continue
+    finally:
+        root.Close()
+    return None
+
+
+def set_ftdi_latency(port_name, ms):
+    """Write the latency timer. Needs administrator rights and a device re-enumeration."""
+    if os.name != 'nt':
+        raise SystemExit('--set-latency is Windows-only')
+    import winreg
+    base = r'SYSTEM\CurrentControlSet\Enum\FTDIBUS'
+    root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
+    for i in range(winreg.QueryInfoKey(root)[0]):
+        dev = winreg.EnumKey(root, i)
+        path = dev + r'\0000\Device Parameters'
+        try:
+            ro = winreg.OpenKey(root, path)
+            if winreg.QueryValueEx(ro, 'PortName')[0].upper() != port_name.upper():
+                continue
+        except OSError:
+            continue
+        try:
+            rw = winreg.OpenKey(root, path, 0, winreg.KEY_SET_VALUE)
+            winreg.SetValueEx(rw, 'LatencyTimer', 0, winreg.REG_DWORD, ms)
+        except PermissionError:
+            raise SystemExit(
+                'Access denied. Re-run this from an Administrator PowerShell:\n'
+                f'  .venv\\Scripts\\python.exe scripts\\host.py --port {port_name} '
+                f'--set-latency {ms}')
+        print(f'LatencyTimer for {port_name} set to {ms} ms.')
+        print('Unplug and replug the board (or disable/enable it in Device Manager) --')
+        print('the driver only reads this at device enumeration.')
+        return 0
+    raise SystemExit(f'No FTDI device found for {port_name}')
+
+
 def _serial():
     try:
         import serial
@@ -453,7 +520,14 @@ def main():
     ap.add_argument('--ping', action='store_true')
     ap.add_argument('--gate1b', action='store_true')
     ap.add_argument('--limit', type=int, help='only run the first N samples')
+    ap.add_argument('--set-latency', type=int, metavar='MS',
+                    help='set the FTDI latency timer (needs admin + a replug). 1 is ideal.')
     args = ap.parse_args()
+
+    if args.set_latency is not None:
+        if not args.port:
+            raise SystemExit('--set-latency needs --port (e.g. --port COM3)')
+        return set_ftdi_latency(args.port, args.set_latency)
 
     if args.list_ports:
         _serial()
@@ -490,6 +564,15 @@ def main():
         print(f'auto-detecting board at {args.baud} baud...')
         board, info = autodetect(args.baud)
         print(f'ping OK on {info.device} ({info.description}) at {args.baud} baud')
+
+    lat = ftdi_latency(board.port)
+    if lat is not None and lat > 2:
+        print(f'\n  NOTE: FTDI latency timer on {board.port} is {lat} ms (1 ms is ideal).')
+        print('  Costs roughly one timer period per batch -- about 21% of a full run at 16 ms.')
+        print(f'  Fix once, from an Administrator PowerShell:')
+        print(f'    .venv\\Scripts\\python.exe scripts\\host.py --port {board.port} '
+              '--set-latency 1')
+        print('  then unplug and replug the board.\n')
 
     try:
         if args.gate1b:
