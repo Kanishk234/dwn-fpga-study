@@ -41,7 +41,8 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
 from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, quantize,  # noqa: E402
-                     quantize_thresholds, fits_in_word)
+                     quantize_thresholds, saturation_is_lossless, layer_indices,
+                     extract_tables, extract_wiring, encode, forward)
 
 DEFAULT_CHECKPOINT = os.path.join(
     'training', 'artifacts', 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt')
@@ -68,13 +69,20 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
     return bytes(out)
 
 
-def quantize_features(x_raw, frac_bits=FRAC_BITS):
-    """Scaled float features -> Q3.12 integers, the same truncation the golden model uses."""
+def quantize_features(x_raw, thr_q=None, frac_bits=FRAC_BITS):
+    """Scaled float features -> Q3.12 integers, exactly as the golden model does.
+
+    quantize() saturates to the word range. The full test set has outliers past Q3.12's +8,
+    and clamping them is lossless because every threshold sits well inside the range -- but
+    that has to be checked against the actual thresholds, not assumed, so pass thr_q.
+    """
     q = quantize(x_raw, frac_bits)
-    if not fits_in_word(q, WORD_BITS):
+    if thr_q is not None and not saturation_is_lossless(thr_q, WORD_BITS):
         raise SystemExit(
-            f'features do not fit {WORD_BITS}-bit signed: range [{q.min()}, {q.max()}]. '
-            'Q3.15 is the documented fallback -- see docs/phase1-ledger.md.')
+            'A thermometer threshold lies at or beyond the edge of the '
+            f'Q{WORD_BITS-1-frac_bits}.{frac_bits} range, so saturating features could flip '
+            'an encoder bit. Widen the INTEGER bits (Q4.12), not the fractional ones -- Q3.15 '
+            'has the same range and would not help.')
     return q
 
 
@@ -276,23 +284,78 @@ def selftest(checkpoint):
 # Gate 1b
 # ---------------------------------------------------------------------------
 
+def gate1b_dataset(checkpoint):
+    """Pick the test set, preferring the full one. Returns (path, is_full).
+
+    Gate 1b's claim is about the WHOLE test set (brief §11), so the 1000-sample testbench file
+    is a fallback, never the default -- and the caller says out loud which one it used. Silently
+    running 1000 samples and reporting PASS would be a claim the run does not support.
+    """
+    full = checkpoint.replace('_checkpoint.pt', '_testset_full.npz')
+    if os.path.exists(full):
+        return full, True
+    small = checkpoint.replace('_checkpoint.pt', '_testvectors.npz')
+    if os.path.exists(small):
+        return small, False
+    raise SystemExit(f'No test set found next to {checkpoint}')
+
+
 def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     """Batch the test set through the board and accumulate accuracy.
 
-    The device store holds ~1024 vectors against a 166,000-sample test set, so this is the
+    The device store holds ~1024 vectors against a 166,000-sample test set, so batching is the
     only way Gate 1b can run at all. Only totals come back per batch.
     """
-    npz = np.load(checkpoint.replace('_checkpoint.pt', '_testvectors.npz'))
-    x_raw, y_true, y_ref = npz['x_raw'], npz['y'], npz['pred']
+    path, is_full = gate1b_dataset(checkpoint)
+    npz = np.load(path)
+    x_raw, y_true, y_float = npz['x_raw'], npz['y'], npz['pred']
+    print(f'  test set : {os.path.basename(path)} ({x_raw.shape[0]} samples)')
+    if not is_full:
+        print('  WARNING: this is the 1000-sample testbench file, not the full test set.')
+        print('           Gate 1b requires all 166k. Run training/dump_testset_kaggle.ipynb')
+        print('           and put the result in training/artifacts/.')
     if limit:
-        x_raw, y_true, y_ref = x_raw[:limit], y_true[:limit], y_ref[:limit]
+        x_raw, y_true, y_float = x_raw[:limit], y_true[:limit], y_float[:limit]
+        print(f'  --limit  : first {len(x_raw)} only -- a smoke test, not Gate 1b')
 
-    q = quantize_features(x_raw)
-    total = len(q)
+    total = len(x_raw)
 
-    # Labels loaded are the SOFTWARE MODEL's predictions, not the ground truth. Gate 1b asks
-    # whether hardware reproduces the software model to the sample -- a mismatch against y_ref
-    # is a hardware bug, whereas a mismatch against y_true is just the model being wrong.
+    # THE REFERENCE IS THE FIXED-POINT MODEL, NOT THE FLOAT ONE.
+    #
+    # `pred` in the .npz came from PyTorch on float32 features. The hardware implements Q3.12,
+    # which is a deliberate part of the specification, not an error (docs/phase1-ledger.md).
+    # Scoring hardware against the float model therefore measures the quantization decision,
+    # not the hardware -- and reports a FAIL for a design that is exactly correct.
+    #
+    # Measured on the full 166k set: the two models differ on 30 samples (0.018%), worth
+    # -0.0012 pp of accuracy. That difference is reported below as a characterization number,
+    # which is what it is, rather than being laundered into a pass/fail.
+    ck = load_checkpoint(checkpoint)
+    cfg = ck['config']
+    layers = [(extract_tables(ck['state_dict'], i), *extract_wiring(ck['state_dict'], i, cfg['n']))
+              for i in layer_indices(ck['state_dict'])]
+    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), FRAC_BITS)
+    q = quantize_features(x_raw, thr_q)
+
+    saturated = int((np.abs(np.floor(x_raw.astype(np.float64) * 2**FRAC_BITS))
+                     > 2**(WORD_BITS-1) - 1).sum())
+    if saturated:
+        print(f'  saturated: {saturated} feature value(s) clamped to the Q'
+              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} range -- lossless, every threshold is '
+              'well inside it')
+
+    chunks = []
+    for i in range(0, total, 20000):          # chunked: encoding 166k x 3200 bits at once is 531 MB
+        chunks.append(forward(encode(q[i:i+20000], thr_q), layers, cfg['num_classes'])[0])
+    y_ref = np.concatenate(chunks)
+
+    diverge = int((y_ref != y_float).sum())
+    print(f'  reference: Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} golden model '
+          f'(the spec the hardware implements)')
+    print(f'             differs from the float32 model on {diverge}/{total} samples '
+          f'({100*diverge/total:.4f}%)')
+    print()
+
     agree = 0
     cycles_total = 0
     t0 = time.time()
@@ -316,15 +379,35 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     print(f'  hardware == software : {agree}/{total}')
     print(f'  core cycles          : {cycles_total}')
     print(f'  wall clock           : {elapsed:.1f} s')
-    if elapsed > 0:
-        print(f'  effective rate       : {total/elapsed:,.0f} samples/s over the link')
     print()
-    print('  Software accuracy on this set: '
-          f'{100*(y_ref == y_true).mean():.2f}%')
+
+    # The I/O wall, measured rather than estimated (brief §14). The core figure comes from the
+    # cycle counter in hardware, so this compares two measurements, not a measurement against
+    # a datasheet claim.
+    if elapsed > 0 and cycles_total:
+        link_rate = total / elapsed
+        core_seconds = cycles_total / 100e6          # 100 MHz board clock
+        core_rate = total / core_seconds
+        print(f'  core throughput      : {core_rate/1e6:,.1f} M samples/s '
+              f'({cycles_total} cycles at 100 MHz)')
+        print(f'  over the link        : {link_rate:,.0f} samples/s')
+        print(f'  I/O wall             : {core_rate/link_rate:,.0f}x '
+              f'-- the link is the entire cost')
+        print()
+
+    print(f'  accuracy, float32 model      : {100*(y_float == y_true).mean():.4f}%')
+    print(f'  accuracy, Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} (on hardware)  : '
+          f'{100*(y_ref == y_true).mean():.4f}%')
+    print(f'  cost of fixed point          : '
+          f'{100*((y_ref == y_true).mean() - (y_float == y_true).mean()):+.4f} pp')
+    print()
     if agree == total:
-        print('  RESULT: PASS -- hardware reproduces the software model to the sample')
+        print('  RESULT: PASS -- hardware reproduces the golden model to the sample')
     else:
-        print(f'  RESULT: FAIL -- {total-agree} disagreements')
+        print(f'  RESULT: FAIL -- {total-agree} disagreements against the Q'
+              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} reference.')
+        print('  This is a real hardware/software divergence: the reference already accounts')
+        print('  for quantization, so it cannot be explained away by precision.')
     return 0 if agree == total else 1
 
 

@@ -119,9 +119,35 @@ FRAC_BITS = 12
 WORD_BITS = 16
 
 
-def quantize(x, frac_bits=FRAC_BITS):
-    """Real features -> fixed point. Truncation, not rounding: free in hardware."""
-    return np.floor(np.asarray(x, dtype=np.float64) * (2 ** frac_bits)).astype(np.int64)
+def quantize(x, frac_bits=FRAC_BITS, word_bits=WORD_BITS):
+    """Real features -> fixed point. Truncation, not rounding: free in hardware.
+
+    SATURATES to the word range, and that is lossless here rather than a compromise. Q3.12
+    represents [-8, +8), but the full JSC test set contains outliers out to 8.08 in scaled
+    space -- they exist in only a handful of the 166,000 samples, which is why the 1000-sample
+    subset never revealed them.
+
+    Clamping such a value changes no encoder bit, because every thermometer threshold lies far
+    inside the range: the extremes are about -4.55 and +4.34. A feature at 8.08 and the same
+    feature clamped to 7.9998 are both above every threshold, so they produce identical bits.
+    Use saturation_is_lossless() to assert that rather than assume it.
+
+    Widening the word would NOT be the fix, and Q3.15 specifically would not: it has the same
+    3 integer bits and therefore the same range. It buys precision, not headroom.
+    """
+    lo, hi = -(2 ** (word_bits - 1)), 2 ** (word_bits - 1) - 1
+    q = np.floor(np.asarray(x, dtype=np.float64) * (2 ** frac_bits))
+    return np.clip(q, lo, hi).astype(np.int64)
+
+
+def saturation_is_lossless(thr_q, word_bits=WORD_BITS):
+    """True if clamping features to the word range cannot change any comparison.
+
+    Holds exactly when every threshold is strictly inside the representable range: a saturated
+    feature is then still on the same side of every threshold it was before.
+    """
+    lo, hi = -(2 ** (word_bits - 1)), 2 ** (word_bits - 1) - 1
+    return int(np.min(thr_q)) > lo and int(np.max(thr_q)) < hi
 
 
 def quantize_thresholds(thresholds, frac_bits=FRAC_BITS):
