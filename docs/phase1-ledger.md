@@ -491,25 +491,43 @@ Every sample of the JSC test set, through the real bitstream on a real Basys 3, 
 UART. `166815 = 166000 + 162 batches × (LATENCY + 1)`, so **II=1 held on silicon**, not just in
 simulation.
 
-### The I/O wall, measured — and swept
+### The I/O wall, measured and swept
 
-| Baud | Full 166k run | Link rate | Core rate | I/O wall |
-|---|---|---|---|---|
-| 115,200 | 480.0 s | 346 samples/s | 99.5 M/s | **287,770×** |
-| **1,000,000** | **62.4 s** | **2,659 samples/s** | 99.5 M/s | **37,429×** |
+Every row is a full 166,000-sample Gate 1b run, all passing 166000/166000.
 
-Core throughput comes from the on-chip cycle counter, not a datasheet, so both sides of the
-ratio are measurements.
+| Baud | Wall clock | Link rate | I/O wall | Link efficiency | Note |
+|---|---|---|---|---|---|
+| 115,200 | 480.0 s | 346/s | 287,770× | 99.1% | starting point |
+| 1,000,000 | 62.4 s | 2,659/s | 37,429× | 87.8% | host overhead appears |
+| 1,000,000 | 55.1 s | 3,010/s | 33,060× | 99.4% | after host optimizations |
+| **5,000,000** | **11.2 s** | **14,823/s** | **6,713×** | **97.8%** | **default** |
+| 10,000,000 | — | — | — | — | ❌ no response |
 
-At 115200 the protocol was ~99% link-efficient (475.5 s of pure serial time against 480 s
-measured), so baud was the only lever. At 1 Mbaud that drops to ~88% (54.8 s of serial time
-against 62.4 s) — **the host's per-byte Python overhead is now visible**, which is itself the
-finding: past ~1 Mbaud the bottleneck starts moving off the wire and onto the PC. Pushing to
-2–4 Mbaud will need the host side batched into fewer, larger writes before the wire is the
-limit again.
+**43× faster end to end**, with the core untouched throughout — it was never the bottleneck.
+Core throughput comes from the on-chip cycle counter, so both sides of every ratio are
+measurements rather than datasheet claims.
 
-1 Mbaud divides exactly on both ends: 100 MHz / 1 MHz = 100 clocks per bit, and the FT2232H
-divides 120 MHz by 120. 115200 needed a divisor of 868.06.
+**Why 5 M and not 10 M.** Both ends divide 10 Mbaud exactly (100 MHz / 10, and the FT2232H's
+120 MHz / 12), and the FT2232H is rated to 12 Mbaud — yet the board does not respond at all,
+while 4 M and 5 M work perfectly. The limit is therefore the **FTDI Windows VCP driver**, not
+this design. Reaching higher would mean driving the chip through FTDI's D2XX API instead of a
+COM port, which is a different host program, not a different bitstream.
+
+**What the 1 Mbaud row pair shows.** At 115200 the protocol was already 99% link-efficient, so
+baud was the only lever. At 1 M it fell to 88% — the host's per-sample Python packing became
+visible once the wire got fast enough. Fixing that (vectorized packing, one status round trip
+per batch instead of two) recovered it to 99.4%, and the same fixes are what let 5 M reach
+97.8%. Past ~1 Mbaud the bottleneck genuinely moves between wire and host, and both have to be
+addressed.
+
+⚠️ **The FTDI latency timer is a per-machine driver setting, not a repo change.** Default is
+16 ms, which adds several seconds per run in round-trip latency. Set it to 1 ms: Device Manager
+→ the COM port → Port Settings → Advanced → Latency Timer. **This must be redone on every PC** —
+a teammate on a fresh laptop will see a slow run with no other symptom.
+
+Baud is a build-time override, so sweeping it needs no source edit:
+`scripts/build_bitstream.py --baud 2000000`. 100 MHz divides exactly at 1 M (÷100), 2 M (÷50),
+4 M (÷25), 5 M (÷20), 10 M (÷10).
 
 Both numbers are measurements — the core figure comes from the hardware cycle counter, not from
 a datasheet. Brief §6 estimated ~2,600× at 1 Mbaud against a 50 M/s core; at 115200 baud against
@@ -591,7 +609,8 @@ and lights *nothing*. Use `sw=10` on the seven-segment for the real value. The L
 | Flip-flops | 269 total (196 encoder + 50 layer + 20 scores + 3 out) of 41,600 |
 | Fmax | **147.1 MHz** post-route (+3.200 ns slack at 100 MHz); 84.2 MHz with a single stage |
 | Latency | **4 cycles**, II=1 → 40 ns at the board's 100 MHz. 3 stages also closes (30 ns) |
-| Throughput | **100 M classifications/s** core-side at 100 MHz — but I/O-bound in practice (brief §6) |
+| Throughput | **99.5 M classifications/s** core-side, measured on-chip — but I/O-bound in practice |
+| Gate 1b | **166,000/166,000** on hardware, 11.2 s at 5 Mbaud |
 
 ⚠️ **Quote 73.84%, not 74.06%.** The saved weights are the final epoch; there is no
 best-checkpoint tracking. The `.npz` predictions come from those same weights, so Gate 1 is
