@@ -31,7 +31,8 @@ reported.
 | `scripts/build.tcl` | non-project-mode build; the DSE sweep reuses it | ✅ |
 | First synthesis run | the encoder-vs-core LUT split (brief §6) — unmeasured | ✅ **see below** |
 | Pipeline registers (II=1) | brief §9; also a Phase 2 sweep axis | ✅ 4 stages, 161 MHz, II=1 |
-| Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | ❌ |
+| Full 166k test set | Gate 1b needs the whole set; we have **1000** samples | 🟡 notebook now dumps it — **needs a Kaggle re-run** |
+| Host driver (`scripts/host.py`) | drives the `L`/`R`/`S` protocol, batches Gate 1b | ✅ encoding self-tested |
 
 ---
 
@@ -307,6 +308,24 @@ unrouted nets.
 Caveat: still out-of-context, so no I/O buffers. The real bitstream adds pad delays and a clock
 network, which will shave some margin — but the core logic is proven routable and 3.5 ns is a
 lot of headroom to give away.
+
+---
+
+### 2026-08-04
+
+- **Host driver** (`scripts/host.py`). Implements the `P`/`L`/`R`/`S` protocol, quantizes to
+  Q3.12, and batches Gate 1b over the test set. `--selftest` needs no board: it regenerates the
+  reference vectors from the checkpoint and checks that **200 re-encoded records match
+  `tb/gen_vectors.py` byte for byte**. That is the check that matters — if the host packed
+  features differently from the RTL testbenches, every feature would arrive transposed and the
+  board would look broken. Added `pyserial` to `requirements.txt`.
+  - Gate 1b loads the **software model's predictions as labels**, not ground truth. Disagreement
+    with `pred` is a hardware bug; disagreement with `y` is just the model being wrong, which is
+    already measured. Conflating them would make a correct board look broken.
+- **Notebook now dumps the full test set** (`*_testset_full.npz`: `x_raw`, `y`, `pred` for all
+  166k). Needs a Kaggle re-run to produce. `x_binarized` is deliberately excluded — at
+  166k × 3200 bits it is ~530 MB and nothing consumes it, since the board's own encoder turns
+  features into bits. Gitignored: tens of MB and fully regenerable.
 
 ---
 
