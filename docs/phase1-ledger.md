@@ -288,6 +288,67 @@ probably still closes, trading a cycle of latency for 20 fewer FFs. That is exac
 pipeline-depth axis Phase 2 is meant to explore, so it is a data point to collect rather than a
 decision to make now.
 
+### Encoder area: where the 14× actually goes
+
+`exporter/analyze_encoder.py` breaks the 1519 LUTs down per feature. Two things stand out.
+
+**Vivado is already near-optimal per comparator.** 1519 / 202 = 7.5 LUTs for a 16-bit signed
+compare-against-constant, which is about `W/2` — what a carry-chain comparison costs. There is no
+sloppiness to reclaim inside a comparator.
+
+**Three features carry the cost and need full precision.** `mass_mmdt` (46 comparators),
+`zlogz` (37) and `c1_b2_mmdt` (31) account for 114 of 202, and all need ~12 fractional bits.
+Meanwhile `multiplicity` — an integer particle count — needs only 5 fractional bits for its 39
+comparators, and `c2_b1_mmdt` only 6.
+
+**Per-feature narrowing, measured:** `exporter/experiment_narrow_encoder.py` emits an encoder
+using each feature's minimum width and synthesizes it.
+
+| Variant | LUTs | vs baseline |
+|---|---|---|
+| `thermometer_encoder` (shipped, uniform 16-bit) | 1519 | — |
+| `thermometer_encoder_narrow` (per-feature) | **1259** | **−17.1%** |
+| *linear cost model predicted* | *1330* | *−12.4%* |
+
+Bit-exact against the Q3.12 spec (0 differences across 202 comparators × 1000 samples — dropping
+low bits of a signed word is an arithmetic shift, which is the same floor the encoding already
+uses), and timing is unaffected (+6.638 ns).
+
+**Not adopted.** 260 LUTs on a design occupying 7.78% of the part does not justify a spec change
+that `extract.encode()`, `tb/gen_vectors.py`, `scripts/host.py` and the golden model all have to
+match, plus a Gate 1 re-run. The experiment stays in `build/experiments/`, outside the shipped
+flow.
+
+### ⚠️ Projection: the encoder, not the model, decides what fits
+
+Comparator count is `|unique thresholds selected|`, which grows with node count and **saturates
+at `features × z` = 3200**. Scaling the paper's JSC configs at 7.5 LUTs each:
+
+| Config | Nodes | Slots (`nodes×6`) | Comparators | Encoder LUTs | Core LUTs | Total vs 20,800 |
+|---|---|---|---|---|---|---|
+| `sm` 1×50 | 50 | 300 | **202 (measured)** | **1,519** | 108 | **7.8%** ✅ |
+| `md` 1×360 | 360 | 2,160 | ≤ 2,160 | ≲ 16,000 | ~720 | ~80% — tight |
+| `lg` 1×2400 | 2400 | 14,400 | → ~3,200 (saturated) | **~24,000** | ~4,972 | **>100%** ❌ |
+
+**DWN-`lg` almost certainly does not fit on a Basys 3 — and the core is not why.** Its 4,972
+core LUTs are 24% of the device, exactly as brief §6 predicts. The encoder alone would exceed the
+whole part.
+
+This is the sharpest form of the §6 warning: every "% of Basys 3" figure derived from the paper's
+core-only numbers understates the truth by roughly an order of magnitude at large sizes, because
+encoder cost scales with the model while the paper never counts it.
+
+Two consequences for Phase 2:
+- **`z` stops being a free accuracy knob** — it sets the saturation ceiling on encoder area. The
+  paper fixes z=200 everywhere and never reports its cost.
+- **Narrowing stops being optional.** −17% is a rounding error at 1,519 LUTs and the difference
+  between fitting and not at 16,000. Adopt it when a config needs it, not before.
+
+Caveat: comparator counts for `md`/`lg` are bounds, not measurements — the actual number depends
+on how much the learnable mapping reuses thresholds, and only training those configs will say.
+At `sm` it selected 202 distinct bits from 300 slots (67%), so real numbers may land below these
+bounds.
+
 ### Post-route: it closes
 
 Placed and routed (`scripts/run_synth.py --impl`), out-of-context, constrained at 100 MHz:
@@ -376,7 +437,8 @@ seed would likely drop a different feature; confirm it is stable across configs 
 
 | | |
 |---|---|
-| **Is our encoder unnecessarily large?** | 14.06× the core, vs Mecik & Kumm's 3.2×. One 16-bit comparator per threshold is the naive construction; thresholds of one feature are sorted, so shared logic should be possible. Worth one optimization attempt before treating 14× as *DWN's* encoder cost rather than *ours*. |
+| ~~Is our encoder unnecessarily large?~~ | 🟡 **Measured.** Per-feature narrowing gives −17.1% (1519 → 1259) and is not adopted at this size; see *Encoder area* below. The remaining cost is ~202 near-optimal comparators — most of the 14× is real, not naive construction. |
+| ⚠️ **The encoder may decide what fits, not the model** | Comparator count grows with node count and saturates at `features × z` = 3200. The paper's `lg` (2400 nodes) would select nearly all of them — **~24,000 LUTs of encoder on a 20,800-LUT device**, against a 4,972-LUT core. See the projection below; it reshapes what Phase 2 can even attempt. |
 | ~~Post-synth, not post-implementation~~ | ✅ **Closed.** Placed and routed: area identical, 155.6 MHz, +3.572 ns slack at 100 MHz. Still out-of-context (no I/O buffers); a real bitstream will shave some margin. |
 | **Only 1000 test samples are local** | The full 166k set is on Kaggle. Gate 1b requires all of it, and the Q3.12 "0 class changes" result is 1000-sample evidence, not proof. |
 | **Nothing has touched silicon** | Gate 1 is simulation. Brief §12 risk #7: UART framing, BRAM addressing, reset sequencing and timing closure are all untested. |
