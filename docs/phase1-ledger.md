@@ -491,13 +491,25 @@ Every sample of the JSC test set, through the real bitstream on a real Basys 3, 
 UART. `166815 = 166000 + 162 batches × (LATENCY + 1)`, so **II=1 held on silicon**, not just in
 simulation.
 
-### The I/O wall, measured
+### The I/O wall, measured — and swept
 
-| | |
-|---|---|
-| core throughput | **99.5 M samples/s** (from the on-chip cycle counter) |
-| over the link | **346 samples/s** |
-| **ratio** | **287,770×** |
+| Baud | Full 166k run | Link rate | Core rate | I/O wall |
+|---|---|---|---|---|
+| 115,200 | 480.0 s | 346 samples/s | 99.5 M/s | **287,770×** |
+| **1,000,000** | **62.4 s** | **2,659 samples/s** | 99.5 M/s | **37,429×** |
+
+Core throughput comes from the on-chip cycle counter, not a datasheet, so both sides of the
+ratio are measurements.
+
+At 115200 the protocol was ~99% link-efficient (475.5 s of pure serial time against 480 s
+measured), so baud was the only lever. At 1 Mbaud that drops to ~88% (54.8 s of serial time
+against 62.4 s) — **the host's per-byte Python overhead is now visible**, which is itself the
+finding: past ~1 Mbaud the bottleneck starts moving off the wire and onto the PC. Pushing to
+2–4 Mbaud will need the host side batched into fewer, larger writes before the wire is the
+limit again.
+
+1 Mbaud divides exactly on both ends: 100 MHz / 1 MHz = 100 clocks per bit, and the FT2232H
+divides 120 MHz by 120. 115200 needed a divisor of 868.06.
 
 Both numbers are measurements — the core figure comes from the hardware cycle counter, not from
 a datasheet. Brief §6 estimated ~2,600× at 1 Mbaud against a 50 M/s core; at 115200 baud against
@@ -530,6 +542,38 @@ clamping across all 166,000 samples — **identical**.
 ⚠️ **Correction to an earlier note in this ledger: Q3.15 would NOT have fixed this.** It has the
 same 3 integer bits and therefore the same ±8 range; it buys precision, not headroom. The
 overflow fix is saturation, or Q4.12 if a threshold ever sat near the edge.
+
+## What the board actually shows
+
+**Seven-segment**, selected by `sw[1:0]` (four hex digits):
+
+| `sw[1:0]` | Shows | Example |
+|---|---|---|
+| `00` | last predicted class | `0002` = top quark |
+| `01` | cycle count, low 16 | `0405` = 1029, a full 1024-sample batch |
+| `10` | correct count | `0400` = 1024, a perfect batch |
+| `11` | cycle count, high 16 | nonzero only past 65535 cycles |
+
+Class indices are **alphabetical from `LabelEncoder`** — `0=g, 1=q, 2=t, 3=w, 4=z` — *not* the
+physics ordering in brief §7. Index 2 is top, not W.
+
+**LEDs:**
+
+| LED | Meaning |
+|---|---|
+| `led[0]` | benchmark run in progress |
+| `led[1]` | at least one run has completed since reset |
+| `led[2]` | **UART framing error** (sticky) — bytes are being corrupted |
+| `led[3]`, `led[4]` | echo `sw[0]`, `sw[1]` so the display mode is visible |
+| `led[15:8]` | low byte of `correct_count` |
+
+`led[2]` is the one to watch: it latches, because a framing error is a single-cycle event that
+would otherwise be invisible, and it is the difference between "the design is wrong" and "the
+wire is dropping bytes".
+
+⚠️ `led[15:8]` is only the **low byte**, so it wraps: a perfect 1024-sample batch reads `0x400`
+and lights *nothing*. Use `sw=10` on the seven-segment for the real value. The LEDs are a coarse
+"something is happening" indicator, not a readout.
 
 ## Numbers worth quoting
 
