@@ -33,10 +33,15 @@ Rough timing: nvcc build 2–5 min, JSC download 1–2 min, training 5–15 min.
 
 ## What comes out
 
-| File | What it is |
-|---|---|
-| `dwn_jsc_<run>_checkpoint.pt` | config, `state_dict`, **thermometer thresholds**, scaler params, class names, accuracy + loss history |
-| `dwn_jsc_<run>_testvectors.npz` | 1000 test samples: binarized input, raw input, label, model prediction |
+| File | What it is | In git? |
+|---|---|---|
+| `dwn_jsc_<run>_checkpoint.pt` | config, `state_dict`, **thermometer thresholds**, scaler params, class names, accuracy + loss history | yes |
+| `dwn_jsc_<run>_testvectors.npz` | 1000 test samples: binarized input, raw input, label, model prediction | yes — the RTL testbenches depend on it |
+| `dwn_jsc_<run>_testset_full.npz` | **all 166k** test samples: raw input, label, model prediction. Required for Gate 1b. | **no, gitignored** — tens of MB and regenerable |
+
+The full set omits `x_binarized` on purpose: at 166k × 3200 bits it is ~530 MB and nothing needs
+it, because the board's own thermometer encoder turns features into bits. Only the 1000-sample
+file carries binarized data, for the core-level testbench.
 
 Put both in `training/artifacts/`.
 

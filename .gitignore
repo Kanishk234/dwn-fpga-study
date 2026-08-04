@@ -5,6 +5,11 @@ CLAUDE.md
 __pycache__/
 *.pyc
 
+# Full JSC test set (~166k samples) for Gate 1b. Tens of MB, fully regenerable by re-running
+# training/dwn_jsc_kaggle.ipynb, and only the host script consumes it. The 1000-sample
+# _testvectors.npz IS committed -- the RTL testbenches depend on it.
+training/artifacts/*_testset_full.npz
+
 # Generated build products (Vivado reports, netlists, bitstreams).
 # Everything under build/ is regenerable by re-running the flow that made it.
 build/
