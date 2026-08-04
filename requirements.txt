@@ -24,3 +24,7 @@ torch==2.13.0
 
 # Test vectors, LUT table packing, report parsing.
 numpy==2.3.4
+
+# Host-side serial link to the Basys 3 (scripts/host.py). Only needed to talk to the board;
+# the script's --selftest path verifies the protocol encoding without it.
+pyserial==3.5
