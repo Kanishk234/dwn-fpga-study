@@ -30,16 +30,32 @@ student FPGA board, far smaller and cheaper than the chips the original paper us
 
 ## Status
 
-🔧 Design complete, build starting. Nothing has touched real silicon yet.
+✅ **It runs on real hardware.** The model classifies all 166,000 JSC test jets on a Basys 3 and
+agrees with the software model on **every single one**.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 — Core | Get the model running on the board | not started |
-| 2 — Design Space Exploration | Map how big/accurate/fast it can go | not started |
+| 1 — Core | Get the model running on the board | ✅ **complete** |
+| 2 — Design Space Exploration | Map how big/accurate/fast it can go | next |
 | 3 — Controlled Comparison | Compare against standard tools + published results | not started |
 | Stretch — second dataset | Repeat 2 & 3 on a different problem | optional |
 
-Full technical plan: [`project-brief.md`](./docs/project-brief.md)
+### Phase 1 results
+
+| | |
+|---|---|
+| Hardware vs software | **166,000 / 166,000** exact |
+| Accuracy | 73.83% (the paper's config: 74.0%) |
+| The neural network | **108 LUTs** — the paper reports 110 |
+| Whole design on the board | 2,058 LUTs (9.9% of the chip), 0 DSPs |
+| Speed | 4 clock cycles per classification, one result every clock |
+| | 99.5 million classifications/second |
+
+**Read this next:** [`docs/phase1-report.md`](./docs/phase1-report.md) — what was built, what
+broke, and copy-pasteable steps to reproduce every number above on another machine.
+
+Full technical plan: [`project-brief.md`](./docs/project-brief.md) ·
+Running log: [`phase1-ledger.md`](./docs/phase1-ledger.md)
 
 ## Team
 
