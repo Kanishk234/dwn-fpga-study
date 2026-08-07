@@ -273,6 +273,22 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-07 — Sweep results are committed evidence; the weights are not
+
+`dse/report.py --snapshot` writes `docs/results/sweep-results.{json,csv}`.
+
+**The gap this closes.** `build/dse/results.json` is gitignored with the rest of `build/`, on the
+rule that everything there is regenerable. But it is not regenerable in any useful sense —
+reproducing it costs a Kaggle GPU session plus ~7 h of Vivado. It is the **record of what was
+measured**, and without it the repo can show what the sweep *planned* (`dse/grid.py`) but not
+what it *found*.
+
+**And it is the right thing to commit, rather than the checkpoints.** A few hundred KB of JSON
+carries every claim: config identity (n, z, encoding, widths, pipeline, clock), accuracy, core
+and encoder LUTs **separately**, device %, Fmax, latency, and whether the row is post-route or
+post-synthesis. The 933 MB of weights it describes is not needed to support any of that. ~10 KB
+at 37 configs.
+
 ### 2026-08-07 — First sweep points, and the area model recalibrated on them
 
 The two z=8 configs from the first Kaggle session, measured end to end. **The first sweep data
@@ -770,6 +786,7 @@ multiplexer cost entirely. The measured ceiling is −5%.
 | **Per-feature comparator narrowing** | Measured −17.1% at `sm` and not adopted — 260 LUTs did not justify a spec change. **At `md`/`lg` it may decide whether a config fits at all.** Revisit when a config is marginal. Now the *largest* remaining RTL-side lever, since sharing is dead (below). |
 | ~~Can comparators share logic across thresholds of a feature?~~ | ❌ **Closed 2026-08-04, negative.** Binary-search decode is arithmetically worse (mux cost doubles per level); shared high-bit prefixes bound at **−5%** because quantile-spaced thresholds do not cluster. See the log entry. `exporter/analyze_encoder_sharing.py` re-runs it for any checkpoint — worth repeating if a config ever uses evenly-spaced `Thermometer`, where clustering should be much stronger. |
 | **`z` is the axis nobody has swept** | The paper fixes z=200 for every JSC config and never reports its cost. `z` sets the saturation ceiling on encoder area, which dominates. Accuracy vs area vs `z`, on a part where it binds, is unmeasured by anyone — probably the single most publishable axis here. |
+| **Slim checkpoint format — would make every trained config committable** | Sweep checkpoints total ~933 MB and one is ~122 MB, over GitHub's per-file limit, so they are gitignored. But **91% of a checkpoint is `mapping.weights`**, an `input_bits × (nodes×n)` tensor used *only during training*: `extract_wiring()` reads it once, takes `argmax(axis=0)`, and keeps `nodes × n` integers. Storing the resolved wiring instead would cut a 101 MB checkpoint to **~350 KB** and the whole grid to **~4 MB** — committable, with faster loads as a bonus. **Not attempted mid-sweep**, deliberately: it changes the checkpoint format on the Gate 1 path, and `extract.py`'s own comment warns that `__dummy_mapping` has the same shape and dtype as a real mapping, so getting this wrong yields "a valid-looking, totally wrong export" — silently. Build it after the sweep, with a Gate 1 re-run proving slim and fat checkpoints emit byte-identical RTL. **Zipping is not the alternative: measured 1.09×**, since float32 weights are near-incompressible. |
 | **3-stage pipeline** | Closes 100 MHz post-synthesis but was never re-verified post-route. One cheap Group B point. |
 | **FTDI D2XX for >5 Mbaud** | Optional; the VCP driver, not the design, is the wall. Two more I/O-wall points if Phase 3 leaves time. |
 | **MNIST port** | Stretch, after Phase 3. Scoped in `docs/phase1-ledger.md` — three harness breakages, ~1–2 days, and a *higher* accuracy number that means less, not more. |
