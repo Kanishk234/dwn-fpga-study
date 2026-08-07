@@ -46,11 +46,20 @@ INK, INK_2, GRID = '#0b0b0b', '#52514e', '#dcdcd8'
 
 
 def group_of(r):
-    """Six grid groups folded to the three the scatter can carry."""
-    g = (r.get('label') or '')
+    """Six grid groups folded to the three the scatter can carry (all-pairs CVD caps at 3).
+
+    Reads the recorded grid group. It used to GUESS from the label -- "one-factor if the label
+    contains a space" -- which silently mis-classified every multi-layer config, because `2x100`
+    and `3x65` are ofat-L points whose labels have no space. They were coloured as ladder points
+    and pulled into the ladder-only area chart.
+    """
+    g = r.get('group')
+    if g:
+        return {'ladder': 'ladder', 'group-b': 'group-b'}.get(g, 'one-factor')
+    # Older records predate the stored group; fall back rather than crash.
     if r.get('pipe') != '1111' or r.get('clock_ns') != 10.0:
         return 'group-b'
-    return 'one-factor' if ' ' in g else 'ladder'
+    return 'one-factor' if ' ' in (r.get('label') or '') else 'ladder'
 
 
 def style(ax, xlabel, ylabel, title):
@@ -98,16 +107,22 @@ def plot_frontier(rows, path):
                     xytext=(9, 4), fontsize=8, color=INK)
 
     ax.axvline(DEVICE_LUTS, color=INK_2, linewidth=1.5, linestyle=(0, (4, 3)), alpha=0.6)
-    # Anchor the ceiling label to the TOP of the axis: the legend sits low-right, and at one
-    # data point the two landed on top of each other.
-    ax.annotate(f'XC7A35T = {DEVICE_LUTS:,} LUTs', (DEVICE_LUTS, ax.get_ylim()[1]),
-                textcoords='offset points', xytext=(-6, -14), fontsize=8,
-                color=INK_2, ha='right', va='top')
+    # Ceiling label at the BOTTOM of the line. At full grid size the top-right corner is where
+    # the largest frontier point and its direct label land, and the two overlapped.
+    ax.annotate(f'XC7A35T = {DEVICE_LUTS:,} LUTs', (DEVICE_LUTS, ax.get_ylim()[0]),
+                textcoords='offset points', xytext=(-6, 8), fontsize=8,
+                color=INK_2, ha='right', va='bottom')
+    # Headroom so a direct label on the topmost point is not clipped by the axis.
+    lo, hi = ax.get_ylim()
+    ax.set_ylim(lo, hi + 0.06 * (hi - lo))
 
-    # A single series needs no legend box -- the title names it. Below two, a legend is just a
-    # box to collide with; lower-LEFT because the device ceiling line owns the right edge.
+    # Legend OUTSIDE the axes. Any in-axes corner is data at full grid size -- lower-left hid
+    # the smallest frontier point once the sweep filled in, which is the corner a
+    # minimize-area/maximize-accuracy frontier always reaches into.
     if drawn >= 2:
-        ax.legend(frameon=False, fontsize=9, labelcolor=INK_2, loc='lower left')
+        ax.legend(frameon=False, fontsize=9, labelcolor=INK_2,
+                  loc='upper center', bbox_to_anchor=(0.5, -0.13),
+                  ncol=4, borderaxespad=0)
     fig.tight_layout()
     fig.savefig(path, dpi=160, facecolor=SURFACE)
     plt.close(fig)
@@ -116,14 +131,20 @@ def plot_frontier(rows, path):
 
 
 def plot_area_split(rows, path):
-    ok = [r for r in rows if r['status'] == 'ok' and r.get('dwn_core_luts') is not None]
+    # LADDER ONLY, deliberately. This figure's job is how the core/encoder split evolves with
+    # MODEL SIZE. Plotting all 35 configs buried that: the one-factor variants sit at two fixed
+    # widths and the five Group B configs have *identical* area to their base rung, so the chart
+    # became 35 crammed labels with "12.6x" printed five times on top of itself. The ladder is
+    # eight bars, readable, and is the comparison the figure is for.
+    ok = [r for r in rows if r['status'] == 'ok' and r.get('dwn_core_luts') is not None
+          and group_of(r) == 'ladder']
     ok.sort(key=lambda r: r.get('nodes') or 0)
     if not ok:
-        print('  area_split: skipped, no synthesized config yet')
+        print('  area_split: skipped, no synthesized ladder config yet')
         return False
 
     fig, ax = plt.subplots(figsize=(7.5, 5), facecolor=SURFACE)
-    style(ax, '', 'LUTs', 'Where the area goes — encoder vs core')
+    style(ax, '', 'LUTs', 'Where the area goes — encoder vs core, across the size ladder')
 
     x = range(len(ok))
     core = [r['dwn_core_luts'] for r in ok]
@@ -174,10 +195,11 @@ def plot_area_split(rows, path):
 def main() -> int:
     ap = argparse.ArgumentParser(description='Pareto plots for the Phase 2 sweep.')
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'dse'))
+    ap.add_argument('--results', help='read an alternate results.json')
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
 
-    rows = derive(load())
+    rows = derive(load(args.results))
     print(f'{len(rows)} result(s)')
     plot_frontier(rows, os.path.join(args.outdir, 'frontier.png'))
     plot_area_split(rows, os.path.join(args.outdir, 'area_split.png'))

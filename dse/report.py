@@ -39,11 +39,19 @@ CSV_FIELDS = [
 ]
 
 
-def load():
-    if not os.path.exists(RESULTS):
-        raise SystemExit(f'no results yet: {os.path.relpath(RESULTS, REPO)}\n'
+def load(path=None):
+    """Rows from a results file.
+
+    `path` allows inspecting an alternate run -- and lets the report and the plots be exercised
+    on synthetic data, which is how their layout gets checked BEFORE a real sweep rather than
+    after one. These are the deliverable; a crash or an unreadable figure discovered at the end
+    of seven hours of Vivado is discovered too late.
+    """
+    path = path or RESULTS
+    if not os.path.exists(path):
+        raise SystemExit(f'no results yet: {os.path.relpath(path, REPO)}\n'
                          'Run dse/run.py first.')
-    with open(RESULTS) as f:
+    with open(path) as f:
         return list(json.load(f).values())
 
 
@@ -111,10 +119,11 @@ def fmt(v, spec=''):
 def main() -> int:
     ap = argparse.ArgumentParser(description='Sweep results, frontier, headline number.')
     ap.add_argument('--csv', help='write the full table to a CSV file')
+    ap.add_argument('--results', help='read an alternate results.json')
     ap.add_argument('--snapshot', action='store_true',
                     help='copy the results into docs/ as committed evidence')
     args = ap.parse_args()
-    rows = derive(load())
+    rows = derive(load(args.results))
 
     ok = [r for r in rows if r['status'] == 'ok']
     failed = [r for r in rows if r['status'] != 'ok']
