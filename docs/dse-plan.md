@@ -1,7 +1,11 @@
 # DSE Plan — what we sweep, and what that means for Phase 1 
 
-**Status: planning only. Nothing here runs yet.** The sweep is Phase 2; everything in Phase 1
-(§11 of `project-brief.md`) has to exist and pass both gates first. Written 2026-08-02.
+**Status: implemented, 2026-08-07.** Written 2026-08-02 as planning, when nothing here ran yet.
+The plan is now code — `dse/grid.py` (the slice), `dse/area_model.py` (§5), `dse/run.py` (the
+loop), `dse/report.py` + `dse/plot.py` (§6's outputs). **Where this document and the code
+disagree, the code is right and this file is history**; `docs/phase2-ledger.md` records what
+changed and why. Two sections are explicitly superseded: §5's encoder assumption (see the box
+there) and §7's open questions (most are now answered).
 
 This document exists mainly to answer a question that has to be settled *before* Phase 1 starts:
 **what does the sweep actually vary?** — because the answer is a hard requirement on how the Phase 1
@@ -185,10 +189,24 @@ So a config's approximate area is computable **in Python, before Vivado ever lau
 obviously overshoot 20,800 LUTs get discarded for free. Most ML architectures don't offer this; DWN
 does, and it's what makes the filter step affordable.
 
+> ⚠️ **Superseded, 2026-08-07 — this section is kept for its reasoning, not its numbers.** The
+> implementation is `dse/area_model.py`, calibrated on Phase 1's measurements, and it corrects
+> the estimate below by a factor of four. See `docs/phase2-ledger.md` for the derivation.
+>
+> - **The encoder is 14.06× the core, not "up to 3.2×".** Filtering with 3.2× would have
+>   underestimated encoder area by **4.4×** at `sm` alone, passing configs that cannot fit.
+> - **Encoder cost does not scale with the core.** It tracks the number of *distinct thresholds
+>   the mapping selects*, which grows with node count and **saturates at `features × z` = 3200
+>   comparators**. That makes `z`, not width, the ceiling on encoder area.
+> - **The model cannot extrapolate over `z` or `n`.** Its selection ratio (67%) was measured at
+>   one config and reflects *learned concentration*, not random collision. `dse/grid.py`
+>   therefore refuses to filter out any config whose area estimate is extrapolated — otherwise
+>   the filter would discard exactly the points Study 1 exists to measure.
+
 Two caveats:
 - **Encoder cost is the open unknown** (brief §6, risk #3) — up to 3.2× the core, per Mecik & Kumm.
   Measure it on the first end-to-end model and calibrate this formula against reality before trusting
-  it to filter.
+  it to filter. *(Done: 14.06×. See the box above.)*
 - The estimate ignores routing. A config that fits by LUT count can still fail to route (risk #2).
   **That failure is a result**, not a bug — it's where the congestion wall gets located.
 
@@ -226,11 +244,25 @@ configs that would have been discarded for free.
   - `LearnableMapping` in `mapping.py`; `layer_mapping(input_size, n, output_size, random=)` builds
     fixed mappings.
   - Three thermometers in `binarization.py`, all with `.fit(x)` / `.binarize(x)`.
-- **Real width values** for the ladder in §6 step 2. These should come from what actually trains on
-  JSC, not from guesses. Fill in after Phase 1b.
-- **Whether to build Learnable Reduction** (see Group A above). Revisit after the first end-to-end
-  synthesis gives a real popcount area number.
-- **Encoder cost multiplier** for §5. Measure on the first end-to-end synthesis.
-- **Does pipeline depth actually move Fmax here?** The core is combinational LUT chains with free
-  wiring; the critical path may be short enough that extra stages buy nothing. Worth one early
-  experiment — if true, Group B collapses to almost nothing and Phase 2 gets cheaper.
+- ~~**Real width values** for the ladder in §6 step 2.~~ **RESOLVED 2026-08-07.** The ladder is
+  `dse/grid.py`'s `SIZE_LADDER` = 50, 100, 200, 360, 500, 600, 800, 1200 — chosen to *bracket*
+  the predicted wall (fit boundary near W≈550, encoder saturation near W≈800), not to stop short
+  of it. The top rungs are expected to fail; that is what locates the frontier's edge.
+- ~~**Whether to build Learnable Reduction**~~ **RESOLVED 2026-08-07: no, stay deferred.**
+  Measured standalone (`scripts/experiment_reduction.py`): reduction **58 LUTs**, LUT layer
+  **50** — summing to exactly the 108 `dwn_core` measures. So it *is* 54% of the core, as the
+  bar above asked. **But that bar measures the wrong ratio.** It was written before the encoder
+  was known to cost 14× the core; against the whole design the reduction is **3.6%** at `sm` and
+  ~3% at `md`. By this document's own "if it's 3%, this was never an interesting axis" test, it
+  is not. `z` and per-feature comparator narrowing both move far more area.
+- ~~**Encoder cost multiplier** for §5.~~ **RESOLVED 2026-08-07: 14.06×**, not the 3.2× assumed
+  here. See the box in §5 — the correction is large enough to change which configs are viable.
+- ~~**Does pipeline depth actually move Fmax here?**~~ **RESOLVED 2026-08-03: yes, nearly 2×.**
+  84.2 MHz at one stage → 161.0 MHz at four, and **LUT count never changes** — pipelining costs
+  flip-flops, not logic (196→269 FFs on a part with 41,600). So Group B does *not* collapse; it
+  is a real axis and a cheap one, since accuracy is invariant and no retraining is needed.
+  Three stages is the floor that closes the board's 100 MHz.
+
+  One refinement Phase 2 added: rank pipeline variants on **latency in nanoseconds**, not cycles.
+  4 stages at 161.0 MHz is 24.84 ns against 3 stages at 122.9 MHz at 24.4 ns — a whole cycle
+  apart and effectively the same real latency. Cycles alone would call that a clear win.

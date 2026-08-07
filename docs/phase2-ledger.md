@@ -273,6 +273,53 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-07 — The reduction, measured: 50 + 58 = 108 exactly
+
+`scripts/experiment_reduction.py` synthesizes the two halves of `dwn_core` separately, closing
+an open question Phase 1 left and `dse/area_model.py` depended on.
+
+| Part | LUTs | % of core |
+|---|---|---|
+| `nodes_only` — 50 `lut_node`, real tables and wiring | **50** | 46.3% |
+| `reduction_only` — 5 × popcount(10) + argmax | **58** | 53.7% |
+| **sum** | **108** | **100.0%** |
+| `dwn_core` measured in Phase 1 | 108 | |
+
+**Two results, and the first is the more valuable.**
+
+**1. One DWN node is exactly one LUT6 — measured, not assumed.** 50 nodes, 50 LUTs. Brief §4's
+architectural premise, and the thing the whole area model rests on, had never been observed
+directly because Vivado inlines `lut_node` into the top level. Now it has.
+
+**2. The inferred reduction was exactly right, and the sum is exact.** 108 = 50 + 58 with *zero*
+cross-boundary optimization — the fragments do not share logic with each other in the real core.
+So `area_model.py`'s reduction term (1.0 LUT per final-layer bit + 1.6 per class) is
+measurement-backed rather than a fitted guess.
+
+⚠️ **But do NOT read "54% of the core" as "worth building Learnable Reduction".** The script
+prints that verdict because `dse-plan` §3 set the bar at *"40% of area"* — and that bar was
+written before anyone knew the encoder costs 14× the core. Judged against the whole design:
+
+| | `sm` 1×50 | `md` 1×360 (projected) |
+|---|---|---|
+| reduction | 58 | ~368 |
+| dwn_top | 1,619 | ~12,101 |
+| **reduction as % of design** | **3.6%** | **~3%** |
+
+**Eliminating the reduction entirely would save ~3.6%** of a design the encoder dominates.
+dse-plan's own framing — *"if it's 3%, this was never an interesting axis"* — is the one that
+applies once the denominator is the real design rather than the core. The 40% figure is not
+wrong, it is measuring the wrong ratio.
+
+**Recommendation: leave Learnable Reduction deferred.** It is unimplemented upstream, so it is
+custom training code plus new RTL plus a Gate 1 re-run, for ~3% of area on the axis that is not
+binding. `z` and per-feature narrowing both move far more. Revisit only if a config lands
+marginal and the encoder levers are exhausted.
+
+*(Caveat carried from the script: fragments synthesized alone cannot share logic with
+neighbours, so both figures are upper bounds on in-context cost. That the sum lands exactly on
+108 says there was nothing to share here.)*
+
 ### 2026-08-07 — 2c: the grid training notebook
 
 `training/train_grid_kaggle.ipynb`, plus `dse/grid.py --json` so the notebook consumes the grid
@@ -634,7 +681,7 @@ multiplexer cost entirely. The measured ceiling is −5%.
 
 | | |
 |---|---|
-| **Is the reduction really ~54% of the core?** | Inferred by subtraction; Vivado inlined the submodules. Synthesize `popcount`+`argmax` standalone to confirm before deciding on Learnable Reduction. |
+| ~~Is the reduction really ~54% of the core?~~ | ✅ **Closed 2026-08-07. Yes, exactly: 50 + 58 = 108.** And one node is exactly one LUT6, measured. **But the ratio that matters is 3.6% of the whole design**, not 54% of the core — dse-plan §3's 40% bar predates the 14× encoder finding. Learnable Reduction stays deferred; see the log entry. |
 | **Does `md` actually fit?** | The bound says ~80% of the part, which is tight enough that routing (not LUT count) may decide it. A failure to route is a data point, not a mistake (brief §12 risk #2). |
 | **How many thresholds does a bigger model really select?** | `sm` chose 202 of 300 slots (67% unique). If that ratio holds, `md`/`lg` encoder estimates drop. Only training says. |
 | **Per-feature comparator narrowing** | Measured −17.1% at `sm` and not adopted — 260 LUTs did not justify a spec change. **At `md`/`lg` it may decide whether a config fits at all.** Revisit when a config is marginal. Now the *largest* remaining RTL-side lever, since sharing is dead (below). |
