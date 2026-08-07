@@ -191,13 +191,20 @@ def verify_emitted(path, layers, n):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('checkpoint')
-    ap.add_argument('--out', default=os.path.join(REPO, 'rtl', 'gen', 'dwn_core.v'))
+    # A DIRECTORY, matching emit_encoder.py -- both emitters write several files into the same
+    # place (dwn_core.v, dwn_core_params.vh, thermometer_encoder.v, dwn_top.v) and Phase 2 hands
+    # them one `Config.rtl_dir`. This was `--out <file>` in Phase 1, which made the two emitters
+    # take different kinds of argument for the same idea.
+    ap.add_argument('--outdir', default=os.path.join(REPO, 'rtl', 'gen'),
+                    help='where to write dwn_core.v and dwn_core_params.vh '
+                         '(default: the Phase 1 location)')
     args = ap.parse_args()
 
+    out_path = os.path.join(args.outdir, 'dwn_core.v')
     ck = load_checkpoint(args.checkpoint)
-    layers, input_bits, group, score_w, core_latency = emit(ck, args.out)
+    layers, input_bits, group, score_w, core_latency = emit(ck, out_path)
 
-    rel = os.path.relpath(args.out, REPO)
+    rel = os.path.relpath(out_path, REPO)
     total = sum(t.shape[0] for t, _, _ in layers)
     print(f'wrote {rel}')
     print(f'  {total} lut_node instances, {input_bits}-bit input, '
@@ -208,7 +215,7 @@ def main():
           f'-> core latency {core_latency} cycles, II=1')
     print()
 
-    seen = verify_emitted(args.out, layers, ck['config']['n'])
+    seen = verify_emitted(out_path, layers, ck['config']['n'])
     print(f'read-back check: {seen}/{total} nodes match the checkpoint '
           '(tables + wire indices + address bit order)')
     print('  PASS')
