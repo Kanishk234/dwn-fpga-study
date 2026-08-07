@@ -20,7 +20,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 | Step | What | Status |
 |---|---|---|
-| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | 🟡 restructure + parameterization done; `dse/` runner remains |
+| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ✅ baseline reproduces 108/1519/1619 through `dse/run.py` |
 | **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ❌ |
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
@@ -272,6 +272,49 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-07 — 2a step 6c: the sweep runner, and 2a is done
+
+`dse/run.py` plus a refactor of `scripts/run_gate1.py` that extracts Gate 1 from `main()` into an
+importable `gate1(ckpt, vivado_bin, rtl_dir, work, pipe) -> (ok, info)`. `main()` is now a thin
+CLI wrapper over it. `dse/` imports it rather than shelling out and scraping stdout — the reason
+`run_xsim()` was exposed back in Phase 1.
+
+**The baseline config went through the whole pipeline and reproduced Phase 1 exactly:**
+
+| Module | LUTs | FF | WNS | Fmax | Phase 1 |
+|---|---|---|---|---|---|
+| `dwn_core` | 108 | 73 | +3.790 | 161.0 MHz | identical |
+| `thermometer_encoder` | 1519 | 0 | +7.013 | 334.8 MHz | identical |
+| `dwn_top` | 1619 | 269 | +3.790 | 161.0 MHz | identical |
+
+This is the acceptance test for 2a as a whole. The numbers were reached by a **different path**
+than Phase 1 took — RTL emitted into `build/configs/<name>/rtl`, include dirs derived from the
+sources by the rewritten `build.tcl`, clock from `cfg.hw.clock_ns`, Gate 1 called as a function
+— and landed on the same values. The config-driven flow is equivalent to the flow every Phase 1
+number came from, which is what makes sweep points comparable to them.
+
+**Three rules are enforced in code, not left to discipline**, because breaking any of them
+corrupts the frontier quietly rather than failing:
+
+1. **Gate 1 gates synthesis.** A config failing Gate 1 is recorded `gate1-failed` and is *not*
+   synthesized. Area for unverified RTL describes nothing (dse-plan §1), and the row stays
+   visible rather than becoming a config nobody notices is missing.
+2. **Failure to build is a RESULT.** Recorded `synth-failed` and kept — that is where the
+   congestion wall is (brief risk #2), and it is a thing Study 1 measures.
+3. **Core / encoder / top recorded separately, always** (brief §6). A total-only table would
+   have hidden the 14× encoder finding entirely.
+
+**Resumability is deliberate.** 34 points is several sittings on one machine (CLAUDE.md), so
+results are keyed by config name in `build/dse/results.json`, done configs skip unless
+`--force`, and writes go through a temp file — an interruption at point 20 must not cost points
+1–19.
+
+**Measured cost: 288 s per config** for three targets, synthesis only. `MINUTES_PER_SYNTH = 12`
+in `grid.py` is the *implementation* figure (Phase 1's `--impl` runs), so the 6.8 h budget
+estimate holds for post-route and the synthesis-only pass is more like 2.7 h. The sweep should
+use `--impl` for anything quotable: post-synthesis timing uses estimated routing and is
+systematically optimistic, and Phase 1 already found post-route to be 147.1 vs 161.0 MHz.
 
 ### 2026-08-07 — 2b: the area model, recalibrated and honest about what it cannot predict
 
