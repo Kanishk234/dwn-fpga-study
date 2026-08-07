@@ -20,8 +20,8 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 | Step | What | Status |
 |---|---|---|
-| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | 🟡 config object done; 4 hardcodings remain |
-| **2b** | Recalibrate the area model against measured encoder cost | ❌ |
+| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | 🟡 restructure + parameterization done; `dse/` runner remains |
+| **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ❌ |
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ❌ |
@@ -272,6 +272,105 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-07 — 2b: the area model, recalibrated and honest about what it cannot predict
+
+`dse/area_model.py`. dse-plan §5 assumed the encoder costs "up to 3.2× the core"; measured is
+**14.06×**. Filtering 2d with the old number would have underestimated encoder area by **4.4×**
+at `sm` alone.
+
+Reproduces every Phase 1 measurement — comparators, core, encoder exact; `dwn_top` and board
++0.5%, which is real rather than rounding (measured 1619 < core+encoder 1627, so Vivado
+optimizes slightly across the module boundary).
+
+**Projected size ladder**, and it revises an earlier ledger entry:
+
+| Config | Nodes | Comparators | Core | Encoder | Board | % dev | Fits |
+|---|---|---|---|---|---|---|---|
+| `sm` 1×50 | 50 | 202 | 108 | 1,519 | 2,066 | 9.9% | ✅ |
+| `md` 1×360 | 360 | 1,454 | 728 | 10,934 | 12,101 | **58.2%** | ✅ |
+| `lg` 1×2400 | 2400 | 3,200 (sat.) | 4,808 | 24,063 | 29,310 | 140.9% | ❌ |
+
+⚠️ **Correction: `md` was previously recorded as "≲16,000 encoder LUTs, ~80% — tight".** That
+used the *upper bound* of 2,160 comparators (every wiring slot distinct). Applying the measured
+67% selection ratio gives 1,454 comparators and **58.2%** — `md` is a comfortable rung, not a
+marginal one, which makes it the natural centre of the ladder rather than its edge.
+
+`lg` confirms as not fitting, and starkly: its **encoder alone (24,063) exceeds the whole part**,
+while its core (4,808) would fit easily. Note also that `lg`'s encoder/core ratio is **5.0×**,
+not 14× — further confirmation that 14× is an artifact of `sm`'s unusually tiny core, not a
+constant to extrapolate.
+
+**What this model CANNOT do, discovered while building the grid.** The 67% selection ratio is
+**not a collision statistic**. If the mapping picked slots uniformly from the 3,200 available
+bits, occupancy would predict ~286 distinct comparators, not 202. The 84-comparator gap is
+**learned concentration** — four features carry 153 of 202. How hard the mapping concentrates
+depends on how many thresholds each feature has (**z**) and how many slots each node has (**n**),
+so a ratio measured at one `(n=6, z=200)` point cannot be transported to other values of either.
+
+Consequence, and it is load-bearing for 2d: **`z` is simultaneously the axis the sweep most wants
+to characterize and the one this model is least able to predict.** `is_extrapolated(n, z)` marks
+those estimates, and `dse/grid.py` **refuses to skip a config on an extrapolated overshoot** — it
+skips only when the prediction is at the calibrated point. Otherwise the filter would silently
+discard exactly the configs Study 1 exists to measure.
+
+The softer half is the **reduction term** (~58 LUTs, inferred by subtracting 50 nodes from the
+108-LUT core). Vivado inlined `popcount`/`argmax`, so that split is arithmetic, not observation.
+The standalone-synthesis open question stands.
+
+### 2026-08-07 — 2a step 6b: the sweep grid
+
+`dse/grid.py` — 31 configs: 8 ladder rungs, 18 one-factor points on two mid-ladder rungs
+(z, encoding, n, layer count), 5 Group B variants. Group B rides on the baseline rung's trained
+model — same `ModelConfig`, different `HardwareConfig`, no retraining. That is the payoff for
+splitting the two objects in step 1.
+
+- **The ladder brackets the wall rather than stopping short of it.** `1×500` fits at 80.0%,
+  `1×600` fails at 95.6%, `1×800`/`1×1200` fail with the encoder saturated at 3,200. A config
+  that does not fit is a data point marking the frontier's edge (brief risk #2), so it is
+  reported, never hidden.
+- **`tau` interpolates the paper's schedule in log-width**, not copied from `sm`. Getting it
+  wrong fails silently — it just trains a worse model, and the point then reports an accuracy
+  that says more about tau than about the architecture.
+- **Budget: 28 synthesis points ≈ 5.6 h**, against dse-plan §6's 40–70 runs / 15–25 h on one
+  machine. **~3× headroom**, so there is room for a third OFAT rung, finer spacing near the wall
+  (500→600 is currently a single 100-node jump), or more `z` values — the last being where
+  measurement is most needed, per 2b above.
+
+### 2026-08-07 — 2a step 5: the restructure
+
+The move the handoff specified, now done. `emit_core.py` and `emit_encoder.py` are in `rtlgen/`
+(via `git mv`, so history follows); `extract.py` stays in `exporter/` per brief §11's split, as
+do the `analyze_*`/`experiment_*` scripts. **`rtl/gen/` is deleted, not gitignored** — output
+goes to `build/rtl` (default) or `build/configs/<name>/rtl` (swept), both under the
+already-ignored `build/`. Exactly as the handoff put it: "it doesn't get gitignored, it stops
+existing."
+
+**`scripts/build.tcl` was the only non-mechanical part.** It hardcoded
+`-include_dirs rtl/gen`. Include paths are now **derived from the source files actually read**:
+
+```tcl
+foreach f $sources { ... lappend inc_dirs [file dirname $f] }
+```
+
+A fixed path there would have compiled a swept config against some *other* config's
+`DWN_TOP_LATENCY`, silently, with a wrong number as the only symptom. Deriving it means the
+headers cannot come from anywhere but the RTL that was read. A second `--include-dir` argument
+would have been the obvious alternative and the wrong one — two ways to specify one value.
+
+⚠️ **One real failure, worth recording rather than just fixing.** `scripts/verify_phase1.py`
+hardcoded `os.path.join(REPO, 'rtl', 'gen', 'dwn_core.v')` and crashed. Two lessons:
+
+1. **The regression harness was the one file that broke.** Everything it guards survived the
+   path change; the guard itself did not.
+2. **A path grep is not sufficient.** The components were separate strings, so searching for
+   `rtl/gen` could not match `os.path.join(REPO, 'rtl', 'gen', ...)`. Found only by running it.
+
+Fixed by importing `DEFAULT_RTL_DIR` from `run_gate1` instead of respelling the path, so it now
+fails loudly on the next move rather than silently reading somewhere else.
+
+**Verified: `verify_phase1.py` 12/12** after the restructure — Gate 1 1504/1518, harness unit
+tests, and all six area numbers unchanged.
 
 ### 2026-08-07 — 2a step 3: pipeline depth is an argument, not a constant
 

@@ -103,12 +103,17 @@ in a minute rather than an afternoon.
 
 ## Part 2 — The restructure Phase 2 should do
 
+> ✅ **DONE 2026-08-07**, as step 5 of 2a. The layout below is what the repo now has, and
+> `rtl/gen/` no longer exists. Kept as written because the *reasoning* still governs where new
+> code goes; see `docs/phase2-ledger.md` for what actually happened, including the two things
+> the plan below did not anticipate.
+
 ### `rtlgen/` vs `rtl/gen/` — the naming is currently wrong
 
 | | Meaning | State today |
 |---|---|---|
-| `rtlgen/` | the **tool** that writes Verilog | empty — the code is in `exporter/` |
-| `rtl/gen/` | the **Verilog it wrote** | committed Phase 1 output |
+| `rtlgen/` | the **tool** that writes Verilog | ✅ `config.py`, `emit_core.py`, `emit_encoder.py` |
+| `rtl/gen/` | the **Verilog it wrote** | ✅ gone — output is `build/rtl` or `build/configs/<name>/rtl` |
 
 Brief §11 draws a real distinction worth keeping: **exporter** = checkpoint → tables, wiring,
 thresholds (`extract.py`); **rtlgen** = that export → Verilog (`emit_core.py`,
