@@ -47,20 +47,61 @@ def load():
         return list(json.load(f).values())
 
 
-def pareto(rows, x='dwn_top_luts', y='accuracy_pct'):
-    """Configs not beaten on BOTH axes: minimize x (area), maximize y (accuracy).
+AREA, ACC, LAT = 'dwn_top_luts', 'accuracy_pct', 'latency_ns'
 
-    Ties matter here. Two configs with identical area and accuracy are both on the frontier --
-    dropping one would silently hide, say, a cheaper pipeline variant that costs nothing.
+
+def derive(rows):
+    """Add latency in NANOSECONDS -- the quantity a trigger application actually cares about.
+
+    Cycles alone cannot rank pipeline variants, because dropping a stage removes a cycle but
+    also lowers Fmax. Phase 1 measured both ends of that trade: 4 stages at 161.0 MHz is
+    24.8 ns, 3 stages at 122.9 MHz is 24.4 ns -- nearly identical real latency despite a whole
+    cycle of difference. Ranking on cycles would have called that a clear win; ranking on
+    nanoseconds shows it is a wash. Cycles are still reported (brief §6 requires it), but the
+    frontier is computed on time.
     """
-    usable = [r for r in rows if r.get(x) is not None and r.get(y) is not None]
-    front = []
-    for r in usable:
-        dominated = any(o is not r and o[x] <= r[x] and o[y] >= r[y] and
-                        (o[x] < r[x] or o[y] > r[y]) for o in usable)
-        if not dominated:
-            front.append(r)
-    return sorted(front, key=lambda r: r[x])
+    for r in rows:
+        cycles, fmax = r.get('latency'), r.get('dwn_top_fmax_mhz')
+        r[LAT] = round(1000.0 * cycles / fmax, 2) if cycles and fmax else None
+        # Does it close the clock it was constrained at? A config missing timing is not a
+        # frontier point at that clock, whatever its area says.
+        wns = r.get('dwn_top_wns')
+        r['meets_timing'] = None if wns is None else wns >= 0
+    return rows
+
+
+def pareto(rows, objectives=((AREA, 'min'), (ACC, 'max'))):
+    """Configs not dominated on ALL objectives simultaneously.
+
+    Generic over the objective list because Study 1 wants two views of the same data: the
+    classic accuracy-vs-area frontier, and an accuracy/area/latency one. Group B configs share
+    an accuracy and an area and differ only in timing, so under the 2-objective view they all
+    tie and land on the frontier as indistinguishable points -- which is exactly the thing
+    dse-plan's Group B exists to discriminate.
+
+    Ties are kept deliberately: two configs equal on every objective are both on the frontier,
+    and dropping one would silently hide, say, a pipeline variant that costs nothing.
+    """
+    keys = [k for k, _ in objectives]
+    usable = [r for r in rows if all(r.get(k) is not None for k in keys)]
+
+    def dominates(o, r):
+        better = False
+        for k, d in objectives:
+            if d == 'min':
+                if o[k] > r[k]:
+                    return False
+                if o[k] < r[k]:
+                    better = True
+            else:
+                if o[k] < r[k]:
+                    return False
+                if o[k] > r[k]:
+                    better = True
+        return better
+
+    front = [r for r in usable if not any(dominates(o, r) for o in usable if o is not r)]
+    return sorted(front, key=lambda r: r[keys[0]])
 
 
 def fmt(v, spec=''):
@@ -71,7 +112,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description='Sweep results, frontier, headline number.')
     ap.add_argument('--csv', help='write the full table to a CSV file')
     args = ap.parse_args()
-    rows = load()
+    rows = derive(load())
 
     ok = [r for r in rows if r['status'] == 'ok']
     failed = [r for r in rows if r['status'] != 'ok']
@@ -107,15 +148,36 @@ def main() -> int:
         print('Accuracy comes from the checkpoint, so this fills in as 2c training lands.')
         return 0
 
-    print()
-    print('Pareto frontier (minimize dwn_top LUTs, maximize accuracy):')
-    print(f'{"config":24s} {"acc%":>6} {"top LUTs":>9} {"%dev":>6} {"Fmax":>7}')
-    print('-' * 58)
-    for r in front:
-        print(f'{r["label"][:24]:24s} {fmt(r.get("accuracy_pct"), ".2f"):>6} '
-              f'{r["dwn_top_luts"]:>9} {fmt(r.get("device_pct"), ".2f"):>6} '
-              f'{fmt(r.get("dwn_top_fmax_mhz"), ".1f"):>7}')
-    print('-' * 58)
+    def show(title, rows_):
+        print()
+        print(title)
+        print(f'{"config":24s} {"acc%":>6} {"top LUTs":>9} {"%dev":>6} {"Fmax":>7} '
+              f'{"cyc":>4} {"lat ns":>7}')
+        print('-' * 70)
+        for r in rows_:
+            print(f'{r["label"][:24]:24s} {fmt(r.get("accuracy_pct"), ".2f"):>6} '
+                  f'{r["dwn_top_luts"]:>9} {fmt(r.get("device_pct"), ".2f"):>6} '
+                  f'{fmt(r.get("dwn_top_fmax_mhz"), ".1f"):>7} '
+                  f'{fmt(r.get("latency")):>4} {fmt(r.get(LAT), ".2f"):>7}')
+        print('-' * 70)
+
+    show('Pareto frontier -- accuracy vs area:', front)
+
+    # The three-objective view. Group B points share an accuracy and an area, so they only
+    # separate once latency is an objective -- that is the whole reason Group B is swept.
+    front3 = pareto(ok, objectives=((AREA, 'min'), (ACC, 'max'), (LAT, 'min')))
+    if len(front3) != len(front):
+        show('Pareto frontier -- accuracy vs area vs latency (ns):', front3)
+        print(f'{len(front3) - len(front)} extra point(s) appear once latency is an objective '
+              f'-- these are\nconfigs that trade timing at equal accuracy and area, i.e. Group B.')
+
+    missed = [r for r in ok if r.get('meets_timing') is False]
+    if missed:
+        print()
+        print('Constrained clock NOT met -- not frontier points at that clock:')
+        for r in missed:
+            print(f'  {r["label"]:24s} WNS {fmt(r.get("dwn_top_wns"), "+.3f")} ns '
+                  f'at {fmt(r.get("clock_ns"), ".1f")} ns')
 
     # ---- the headline number brief §10 asks for ----
     fits = [r for r in ok if r.get('dwn_top_luts') and r['dwn_top_luts'] <= DEVICE_LUTS]
