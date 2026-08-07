@@ -46,13 +46,16 @@ JSC_FEATURES = 16
 # comparator, and per-comparator sharing was measured and ruled out at -5%.
 LUT_PER_COMPARATOR_BIT = 1519 / (202 * 16)
 
-# One DWN node is one LUT6 (brief §4). This is the architectural premise of the whole project,
-# and the 50-node core is consistent with it.
+# One DWN node is one LUT6 (brief §4) -- the architectural premise of the whole project.
+# MEASURED 2026-08-07, not assumed: `nodes_only` (50 lut_node, real tables and wiring)
+# synthesizes to exactly 50 LUTs out-of-context. See scripts/experiment_reduction.py.
 LUT_PER_NODE = 1.0
 
-# Reduction, split to match the single measured point (58 LUTs at final_width=50, classes=5).
-# A W-bit popcount is an adder tree costing ~1 LUT per input bit; the argmax is a small
+# Reduction: a W-bit popcount is an adder tree costing ~1 LUT per input bit, plus a small
 # comparison tree over num_classes scores. 50 x 1.0 + 5 x 1.6 = 58.
+# MEASURED 2026-08-07: `reduction_only` synthesizes to exactly 58 LUTs, and 50 + 58 = 108 is
+# exactly what dwn_core measures -- so this term is no longer inferred by subtraction, and the
+# two halves share no logic in the real core.
 LUT_PER_FINAL_BIT = 1.0
 LUT_PER_CLASS_ARGMAX = 1.6
 
