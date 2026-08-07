@@ -180,6 +180,35 @@ def area_of(cfg):
                    cfg.model.num_classes, word_bits=cfg.hw.word_bits)
 
 
+# A config predicted between the fit threshold and this ceiling gets synthesized ANYWAY.
+#
+# This is step 2d's filter, and without the probe band the filter would defeat Study 1. Skipping
+# everything predicted not to fit means nothing ever FAILS to fit, so the headline number stays
+# "the largest we tried" forever and the frontier's edge is predicted rather than measured --
+# while brief §12 risk #2 says a config that cannot fit or route is a DATA POINT the study is
+# meant to produce.
+#
+# 115% is tied to the model's error, not picked for roundness: it reproduces the calibrated
+# point to 0.5% but is off by ~9.5% where it extrapolates, so anything inside ~10-15% of the
+# threshold could genuinely land either way and has to be measured. Past that, the prediction is
+# outside its own error bars and skipping is safe.
+PROBE_CEILING_PCT = 115.0
+
+
+def should_synthesize(cfg):
+    """(run?, reason). The 2d filter: skip only what is confidently too big."""
+    e = area_of(cfg)
+    if e.fits():
+        return True, 'predicted to fit'
+    if is_extrapolated(cfg.model.n, cfg.model.thermometer_bits):
+        # The estimate is off the calibrated point, so an overshoot is not evidence. These are
+        # exactly the z and n configs the sweep exists to measure.
+        return True, 'overshoot predicted, but extrapolated -- not evidence'
+    if e.device_pct <= PROBE_CEILING_PCT:
+        return True, f'probe: {e.device_pct:.0f}% is inside the model error band'
+    return False, f'predicted {e.device_pct:.0f}% of device, beyond the probe band'
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description='The Phase 2 sweep grid.')
     ap.add_argument('--list', action='store_true', help='every config with predicted area')
@@ -238,14 +267,7 @@ def main() -> int:
         print('~ = predicted away from the one config the selection ratio was measured at')
         print('    (n=6, z=200). These estimates are extrapolations -- do NOT filter on them.')
 
-    # A config is skipped ONLY if it is predicted to overshoot *and* the prediction is at the
-    # calibrated point. An extrapolated overshoot is not evidence -- it would silently drop the
-    # z and n points, which are the ones the sweep exists to measure.
-    def skip(cfg):
-        e = area_of(cfg)
-        return (not e.fits()) and not is_extrapolated(cfg.model.n, cfg.model.thermometer_bits)
-
-    runs = [g for g in grid if not skip(g[2])]
+    runs = [g for g in grid if should_synthesize(g[2])[0]]
     extrap = [g for g in grid if is_extrapolated(g[2].model.n, g[2].model.thermometer_bits)]
     synth_pts = len(runs)
 

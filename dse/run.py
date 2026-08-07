@@ -107,6 +107,11 @@ def save_result(rec):
     os.replace(tmp, RESULTS)
 
 
+def area_of_cfg(cfg):
+    return predict(list(cfg.model.layers), cfg.model.n, cfg.model.thermometer_bits,
+                   cfg.model.num_classes, word_bits=cfg.hw.word_bits)
+
+
 def accuracy_of(checkpoint):
     """Software accuracy, read from the checkpoint that produced the RTL.
 
@@ -233,6 +238,8 @@ def main() -> int:
     ap.add_argument('--all', action='store_true', help='run every config in the grid')
     ap.add_argument('--impl', action='store_true', help='place and route, not just synthesize')
     ap.add_argument('--force', action='store_true', help='re-run configs already in results')
+    ap.add_argument('--no-filter', action='store_true',
+                    help='synthesize even configs confidently predicted not to fit')
     ap.add_argument('--list', action='store_true', help='show grid vs results and exit')
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--verbose', action='store_true', help='stream Gate 1 output')
@@ -271,10 +278,32 @@ def main() -> int:
             "config's\nname and every row would be wrong without anything failing.")
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
-    ran = skipped = missing = 0
+    ran = skipped = missing = filtered = 0
     for group, label, cfg, _ in sel:
         if cfg.name in done and not args.force:
             skipped += 1
+            continue
+
+        # Step 2d: do not spend serial Vivado time on a config confidently too big. The
+        # filter deliberately still runs configs just past the threshold -- see
+        # grid.should_synthesize; skipping every overshoot would mean nothing ever fails to
+        # fit, and the frontier's edge would be predicted rather than measured.
+        run_it, why = grid_mod.should_synthesize(cfg)
+        if not run_it and not args.no_filter:
+            filtered += 1
+            print(f'--- {label} ---')
+            print(f'    FILTERED: {why} -- recorded, not synthesized (--no-filter to force)')
+            save_result({
+                'name': cfg.name, 'label': label, 'status': 'filtered-too-big',
+                'nodes': cfg.model.nodes, 'n': cfg.model.n,
+                'z': cfg.model.thermometer_bits, 'encoding': cfg.model.thermometer,
+                'layers': list(cfg.model.layers), 'pipe': cfg.hw.pipe_slug,
+                'clock_ns': cfg.hw.clock_ns,
+                'predicted_board_luts': round(area_of_cfg(cfg).board_luts),
+                'predicted_extrapolated': is_extrapolated(
+                    cfg.model.n, cfg.model.thermometer_bits),
+                'error': why,
+            })
             continue
         if args.checkpoint:
             ckpt = (args.checkpoint if os.path.isabs(args.checkpoint)
@@ -294,10 +323,15 @@ def main() -> int:
         ran += 1
 
     print()
-    print(f'ran {ran}, skipped {skipped} already-done, {missing} untrained '
-          f'(--force to redo). results: {os.path.relpath(RESULTS, REPO)}')
+    print(f'ran {ran}, skipped {skipped} already-done, {filtered} filtered too-big, '
+          f'{missing} untrained (--force to redo). '
+          f'results: {os.path.relpath(RESULTS, REPO)}')
     if missing:
         print(f'{missing} configs have no checkpoint. That is step 2c (Kaggle training).')
+    if filtered:
+        print(f'{filtered} filtered on predicted area. They are RECORDED as '
+              f'`filtered-too-big`, not\nhidden -- the frontier ends somewhere and that is a '
+              f'result. --no-filter overrides.')
     return 0
 
 
