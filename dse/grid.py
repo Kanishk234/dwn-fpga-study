@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -116,6 +117,15 @@ GROUP_B = [
 ]
 
 
+# Training hyperparameters. NOT swept -- they do not change the hardware, and the paper's JSC
+# schedule is what Phase 1 reproduced to 73.84%. Exported so the notebook cannot drift from it.
+# Paper: BS=100, LR 1e-2(14) / 1e-3(14) / 1e-4(4) = 32 epochs, i.e. StepLR(14, 0.1).
+TRAINING = {
+    'batch_size': 100, 'epochs': 32, 'lr': 1e-2,
+    'lr_step': 14, 'lr_gamma': 0.1, 'seed': 20260802,
+}
+
+
 def _model(layers, n=BASE_N, z=BASE_Z, enc=BASE_ENC):
     return ModelConfig(n=n, thermometer_bits=z, thermometer=enc, layers=tuple(layers),
                        num_classes=NUM_CLASSES, tau=tau_for(sum(layers)))
@@ -169,9 +179,43 @@ def main() -> int:
     ap = argparse.ArgumentParser(description='The Phase 2 sweep grid.')
     ap.add_argument('--list', action='store_true', help='every config with predicted area')
     ap.add_argument('--group-a', action='store_true', help='only configs needing training')
+    ap.add_argument('--json', metavar='PATH', nargs='?', const='-',
+                    help='export the Group A training set as JSON (for the 2c notebook)')
     args = ap.parse_args()
 
     grid = build()
+
+    if args.json:
+        # One source of truth for the sweep. The training notebook consumes this rather than
+        # restating the grid, so the two cannot drift -- and a config trained under different
+        # parameters than the one synthesized here would be a silently wrong data point.
+        #
+        # Deduplicated by model slug: Group B shares a trained model with its ladder rung, and
+        # nothing else in the grid should ask for the same training run twice.
+        seen, out = set(), []
+        for group, label, cfg, needs in grid:
+            if not needs or cfg.model.slug in seen:
+                continue
+            seen.add(cfg.model.slug)
+            m = cfg.model
+            out.append({
+                'slug': m.slug, 'label': label, 'group': group,
+                'n': m.n, 'thermometer_bits': m.thermometer_bits,
+                'thermometer': m.thermometer, 'layers': list(m.layers),
+                'mapping': ['learnable'] * len(m.layers),
+                'num_classes': m.num_classes, 'tau': m.tau,
+                **TRAINING,
+            })
+        payload = {'training_set': out, 'count': len(out)}
+        text = json.dumps(payload, indent=2)
+        if args.json == '-':
+            print(text)
+        else:
+            with open(args.json, 'w') as f:
+                f.write(text)
+            print(f'wrote {args.json}: {len(out)} training runs')
+        return 0
+
     if args.group_a:
         grid = [g for g in grid if g[3]]
 
