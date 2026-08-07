@@ -27,6 +27,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import sys
 
@@ -59,20 +60,27 @@ TAU_ANCHORS = [(10, 1 / 0.7), (50, 1 / 0.3), (360, 1 / 0.1), (2400, 1 / 0.03)]
 
 
 def tau_for(nodes):
-    """Interpolate the paper's tau schedule in log-width.
+    """Interpolate the paper's tau schedule GEOMETRICALLY -- log(tau) linear in log(width).
 
-    Getting this wrong does not fail loudly -- it just trains a worse model, and the sweep
-    point then reports an accuracy that says more about tau than about the architecture.
+    The paper's tau is a power law in width, not a linear function of it. Its four JSC anchors
+    have log-log slopes of 0.526, 0.557 and 0.635 -- near-constant, i.e. tau ~ width**0.57.
+
+    Interpolating linearly in tau (as this did until 2026-08-08) overshoots every intermediate
+    width by 10-19%. That is worse than a uniform offset: 50 and 360 are exact anchors and would
+    get the paper's value while every other ladder rung ran hot, putting a kink in the
+    accuracy-vs-width curve that is an artifact of the schedule rather than of the architecture.
+
+    Getting this wrong does not fail loudly -- it just trains a worse model, and the sweep point
+    then reports an accuracy that says more about tau than about the architecture.
     """
     if nodes <= TAU_ANCHORS[0][0]:
         return TAU_ANCHORS[0][1]
     if nodes >= TAU_ANCHORS[-1][0]:
         return TAU_ANCHORS[-1][1]
-    import math
     for (w0, t0), (w1, t1) in zip(TAU_ANCHORS, TAU_ANCHORS[1:]):
         if w0 <= nodes <= w1:
             f = (math.log(nodes) - math.log(w0)) / (math.log(w1) - math.log(w0))
-            return t0 + f * (t1 - t0)
+            return math.exp(math.log(t0) + f * (math.log(t1) - math.log(t0)))
     return TAU_ANCHORS[-1][1]
 
 
