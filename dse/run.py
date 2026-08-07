@@ -45,6 +45,31 @@ import grid as grid_mod  # noqa: E402
 from area_model import is_extrapolated, predict  # noqa: E402
 
 RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
+ARTIFACTS = os.path.join(REPO, 'training', 'artifacts')
+
+# Phase 1's checkpoint predates the slug convention. Rather than rename a file every recorded
+# number refers to, map it. Step 2c's training notebook writes `<slug>_checkpoint.pt` directly,
+# so this table should gain no further entries.
+ALIASES = {
+    'n6_z200_distributive_w50': 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt',
+}
+
+
+def resolve_checkpoint(cfg):
+    """The checkpoint that trained THIS config's model, or None.
+
+    Why this exists: `run_config()` emits RTL from the checkpoint, and uses `cfg` only for
+    naming and area prediction. So passing one checkpoint to `--all` would emit the SAME design
+    37 times under 37 different config names -- every row wrong, and nothing failing to make it
+    obvious. Resolution is per config, by model slug, or it does not run.
+    """
+    slug = cfg.model.slug
+    for cand in (f'{slug}_checkpoint.pt', ALIASES.get(slug, '')):
+        if cand:
+            p = os.path.join(ARTIFACTS, cand)
+            if os.path.exists(p):
+                return p
+    return None
 
 
 def load_results():
@@ -212,15 +237,6 @@ def main() -> int:
         print(f'{len(done)} of {len(entries)} configs have results')
         return 0
 
-    if not args.checkpoint:
-        raise SystemExit('--checkpoint is required to run anything.\n'
-                         'Most grid configs have no trained checkpoint yet -- that is step 2c '
-                         '(Kaggle).\nUse --list to see what is done.')
-    ckpt = args.checkpoint if os.path.isabs(args.checkpoint) \
-        else os.path.join(REPO, args.checkpoint)
-    if not os.path.exists(ckpt):
-        raise SystemExit(f'checkpoint not found: {ckpt}')
-
     if args.config:
         sel = [e for e in entries if args.config in (e[2].name, e[1])]
         if not sel:
@@ -230,19 +246,42 @@ def main() -> int:
     else:
         raise SystemExit('pass --config <name> or --all (or --list).')
 
+    # An explicit --checkpoint applies to ONE config only. Allowing it with --all is the bug
+    # this guard exists for: it would emit one model's RTL under every config's name.
+    if args.checkpoint and len(sel) > 1:
+        raise SystemExit(
+            '--checkpoint applies to a single --config. With --all, each config resolves its '
+            'own\ncheckpoint by model slug -- otherwise one model would be built under every '
+            "config's\nname and every row would be wrong without anything failing.")
+
     vivado_bin = find_vivado_bin(args.vivado_bin)
-    ran = skipped = 0
+    ran = skipped = missing = 0
     for group, label, cfg, _ in sel:
         if cfg.name in done and not args.force:
             skipped += 1
+            continue
+        if args.checkpoint:
+            ckpt = (args.checkpoint if os.path.isabs(args.checkpoint)
+                    else os.path.join(REPO, args.checkpoint))
+            if not os.path.exists(ckpt):
+                raise SystemExit(f'checkpoint not found: {ckpt}')
+        else:
+            ckpt = resolve_checkpoint(cfg)
+        if not ckpt:
+            missing += 1
+            print(f'--- {label} ---')
+            print(f'    SKIP: no checkpoint for model {cfg.model.slug} '
+                  f'(expected {cfg.model.slug}_checkpoint.pt) -- train it in step 2c')
             continue
         run_config(cfg, ckpt, vivado_bin, label=label, impl=args.impl,
                    quiet=not args.verbose)
         ran += 1
 
     print()
-    print(f'ran {ran}, skipped {skipped} already-done '
+    print(f'ran {ran}, skipped {skipped} already-done, {missing} untrained '
           f'(--force to redo). results: {os.path.relpath(RESULTS, REPO)}')
+    if missing:
+        print(f'{missing} configs have no checkpoint. That is step 2c (Kaggle training).')
     return 0
 
 

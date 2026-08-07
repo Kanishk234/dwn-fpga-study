@@ -47,6 +47,19 @@ class ModelConfig:
     def nodes(self) -> int:
         return sum(self.layers)
 
+    @property
+    def slug(self) -> str:
+        """Identity of the TRAINED model -- everything a training run depends on, and nothing
+        else.
+
+        Deliberately excludes hardware params. Group B varies pipeline depth and clock on an
+        already-trained model, so all five Group B configs share one checkpoint; keying
+        checkpoints on `Config.name` would demand five identical training runs. This is the
+        filename stem a Phase 2 training run writes, and the key `dse/run.py` looks up.
+        """
+        w = 'x'.join(str(x) for x in self.layers)
+        return f'n{self.n}_z{self.thermometer_bits}_{self.thermometer}_w{w}'
+
     def __post_init__(self):
         # GroupSum zero-pads silently when this does not hold, and hardware and software then
         # disagree about group boundaries (docs/checkpoint-format.md §4). The emitter asserts
