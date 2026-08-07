@@ -285,6 +285,41 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-08 — The deliverable figures were broken at full grid size
+
+`report.py` and `plot.py` are what Study 1 actually hands over, and they had only ever run on
+1-3 configs. Exercised on a synthetic 37-config results file (`--results`, added for this and
+useful on its own for inspecting an alternate run). Four defects, none of which would have
+appeared before the sweep finished:
+
+**1. Two report branches had never rendered.** The 3-objective frontier and the "constrained
+clock NOT met" list both need data shapes that did not exist yet. Both work: the latency view
+adds 6 points over the 2-objective one, correctly separating Group B (`1x360 2-stage` at
+**17.20 ns** against 34.39 for the 4-stage), and the timing list catches a config at WNS -0.400.
+
+**2. The frontier legend covered a frontier point.** Placed lower-left, which is exactly the
+corner a minimize-area/maximize-accuracy frontier reaches into. At 3 configs it was empty; at 35
+it hid the cheapest point on the frontier. Legend moved OUTSIDE the axes.
+
+**3. The device-ceiling label collided with the largest config's label.** Top-right is where the
+biggest frontier point and its direct label land. Ceiling label moved to the bottom of the line,
+plus headroom so a top label is not clipped.
+
+**4. `area_split` was unreadable — and it was a FORM error, not a layout one.** It plotted all 35
+configs, so 35 rotated labels overlapped and `12.6x` printed five times on top of itself (the
+Group B configs have *identical* area to their base rung, by definition). The figure's job, per
+its own docstring, is the core/encoder split **across the size ladder**; the one-factor variants
+sit at two fixed widths and Group B adds nothing. Restricted to the ladder: six bars, readable,
+and the trend is legible (14.1x -> 12.2x as width grows).
+
+#### A silent mis-classification found while fixing #4
+
+`group_of()` guessed the grid group from the label — *"one-factor if the label contains a
+space"*. Every multi-layer config (`2x100`, `3x65`, `2x180`, `3x120`) has no space in its label,
+so all four were classified as **ladder** points: mis-coloured on the scatter and pulled into
+the ladder-only bar chart. Fixed by recording the actual grid group in the result and reading
+it, with the heuristic kept only as a fallback for older records.
+
 ### 2026-08-08 — Gate 1 at n=4 and n=2, without training either
 
 `scripts/make_test_checkpoint.py`. The n=2 packing fix above was verified only in Python, and
