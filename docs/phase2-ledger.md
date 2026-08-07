@@ -22,7 +22,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 |---|---|---|
 | **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ✅ baseline reproduces 108/1519/1619 through `dse/run.py` |
 | **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
-| **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ❌ |
+| **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | 🟡 `training/train_grid_kaggle.ipynb` written; needs a Kaggle run |
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ❌ |
 | **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ❌ |
@@ -272,6 +272,54 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-07 — 2c: the grid training notebook
+
+`training/train_grid_kaggle.ipynb`, plus `dse/grid.py --json` so the notebook consumes the grid
+rather than restating it. `dwn_jsc_kaggle.ipynb` is untouched — it reproduces the paper's `sm`
+and is the Gate 1 reference; it should not grow a loop.
+
+**Binarization is grouped, and the saving is large.** 32 configs need only **9** distinct
+`(encoding, z)` binarizations, because 16 of them — the entire width ladder, the `n` sweep and
+the layer-count sweep — share `(distributive, 200)` and differ only in model shape. Binarizing
+per config would repeat the most expensive setup step 16 times for byte-identical output.
+
+**z=800 does not fit, so there are two data paths.** Measured sizes for the binarized set
+(830k samples × 16 features × z, uint8):
+
+| z | 8 | 25 | 50 | 100 | 200 | 400 | **800** |
+|---|---|---|---|---|---|---|---|
+| GB | 0.11 | 0.33 | 0.66 | 1.33 | 2.66 | 5.31 | **10.62** |
+
+Above 6 GB the notebook binarizes **on the GPU per batch** instead of precomputing. The risk is
+obvious — two code paths producing different bits would make a large-z config incomparable to a
+small-z one, and the difference would look like a *result*. So the precompute path **asserts the
+GPU path reproduces it exactly** on 256 samples before training anything. It is a
+speed/memory tradeoff, never a correctness one.
+
+**Resumability is mandatory, not a nicety.** 32 runs will not fit one Kaggle session (9 h cap,
+30 h/week quota). The notebook skips any config whose checkpoint already exists, orders configs
+cheapest-first within a group so a session that dies late still banks the most models, and has
+`ONLY_N` to bound a session deliberately rather than by timeout.
+
+**Schema verified against Phase 1 rather than assumed.** The checkpoint `config` dict carries
+exactly the same 13 keys as the Phase 1 checkpoint — none missing, none extra — and includes all
+four the exporter actually reads (`layers`, `n`, `num_classes`, `thermometer_bits`). The
+`_testvectors.npz` carries `x_binarized` / `x_raw` / `pred`, which is what `gen_vectors.py`
+consumes, under the `<slug>_testvectors.npz` name it derives from the checkpoint path.
+
+**Filenames are the contract**: `<slug>_checkpoint.pt`, from `ModelConfig.slug`. `dse/run.py`
+resolves by exactly that, so renaming the downloads makes the sweep silently find nothing.
+
+**Deliberately NOT produced: a 166k test-set dump per config.** Gate 1b is Phase 1's exit
+condition and was done once for the reference config; Phase 2 takes area and timing from Vivado
+reports and accuracy from the checkpoint. Per-config dumps would be ~300 MB that nothing reads.
+If a specific sweep config is ever taken to hardware, `dump_testset_kaggle.ipynb` handles it.
+
+⚠️ **Not yet run.** Every cell parses and the schema is verified, but nothing here has executed —
+`torch_dwn` has no CPU path, so the notebook cannot be tested off a GPU. Expect the first Kaggle
+run to be the real test, and expect training time to be the open question: 32 configs × 32 epochs,
+with the larger rungs slower than `sm`.
 
 ### 2026-08-07 — 6d: results, frontier, plots — and three bugs it caught first
 
