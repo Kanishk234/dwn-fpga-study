@@ -28,13 +28,22 @@ from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
 TOP = 'dwn_basys3_top'
 XDC = 'constraints/basys3.xdc'
 
-SOURCES = [
-    'rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
-    'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v', 'rtl/gen/dwn_top.v',
+_PRIM = ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v']
+_HARNESS = [
     'harness/uart_tx.v', 'harness/uart_rx.v', 'harness/uart_loader.v',
     'harness/vector_store.v', 'harness/benchmark_fsm.v', 'harness/seg7.v',
     'harness/dwn_basys3_top.v',
 ]
+
+
+def sources(rtl_dir=None):
+    """Board sources, with generated RTL taken from `rtl_dir` (default: build/rtl)."""
+    g = (os.path.relpath(rtl_dir, REPO).replace('\\', '/') if rtl_dir else 'build/rtl')
+    return (_PRIM + [f'{g}/dwn_core.v', f'{g}/thermometer_encoder.v', f'{g}/dwn_top.v'] +
+            _HARNESS)
+
+
+SOURCES = sources()
 
 
 def main():
@@ -42,6 +51,8 @@ def main():
     ap.add_argument('--part', default=DEFAULT_PART)
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'bitstream'))
+    ap.add_argument('--rtl-dir', default=None,
+                    help='where to read generated RTL from (default: build/rtl)')
     # Overrides the BAUD parameter without editing RTL. Sweeping baud IS the I/O-wall
     # characterization (brief §14), so it has to be a command-line knob, not a source edit.
     # 100 MHz divides exactly at 1M(100), 2M(50), 4M(25), 5M(20), 10M(10).
@@ -50,14 +61,15 @@ def main():
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
+    src = sources(args.rtl_dir)
 
-    # dwn_basys3_top includes dwn_top_params.vh for the pipeline latency, so rtl/gen must
-    # already hold generated output. Fail here with a useful message rather than inside Vivado.
-    missing = [s for s in SOURCES + [XDC] if not os.path.exists(os.path.join(REPO, s))]
+    # dwn_basys3_top includes dwn_top_params.vh for the pipeline latency, so the generated RTL
+    # must already exist. Fail here with a useful message rather than inside Vivado.
+    missing = [s for s in src + [XDC] if not os.path.exists(os.path.join(REPO, s))]
     if missing:
         raise SystemExit('missing:\n  ' + '\n  '.join(missing) +
                          '\n\nGenerated RTL absent? Run scripts/run_gate1.py first -- it '
-                         'regenerates rtl/gen from the checkpoint AND proves it correct.')
+                         'regenerates it from the checkpoint AND proves it correct.')
 
     print(f'top    : {TOP}')
     print(f'part   : {args.part}')
@@ -72,7 +84,7 @@ def main():
               + ('' if div == int(div) else '  <- NOT an integer divisor, expect errors'))
         print()
 
-    ok, out_dir = run_one(vivado_bin, TOP, SOURCES, args.part, args.outdir,
+    ok, out_dir = run_one(vivado_bin, TOP, src, args.part, args.outdir,
                           impl=True, xdc=XDC, name='basys3', generics=generics)
     if not ok:
         return 1

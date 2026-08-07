@@ -39,13 +39,13 @@ SUITES = {
                            'tb/loader_tb.v']},
     'top': {'top': 'top_tb',
             'sources': ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
-                        'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v',
-                        'rtl/gen/dwn_top.v',
+                        'build/rtl/dwn_core.v', 'build/rtl/thermometer_encoder.v',
+                        'build/rtl/dwn_top.v',
                         'harness/uart_tx.v', 'harness/uart_rx.v', 'harness/uart_loader.v',
                         'harness/vector_store.v', 'harness/benchmark_fsm.v',
                         'harness/seg7.v', 'harness/dwn_basys3_top.v',
                         'tb/top_tb.v'],
-            'include': ['rtl/gen'],
+            'include': ['build/rtl'],
             'needs_vectors': True},
 }
 
@@ -79,8 +79,8 @@ def main():
         missing = [s for s in srcs if not os.path.exists(s)]
         if missing:
             raise SystemExit('missing sources:\n  ' + '\n  '.join(missing) +
-                             '\n(generated RTL? run exporter/emit_core.py and '
-                             'exporter/emit_encoder.py, or scripts/run_gate1.py)')
+                             '\n(generated RTL? run rtlgen/emit_core.py and '
+                             'rtlgen/emit_encoder.py, or scripts/run_gate1.py)')
 
         print(f'=== {name} ({top}) ===')
 

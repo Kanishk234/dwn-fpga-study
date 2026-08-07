@@ -7,7 +7,7 @@ come in granularity of 4 bits, and a 15-bit compare may well cost the same as a 
 So this emits a narrowed encoder into build/, synthesizes it out-of-context, and reports the
 real number against the 1519 the shipped encoder measures.
 
-DELIBERATELY OUTSIDE THE MAIN FLOW. Nothing here touches rtl/gen or the shipped emitter.
+DELIBERATELY OUTSIDE THE MAIN FLOW. Nothing here touches build/rtl or the shipped emitter.
 Narrowing is a SPEC change -- the golden model would have to narrow identically for Gate 1 to
 stay bit-exact -- so it does not get adopted on the strength of an estimate.
 

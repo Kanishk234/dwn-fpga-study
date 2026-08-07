@@ -149,6 +149,8 @@ class Config:
 # --------------------------------------------------------------------------------------------
 
 def _selftest() -> int:
+    # emit_core is here in rtlgen/; extract stays in exporter/ (brief §11 splits them).
+    sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
     sys.path.insert(0, os.path.join(REPO, 'exporter'))
     sys.path.insert(0, os.path.join(REPO, 'scripts'))
     import emit_core

@@ -26,7 +26,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_gate1 import REPO, python_exe, run  # noqa: E402
+from run_gate1 import DEFAULT_RTL_DIR, REPO, python_exe, run  # noqa: E402
 
 EXPECTED = {
     'gate1_core_vectors': 1504,
@@ -74,8 +74,10 @@ def main():
     out = capture([py, 'scripts/run_gate1.py'], 'Gate 1 (simulation)')
     vec = [int(m) for m in re.findall(r'vectors tested\s*:\s*(\d+)', out)]
     print()
+    # Imported from run_gate1 rather than spelled out, so this cannot drift from where the
+    # emitters actually write -- which is exactly how this check broke during the 2a restructure.
     check('emitted LUT nodes', len(re.findall(r'lut_node #', open(
-        os.path.join(REPO, 'rtl', 'gen', 'dwn_core.v')).read())), EXPECTED['nodes'])
+        os.path.join(DEFAULT_RTL_DIR, 'dwn_core.v')).read())), EXPECTED['nodes'])
     m = re.search(r'read-back check: (\d+)/\d+ comparators', out)
     check('encoder comparators', m.group(1) if m else '?', EXPECTED['comparators'])
     check('Gate 1 core vectors', vec[0] if len(vec) > 0 else '?',

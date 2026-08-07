@@ -32,17 +32,26 @@ VIVADO_CANDIDATES = [
     r'C:\Xilinx\Vivado\2025.2\bin',
 ]
 
-RTL_SOURCES = [
-    ('rtl', 'lut_node.v'),
-    ('rtl', 'popcount.v'),
-    ('rtl', 'argmax.v'),
-    ('rtl', 'pipe_reg.v'),
-    ('rtl', 'gen', 'dwn_core.v'),
-    ('rtl', 'gen', 'thermometer_encoder.v'),
-    ('rtl', 'gen', 'dwn_top.v'),
-    ('tb', 'dwn_core_tb.v'),
-    ('tb', 'dwn_top_tb.v'),
-]
+# Where the emitters write by default. Phase 2 overrides this per config (`Config.rtl_dir`),
+# which is what stops sweep point #7 from overwriting #8.
+DEFAULT_RTL_DIR = os.path.join(REPO, 'build', 'rtl')
+
+# Hand-written primitives -- identical for every config, so not under rtl_dir.
+PRIMITIVES = ['lut_node.v', 'popcount.v', 'argmax.v', 'pipe_reg.v']
+GENERATED = ['dwn_core.v', 'thermometer_encoder.v', 'dwn_top.v']
+TESTBENCH_SRC = ['dwn_core_tb.v', 'dwn_top_tb.v']
+
+
+def rtl_sources(rtl_dir=None):
+    """Full source list for Gate 1, with generated RTL taken from `rtl_dir`.
+
+    Importable so `dse/` can build a per-config source list without duplicating the split
+    between hand-written primitives and emitted files.
+    """
+    rtl_dir = rtl_dir or DEFAULT_RTL_DIR
+    return ([os.path.join(REPO, 'rtl', f) for f in PRIMITIVES] +
+            [os.path.join(rtl_dir, f) for f in GENERATED] +
+            [os.path.join(REPO, 'tb', f) for f in TESTBENCH_SRC])
 
 # Both levels run. The core testbench drives pre-binarized bits; the top testbench drives
 # quantized features through the encoder as well. Keeping them separate is what makes a
@@ -107,7 +116,7 @@ def xvlog(vivado_bin, work, sources, include=None):
     """Analyze all sources once. Returns (ok, output).
 
     `include` may be a list: the testbenches pull vector counts from build/gate1 and pipeline
-    latency from rtl/gen, so both directories have to be on the include path.
+    latency from the emitted RTL directory, so both have to be on the include path.
     """
     env = dict(os.environ)
     env['PATH'] = vivado_bin + os.pathsep + env.get('PATH', '')
@@ -144,6 +153,17 @@ def main():
     ap = argparse.ArgumentParser(description='Run Gate 1 (golden-model testbench).')
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT)
     ap.add_argument('--vivado-bin', default=None)
+    ap.add_argument('--rtl-dir', default=None,
+                    help='where to emit and read generated RTL (default: build/rtl)')
+    ap.add_argument('--work', default=None,
+                    help='simulation working directory (default: build/gate1)')
+    # Forwarded to the emitters. Gate 1 has to be runnable on a SWEPT pipeline depth, or a
+    # Group B point gets synthesized without ever being proven correct -- the golden model
+    # reads latency from the emitted params, so it follows automatically.
+    ap.add_argument('--pipe-lut', type=int, default=None)
+    ap.add_argument('--pipe-pop', type=int, default=None)
+    ap.add_argument('--pipe-out', type=int, default=None)
+    ap.add_argument('--pipe-enc', type=int, default=None)
     args = ap.parse_args()
 
     py = python_exe()
@@ -152,24 +172,37 @@ def main():
         else os.path.join(REPO, args.checkpoint)
     if not os.path.exists(ckpt):
         raise SystemExit(f'checkpoint not found: {ckpt}')
-    work = os.path.join(REPO, 'build', 'gate1')
+    rtl_dir = os.path.abspath(args.rtl_dir) if args.rtl_dir else DEFAULT_RTL_DIR
+    work = os.path.abspath(args.work) if args.work else os.path.join(REPO, 'build', 'gate1')
+
+    def pipe_flag(name, value):
+        return [] if value is None else [f'--{name}', str(value)]
+
+    core_flags = (pipe_flag('pipe-lut', args.pipe_lut) + pipe_flag('pipe-pop', args.pipe_pop) +
+                  pipe_flag('pipe-out', args.pipe_out))
+
+    if rtl_dir != DEFAULT_RTL_DIR or core_flags or args.pipe_enc is not None:
+        print(f'rtl dir : {os.path.relpath(rtl_dir, REPO)}')
+        print(f'work    : {os.path.relpath(work, REPO)}\n')
 
     print('=== 1/4  emit core RTL from checkpoint ===')
-    if run([py, os.path.join(REPO, 'exporter', 'emit_core.py'), ckpt]).returncode != 0:
+    if run([py, os.path.join(REPO, 'rtlgen', 'emit_core.py'), ckpt,
+            '--outdir', rtl_dir] + core_flags).returncode != 0:
         raise SystemExit('emit_core.py failed')
 
     print('\n=== 2/4  emit encoder + top RTL from checkpoint ===')
-    if run([py, os.path.join(REPO, 'exporter', 'emit_encoder.py'), ckpt]).returncode != 0:
+    if run([py, os.path.join(REPO, 'rtlgen', 'emit_encoder.py'), ckpt,
+            '--outdir', rtl_dir] + pipe_flag('pipe-enc', args.pipe_enc)).returncode != 0:
         raise SystemExit('emit_encoder.py failed')
 
     print('\n=== 3/4  generate test vectors ===')
-    if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt]).returncode != 0:
+    if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt,
+            '--outdir', work]).returncode != 0:
         raise SystemExit('gen_vectors.py failed')
 
     print('\n=== 4/4  simulate (xsim) ===')
-    sources = [os.path.join(REPO, *parts) for parts in RTL_SOURCES]
-    ok, output = xvlog(vivado_bin, work, sources,
-                       include=[work, os.path.join(REPO, 'rtl', 'gen')])
+    ok, output = xvlog(vivado_bin, work, rtl_sources(rtl_dir),
+                       include=[work, rtl_dir])
     if not ok:
         print(output.strip())
         print('\nGATE 1 FAILED (compile error)')

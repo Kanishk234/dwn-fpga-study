@@ -29,7 +29,7 @@ from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
                        parse_utilization, parse_wns, run_one)
 
 SOURCES = ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
-           'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v', 'rtl/gen/dwn_top.v']
+           'build/rtl/dwn_core.v', 'build/rtl/thermometer_encoder.v', 'build/rtl/dwn_top.v']
 
 # Each variant drops a different stage. ENC is never dropped: the encoder is 202 comparators
 # feeding 3200 wires, and merging it into the LUT layer is the one combination most likely to

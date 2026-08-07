@@ -32,14 +32,27 @@ from run_gate1 import REPO, find_vivado_bin, run, tool  # noqa: E402
 # paper's 827-3030 MHz figures are speed-graded parts and will not transfer.
 DEFAULT_PART = 'xc7a35tcpg236-1'
 
-TARGETS = [
-    ('dwn_core', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
-                  'rtl/gen/dwn_core.v']),
-    ('thermometer_encoder', ['rtl/gen/thermometer_encoder.v']),
-    ('dwn_top', ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v',
-                 'rtl/gen/dwn_core.v', 'rtl/gen/thermometer_encoder.v',
-                 'rtl/gen/dwn_top.v']),
-]
+_PRIM = ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v']
+
+
+def targets(rtl_dir=None):
+    """The three out-of-context synthesis targets, reading generated RTL from `rtl_dir`.
+
+    Core and encoder are reported SEPARATELY and always -- the encoder costs 14x the core, and
+    every "% of Basys 3" figure derived from the paper's core-only numbers understates the truth
+    (brief §6). Collapsing these into one number is the mistake this split exists to prevent.
+    """
+    g = (os.path.relpath(rtl_dir, REPO).replace('\\', '/') if rtl_dir else 'build/rtl')
+    return [
+        ('dwn_core', _PRIM + [f'{g}/dwn_core.v']),
+        ('thermometer_encoder', [f'{g}/thermometer_encoder.v']),
+        ('dwn_top', _PRIM + [f'{g}/dwn_core.v', f'{g}/thermometer_encoder.v',
+                             f'{g}/dwn_top.v']),
+    ]
+
+
+# Phase 1 compatibility: the default-config target list, as a module-level constant.
+TARGETS = targets()
 
 # Total LUTs on the part, for the "% of device" column that decides what fits.
 DEVICE_LUTS = 20800
@@ -130,6 +143,8 @@ def main():
     ap.add_argument('--part', default=DEFAULT_PART)
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'synth'))
+    ap.add_argument('--rtl-dir', default=None,
+                    help='where to read generated RTL from (default: build/rtl)')
     ap.add_argument('--impl', action='store_true',
                     help='place and route too. Slower, but post-synthesis timing uses '
                          'estimated routing and is systematically optimistic.')
@@ -144,7 +159,7 @@ def main():
     print()
 
     results = {}
-    for top, sources in TARGETS:
+    for top, sources in targets(args.rtl_dir):
         print(f'=== {top} (out-of-context, {stage}) ===')
         ok, out_dir = run_one(vivado_bin, top, sources, args.part, args.outdir,
                               impl=args.impl)

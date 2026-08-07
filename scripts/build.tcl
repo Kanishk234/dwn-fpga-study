@@ -58,8 +58,22 @@ if {$is_ooc} {
 # synth_design does not search anywhere for `include by default, and the harness pulls the
 # pipeline latency out of the GENERATED header rather than hardcoding it -- deliberately, so
 # benchmark_fsm and the emitted pipeline cannot disagree about depth.
-if {[file isdirectory rtl/gen]} {
-    lappend synth_args -include_dirs rtl/gen
+#
+# The include path is DERIVED from the sources rather than hardcoded or passed separately.
+# Phase 2 emits each config into its own directory, so a fixed path here would compile a swept
+# config against some other config's DWN_TOP_LATENCY -- silently, and the only symptom would be
+# a wrong number. Deriving it means the headers always come from the same place as the RTL that
+# was actually read.
+set inc_dirs {}
+foreach f $sources {
+    set d [file dirname $f]
+    if {$d ne "" && [file isdirectory $d] && [lsearch -exact $inc_dirs $d] < 0} {
+        lappend inc_dirs $d
+    }
+}
+if {[llength $inc_dirs]} {
+    puts "include_dirs: $inc_dirs"
+    lappend synth_args -include_dirs $inc_dirs
 }
 if {$generics ne "-" && $generics ne ""} {
     foreach g [split $generics "+"] {
