@@ -76,6 +76,12 @@ table.
 
 ### Things that do not travel with a clone
 
+- **Phase 2 sweep checkpoints** (`training/artifacts/sweeps/`) — gitignored, ~933 MB projected
+  across the grid, with the largest single file (~122 MB) over GitHub's 100 MB limit. Retrain
+  with `training/train_grid_kaggle.ipynb` (resumable) or copy the folder across. Phase 1's
+  artifacts stay in `training/artifacts/` and must NOT move — `verify_phase1.py` locates the
+  166k test set by hardcoded path, and if it moved, Gate 1b would silently *skip* rather than
+  fail.
 - **The full 166k test set** (`training/artifacts/*_testset_full.npz`) — gitignored, 9.4 MB.
   Copy it across, or regenerate with `training/dump_testset_kaggle.ipynb` (**inference only** —
   re-running the *training* notebook produces a different model and invalidates every number

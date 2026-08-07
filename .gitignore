@@ -10,6 +10,20 @@ __pycache__/
 # _testvectors.npz IS committed -- the RTL testbenches depend on it.
 training/artifacts/*_testset_full.npz
 
+# Phase 2 sweep checkpoints. NOT a preference -- a hard constraint:
+#   * projected ~933 MB across the 32-config grid
+#   * the largest single file (n6_z800_distributive_w360) is ~122 MB, above GitHub's 100 MB
+#     per-file limit, so the push would be REJECTED outright
+# The size is LearnableMapping: it stores a [nodes x n x input_bits] weight tensor, ~423 bytes
+# per node-per-z, and z is a sweep axis.
+#
+# These are NOT cheaply regenerable -- training needs a Kaggle GPU because torch_dwn has no CPU
+# path -- so treat them like the 166k test set: they do not travel with a clone, and a machine
+# that wants to re-run the sweep must re-train (training/train_grid_kaggle.ipynb) or copy them
+# across. Phase 1's artifacts stay committed and stay where they are; verify_phase1.py,
+# host.py, run_tb.py and run_gate1.py all locate those by hardcoded path.
+training/artifacts/sweeps/
+
 # Generated build products (Vivado reports, netlists, bitstreams).
 # Everything under build/ is regenerable by re-running the flow that made it.
 build/
