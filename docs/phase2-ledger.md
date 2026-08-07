@@ -285,6 +285,48 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-08 — Gate 1 at n=4 and n=2, without training either
+
+`scripts/make_test_checkpoint.py`. The n=2 packing fix above was verified only in Python, and
+CLAUDE.md is explicit that this does not count -- "confidence is not verification", with no
+exceptions for code Claude wrote. But no n!=6 checkpoint exists and training is on Kaggle.
+
+**Gate 1 does not need a TRAINED model.** It asks whether emitted RTL matches the golden
+software model, and both derive from the same checkpoint. Random tables exercise that machinery
+as well as learned ones -- better, since they hit address patterns a trained model might never
+produce. So: fabricate a checkpoint at any `n`, compute reference predictions with the golden
+model through the real quantize -> encode path, write the `_testvectors.npz`, run the normal
+flow. (What this cannot check is numpy-vs-PyTorch agreement -- but `n` dependence does not live
+there.)
+
+```
+n=4   core 1504/1504   top 1519/1519   PASS
+n=2   core 1504/1504   top 1516/1516   PASS
+```
+
+**First time n!=6 RTL has ever been simulated.** Four grid configs depend on it.
+
+#### The test was then verified to be capable of failing
+
+A passing test proves nothing until it can fail. Re-running n=2 with the packing bug restored:
+
+| packing | mismatches | verdict |
+|---|---|---|
+| old (`np.packbits`) | **958 / 1504** | FAIL |
+| fixed | 0 / 1504 | PASS |
+
+#### ⚠️ And that run exposed a limit of the emitter's self-check
+
+With the bug present, `emit_core.py`'s read-back check still reported **20/20 nodes match**.
+
+It parses its own emitted Verilog and compares the tables against `table_to_hex(...)` -- **the
+same function that had the bug**. The check is circular: it proves the file says what the emitter
+meant, never that the emitter meant the right thing. Only Gate 1, with an independent golden
+model, catches this class of error. `emit_core.py` already says as much in its closing message
+("proves the file SAYS what the checkpoint says... proves nothing about how the Verilog
+BEHAVES") -- that is now demonstrated rather than asserted, and it is the reason Gate 1 is
+non-negotiable rather than belt-and-braces.
+
 ### 2026-08-08 — Multi-layer verified, not assumed
 
 I had asserted Phase 1 proved multi-layer emission works. **It did not** — Phase 1 ran
