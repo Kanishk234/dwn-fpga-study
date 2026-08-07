@@ -66,6 +66,23 @@ def save_result(rec):
     os.replace(tmp, RESULTS)
 
 
+def accuracy_of(checkpoint):
+    """Software accuracy, read from the checkpoint that produced the RTL.
+
+    Without this a result row has area and timing but no accuracy, and a Pareto frontier over
+    (accuracy, area) cannot be built at all -- the entire point of Study 1. It is read from the
+    checkpoint rather than passed in, so it cannot be attached to the wrong config.
+
+    `final_acc` is the primary number: the saved weights are the final epoch, and there is no
+    best-checkpoint tracking, so `best_acc` describes weights that were never saved
+    (docs/phase1-ledger.md). Quote final, keep best for context.
+    """
+    import torch
+    ck = torch.load(checkpoint, map_location='cpu', weights_only=False)
+    r = ck.get('results', {})
+    return {'accuracy': r.get('final_acc'), 'accuracy_best_epoch': r.get('best_acc')}
+
+
 def run_config(cfg, checkpoint, vivado_bin, label='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
@@ -86,6 +103,7 @@ def run_config(cfg, checkpoint, vivado_bin, label='', impl=False, quiet=True):
         'predicted_extrapolated': is_extrapolated(cfg.model.n, cfg.model.thermometer_bits),
         'status': 'pending',
     }
+    rec.update(accuracy_of(checkpoint))
 
     print(f'--- {cfg.name} ---')
     print(f'    predicted {est.board_luts:.0f} LUTs '
