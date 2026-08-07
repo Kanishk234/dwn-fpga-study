@@ -273,6 +273,51 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-08 — ⚠️ `tau` interpolation was wrong; training restarted
+
+Caught before the sweep produced anything, but only just — the first full Kaggle run was already
+in flight and had to be abandoned.
+
+**The paper's tau is a power law in width, not a linear function of it.** Its four JSC anchors
+have log-log slopes of 0.526, 0.557 and 0.635 — near-constant, i.e. `tau ≈ width^0.57`.
+`tau_for()` interpolated linearly *in tau* between anchors, which overshoots everywhere between:
+
+| nodes | was | correct | error |
+|---|---|---|---|
+| 100 | 5.674 | 4.902 | +15.7% |
+| 200 | 8.015 | 7.210 | +11.2% |
+| 500 | 14.040 | 12.318 | +14.0% |
+| 600 | 16.283 | 13.829 | +17.7% |
+| 800 | 19.821 | 16.599 | **+19.4%** |
+| 1200 | 24.808 | 21.470 | +15.5% |
+
+**Why this was worse than a uniform offset.** 50 and 360 are exact anchors, so they got the
+paper's value while every other rung ran 10–19% hot. The error is a *wiggle* that returns to
+zero at the anchors — so the accuracy-vs-width curve would have carried a kink that is an
+artifact of the interpolation, in the one place it does the most damage: the size ladder is the
+spine of the frontier and the source of the headline number.
+
+This is exactly the failure this ledger already warned about — *"getting this wrong does not
+fail loudly; it just trains a worse model, and the sweep point then reports an accuracy that
+says more about tau than about the architecture."* Fixed by interpolating **log(tau) linearly in
+log(width)**; both anchors reproduce exactly (50 → 3.3333, 360 → 10.0).
+
+**Training restarted from zero**, in a fresh Kaggle notebook. Of what had been trained, only
+`1x360 z=8` was unaffected (360 is an anchor). Keeping it was not worth the risk: the notebook
+resumes on file existence, so a single stale checkpoint would silently survive with old tau and
+the resulting frontier would mix two schedules with nothing in the output revealing it. A fresh
+notebook also matters because the old one's saved versions have the wrong grid embedded — an
+old version re-run later would quietly reproduce the bug.
+
+**Second defect, found while restarting: resume did not survive a session.** The check was
+`os.path.exists('/kaggle/working/<slug>_checkpoint.pt')`, but `/kaggle/working` is fresh on every
+Kaggle *version* — it persists only within a live session. So a 32-config run that cannot fit
+one session would have restarted from zero each time, silently doing the work again. The
+notebook now copies any `*_checkpoint.pt` / `*_testvectors.npz` found under `/kaggle/input`
+forward into `/kaggle/working` at startup, so adding the previous run's output as an input
+dataset makes resume work across sessions and leaves the final Output panel holding the complete
+set rather than one session's slice.
+
 ### 2026-08-08 — Group B paths validated before the sweep needs them
 
 Every run to that point had `pipe=1111, clock_ns=10.0`. All five Group B configs ride on
