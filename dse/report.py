@@ -111,6 +111,8 @@ def fmt(v, spec=''):
 def main() -> int:
     ap = argparse.ArgumentParser(description='Sweep results, frontier, headline number.')
     ap.add_argument('--csv', help='write the full table to a CSV file')
+    ap.add_argument('--snapshot', action='store_true',
+                    help='copy the results into docs/ as committed evidence')
     args = ap.parse_args()
     rows = derive(load())
 
@@ -201,13 +203,30 @@ def main() -> int:
             print('  CAVEAT: post-synthesis, not post-route. Phase 1 measured 161.0 -> 147.1 MHz')
             print('          across that boundary. Re-run with --impl before quoting Fmax.')
 
-    if args.csv:
-        with open(args.csv, 'w', newline='') as f:
+    def write_csv(path):
+        with open(path, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction='ignore')
             w.writeheader()
             for r in rows:
                 w.writerow(r)
+
+    if args.csv:
+        write_csv(args.csv)
         print(f'\nwrote {args.csv}')
+
+    if args.snapshot:
+        # `build/dse/results.json` is gitignored with the rest of build/, but it is NOT a
+        # regenerable build product in any useful sense: reproducing it costs a Kaggle GPU
+        # session plus hours of Vivado. It is the RECORD OF WHAT WAS MEASURED, and it is the
+        # evidence that a config was actually built and tested rather than merely planned.
+        # A few hundred KB of JSON is cheap; the 933 MB of weights it describes is not, and is
+        # not needed to make the claim.
+        out = os.path.join(REPO, 'docs', 'results')
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, 'sweep-results.json'), 'w') as f:
+            json.dump({r['name']: r for r in rows}, f, indent=2, sort_keys=True)
+        write_csv(os.path.join(out, 'sweep-results.csv'))
+        print(f'\nsnapshot -> docs/results/  ({len(rows)} configs) -- commit these')
     return 0
 
 
