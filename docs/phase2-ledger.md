@@ -273,6 +273,27 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-07 — `--impl` validated through the runner
+
+The last untested path in the sweep pipeline. Everything so far had gone through
+synthesis-only, but `--impl` is what every real sweep point will use.
+
+```
+core 108 | encoder 1519 | top 1619 | Fmax 147.1 MHz | 379s
+```
+
+**147.1 MHz is Phase 1's post-route figure exactly** (against 161.0 post-synthesis), so the flag
+genuinely reaches Vivado through `run_one()` rather than being silently dropped. Area identical.
+The checkpoint resolved **by slug with no `--checkpoint` argument**, exercising the resolution
+path added in 6d. `report.py` correctly dropped its post-route caveat once `impl` was true, and
+latency was restated as **27.19 ns** (4 cycles at 147.1 MHz) instead of the optimistic 24.84 at
+post-synthesis Fmax — which is the point of computing latency in nanoseconds.
+
+**Cost: 379 s = 6.3 min per config**, against the 12 min budgeted. `MINUTES_PER_SYNTH` is
+deliberately **not** lowered: 6.3 min is the *smallest* config in the grid, `1x1200` has 24× the
+nodes, and place-and-route scales worse than linearly with occupancy. Planning the ladder from
+its cheapest rung would underestimate exactly the end that runs a session out of time.
+
 ### 2026-08-07 — The reduction, measured: 50 + 58 = 108 exactly
 
 `scripts/experiment_reduction.py` synthesizes the two halves of `dwn_core` separately, closing

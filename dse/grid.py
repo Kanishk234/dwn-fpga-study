@@ -42,8 +42,13 @@ BASE_N = 6
 BASE_Z = 200
 BASE_ENC = 'distributive'
 
-# Minutes of serial Vivado per synthesis point, from Phase 1: OOC synth+impl on this machine
-# ran ~4 min per target, and a sweep point synthesizes dwn_top once.
+# Minutes of serial Vivado per sweep point (all three targets, place-and-route).
+#
+# MEASURED 2026-08-07: the `sm` baseline took 379 s = 6.3 min through `dse/run.py --impl`.
+# The estimate is deliberately NOT lowered to that. 6.3 min is the SMALLEST config in the grid;
+# `1x1200` has 24x the nodes, and place-and-route scales worse than linearly as occupancy rises.
+# Planning with the cheapest point would underestimate the ladder's expensive end, which is
+# exactly where a session runs out of time.
 MINUTES_PER_SYNTH = 12
 
 # ---------------------------------------------------------------------------------------------
