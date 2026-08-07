@@ -46,6 +46,11 @@ from area_model import is_extrapolated, predict  # noqa: E402
 
 RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 ARTIFACTS = os.path.join(REPO, 'training', 'artifacts')
+# Sweep checkpoints live in a subfolder: 37 configs x 2 files would bury the handful of Phase 1
+# artifacts, and those must NOT move -- scripts/verify_phase1.py, host.py, run_tb.py and
+# run_gate1.py all locate them by a hardcoded path. Worst of all, verify_phase1.py finds the
+# 166k test set that way, and if it moved, Gate 1b would silently SKIP rather than fail.
+SWEEPS = os.path.join(ARTIFACTS, 'sweeps')
 
 # Phase 1's checkpoint predates the slug convention. Rather than rename a file every recorded
 # number refers to, map it. Step 2c's training notebook writes `<slug>_checkpoint.pt` directly,
@@ -62,13 +67,24 @@ def resolve_checkpoint(cfg):
     naming and area prediction. So passing one checkpoint to `--all` would emit the SAME design
     37 times under 37 different config names -- every row wrong, and nothing failing to make it
     obvious. Resolution is per config, by model slug, or it does not run.
+
+    ALIASES WIN over a same-slug sweep checkpoint, deliberately. `1x50` is both the grid's first
+    ladder rung AND Phase 1's reference config, so 2c retrains it and two files can exist for
+    one slug. The Phase 1 one is the checkpoint Gate 1b verified on silicon and the one every
+    recorded number (108/1519/1619, 73.84%) refers to, so it stays authoritative -- otherwise
+    the baseline row would silently become a different model than the rest of the project's
+    numbers describe. Delete the alias if you ever want the retrained one instead.
     """
     slug = cfg.model.slug
-    for cand in (f'{slug}_checkpoint.pt', ALIASES.get(slug, '')):
-        if cand:
-            p = os.path.join(ARTIFACTS, cand)
-            if os.path.exists(p):
-                return p
+    alias = ALIASES.get(slug)
+    if alias:
+        p = os.path.join(ARTIFACTS, alias)
+        if os.path.exists(p):
+            return p
+    for root in (SWEEPS, ARTIFACTS):
+        p = os.path.join(root, f'{slug}_checkpoint.pt')
+        if os.path.exists(p):
+            return p
     return None
 
 
