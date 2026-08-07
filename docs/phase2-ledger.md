@@ -23,7 +23,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ✅ baseline reproduces 108/1519/1619 through `dse/run.py` |
 | **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | 🟡 `training/train_grid_kaggle.ipynb` written; needs a Kaggle run |
-| **2d** | Filter on predicted area before spending any Vivado time | ❌ |
+| **2d** | Filter on predicted area before spending any Vivado time | ✅ `grid.should_synthesize()`, with a probe band so the wall is measured |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ❌ |
 | **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ❌ |
 | **2g** | Merge into one Pareto frontier + the headline number | 🟡 tooling done (`dse/report.py`, `dse/plot.py`); needs data |
@@ -272,6 +272,44 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-08 — 2d: the area filter, with a probe band that keeps the wall measurable
+
+**2d was never actually implemented.** `dse/grid.py` reported "will synthesize: 34" as a budget
+projection, but `dse/run.py` ignored it and would have synthesized every config with a
+checkpoint — including `1x1200` at a predicted 133% of the device, which is a long
+place-and-route to reach a foregone conclusion.
+
+Now `grid.should_synthesize(cfg) -> (run?, reason)`, used by both the budget summary and the
+runner, so the projection and the behaviour cannot disagree.
+
+**The filter deliberately does not skip everything that overshoots**, because that would defeat
+Study 1. If every predicted-overshoot config is skipped, **nothing ever fails to fit** — the
+headline stays "the largest we *tried*" forever, and the frontier's edge ends up predicted
+rather than measured. Brief §12 risk #2 is explicit that a config that cannot fit or route is a
+data point the study is meant to produce.
+
+So a config is synthesized when it is predicted to fit, **or** its estimate is extrapolated
+(n≠6 or z≠200 — an overshoot there is not evidence), **or** it lands inside a probe band up to
+**115% of the device**. That ceiling is tied to the model's own error, not chosen for
+roundness: 0.5% at the calibrated point but ~9.5% where it extrapolates, so anything within
+~10–15% of the threshold could genuinely go either way. Past that the prediction is outside its
+own error bars and skipping is safe.
+
+Current effect on the ladder:
+
+| Config | predicted | decision |
+|---|---|---|
+| `1x600` | 96.9% | **RUN** — probe, inside the error band |
+| `1x800` | 127.6% | skip |
+| `1x1200` | 132.9% | skip |
+
+So `1x600` is the config that settles the wall: either it fits and the model is pessimistic, or
+it fails and the edge is **measured**. Either is a result; skipping it produces neither.
+
+Filtered configs are **recorded as `filtered-too-big` with their reason**, appear in the report's
+table and its "not synthesized" section, and are never silently dropped. `--no-filter` forces
+them through.
 
 ### 2026-08-07 — Sweep results are committed evidence; the weights are not
 

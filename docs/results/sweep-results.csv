@@ -1,4 +1,6 @@
 name,label,status,nodes,n,z,encoding,layers,pipe,clock_ns,accuracy_pct,dwn_core_luts,thermometer_encoder_luts,dwn_top_luts,dwn_top_ff,device_pct,dwn_top_fmax_mhz,latency,predicted_board_luts,predicted_extrapolated,impl,seconds
+n6_z200_distributive_w1200_q16.12_p1111_c10,1x1200,filtered-too-big,1200,6,200,distributive,[1200],1111,10.0,,,,,,,,,27634,False,,
 n6_z200_distributive_w50_q16.12_p1111_c10,1x50,ok,50,6,200,distributive,[50],1111,10.0,73.8361,108,1519,1619,269,7.78,147.1,4,2066,False,True,379.1
+n6_z200_distributive_w800_q16.12_p1111_c10,1x800,filtered-too-big,800,6,200,distributive,[800],1111,10.0,,,,,,,,,26534,False,,
 n6_z8_distributive_w200_q16.12_p1111_c10,1x200 z=8,ok,200,6,8,distributive,[200],1111,10.0,72.6807,466,879,1345,349,6.47,118.8,4,1810,True,False,147.6
 n6_z8_distributive_w360_q16.12_p1111_c10,1x360 z=8,ok,360,6,8,distributive,[360],1111,10.0,73.1837,865,970,1835,524,8.82,120.0,4,2130,True,False,162.7

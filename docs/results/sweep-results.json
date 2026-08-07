@@ -1,4 +1,23 @@
 {
+  "n6_z200_distributive_w1200_q16.12_p1111_c10": {
+    "clock_ns": 10.0,
+    "encoding": "distributive",
+    "error": "predicted 133% of device, beyond the probe band",
+    "label": "1x1200",
+    "latency_ns": null,
+    "layers": [
+      1200
+    ],
+    "meets_timing": null,
+    "n": 6,
+    "name": "n6_z200_distributive_w1200_q16.12_p1111_c10",
+    "nodes": 1200,
+    "pipe": "1111",
+    "predicted_board_luts": 27634,
+    "predicted_extrapolated": false,
+    "status": "filtered-too-big",
+    "z": 200
+  },
   "n6_z200_distributive_w50_q16.12_p1111_c10": {
     "accuracy_best_epoch_pct": 74.0633,
     "accuracy_pct": 73.8361,
@@ -36,6 +55,25 @@
     "thermometer_encoder_fmax_mhz": 342.9,
     "thermometer_encoder_luts": 1519,
     "thermometer_encoder_wns": 7.084,
+    "z": 200
+  },
+  "n6_z200_distributive_w800_q16.12_p1111_c10": {
+    "clock_ns": 10.0,
+    "encoding": "distributive",
+    "error": "predicted 128% of device, beyond the probe band",
+    "label": "1x800",
+    "latency_ns": null,
+    "layers": [
+      800
+    ],
+    "meets_timing": null,
+    "n": 6,
+    "name": "n6_z200_distributive_w800_q16.12_p1111_c10",
+    "nodes": 800,
+    "pipe": "1111",
+    "predicted_board_luts": 26534,
+    "predicted_extrapolated": false,
+    "status": "filtered-too-big",
     "z": 200
   },
   "n6_z8_distributive_w200_q16.12_p1111_c10": {
