@@ -249,6 +249,30 @@ parameter → pipeline depth from config → path derivation in `run_gate1`/`run
 `build_bitstream` → *then* the moves (`rtlgen/`, `build/<config>/rtl/`, delete `rtl/gen/`).
 The moves come last because by then everything already takes paths as inputs.
 
+### 2026-08-07 — 2a step 2: both emitters take an output directory
+
+Smaller than planned, because **`emit_encoder.py` already had `--outdir`**. The real defect was
+an asymmetry: `emit_core.py` took `--out <file>` while `emit_encoder.py` took `--outdir <dir>`,
+so the two emitters wanted different kinds of argument for the same idea — awkward for a caller
+that hands both a single `Config.rtl_dir`. `emit_core.py` now takes `--outdir` too and derives
+`dwn_core.v` / `dwn_core_params.vh` from it. Defaults are unchanged (`rtl/gen`).
+
+`--out` is **gone, not deprecated**. Nothing called it — `run_gate1.py` passes no output flag at
+all and relies on the default — so keeping both spellings would have been dead weight.
+
+**Verified three ways, not one:**
+
+- emitted into a throwaway `build/configs/` directory: all five files land there, read-back
+  checks 50/50 nodes and 202/202 comparators
+- regenerated into the default location: **`git diff rtl/gen/` is empty** — byte-identical to
+  the committed Phase 1 output, which is the strongest available regression check while
+  `rtl/gen/` is still committed
+- custom directory vs default: all five files `cmp`-identical
+- **Gate 1 re-run: 1504/1504 core, 1518/1518 top, PASS.** Byte-identical output means it could
+  not have failed, but the emitter changed and the rule is that confidence is not verification.
+
+`rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
 ### 2026-08-04 — Encoder sharing: measured, and it is a dead end ❌
 
 `exporter/analyze_encoder_sharing.py`. Phase 1 left one encoder question genuinely open: Vivado
