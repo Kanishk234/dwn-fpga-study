@@ -26,7 +26,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ❌ |
 | **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ❌ |
-| **2g** | Merge into one Pareto frontier + the headline number | ❌ |
+| **2g** | Merge into one Pareto frontier + the headline number | 🟡 tooling done (`dse/report.py`, `dse/plot.py`); needs data |
 | — | *Optional:* n=2 congestion characterization, reported separately | ❌ |
 
 ### Prerequisites before any of the above
@@ -272,6 +272,61 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-07 — 6d: results, frontier, plots — and three bugs it caught first
+
+`dse/report.py` + `dse/plot.py`. Building the reporting layer **before** 2c was the right order:
+it found three defects that would each have been baked into 32 training runs' worth of results.
+
+**1. No accuracy in the result schema.** The record had area and timing but nothing to put on
+the other axis — a Pareto frontier over (accuracy, area) was literally impossible. Now read from
+the checkpoint, so it cannot be attached to the wrong config.
+
+**2. Accuracy units were wrong by 100×.** The checkpoint stores `final_acc` as a *fraction*
+(`0.7383614`), while every ledger, table and paper comparison here quotes *percent*. The first
+report printed **0.74%**. Converted once at the source, fields renamed `accuracy_pct` /
+`accuracy_best_epoch_pct` so no consumer has to guess, and an **assertion** rejects anything
+outside [0,1] — if a checkpoint ever stores percent it must fail loudly, not report 7384%.
+(`final_acc` is the primary number: the saved weights are the final epoch and `best_acc`
+describes weights that were never saved.)
+
+**3. ⚠️ A silent-corruption footgun in `dse/run.py`.** `run_config()` emits RTL from the
+checkpoint and uses `cfg` only for naming and area prediction. So `--all --checkpoint <one>`
+would have emitted **one model's RTL under all 37 config names** — every row wrong, nothing
+failing, and the frontier would have looked plausible. Fixed three ways:
+
+- `ModelConfig.slug` (`n6_z200_distributive_w50`) is the identity of the *trained model*:
+  n, z, encoding, widths, and deliberately **no hardware params**, so all five Group B configs
+  share one checkpoint instead of demanding five identical training runs.
+- `resolve_checkpoint()` looks up `<slug>_checkpoint.pt` per config; no match means skip with
+  the expected filename printed, never a wrong build.
+- `--checkpoint` with more than one config is now a **hard error**.
+
+This also fixes the naming contract for 2c: the notebook must write `<slug>_checkpoint.pt`.
+Phase 1's checkpoint predates the convention and is mapped by an alias rather than renaming a
+file every recorded number refers to.
+
+**Latency is a real axis now.** `pareto()` is generic over objectives, and latency is computed
+in **nanoseconds** (`cycles / Fmax`), not cycles. Cycles alone cannot rank pipeline variants:
+Phase 1 measured 4 stages at 161.0 MHz = **24.84 ns** against 3 stages at 122.9 MHz = 24.4 ns —
+a whole cycle apart and effectively the same real latency. Ranking on cycles would call that a
+clear win; ranking on time shows it is a wash. Cycles are still reported (brief §6). Under the
+2-objective view all five Group B configs tie; the 3-objective view is what separates them, so
+the report prints both and says which points only the second view reveals.
+
+**Plots** (`matplotlib==3.10.7` added to requirements — nothing else imports it, so a missing
+matplotlib degrades plotting only). Two figures into `build/dse/`: `frontier.png` (accuracy vs
+area, Pareto line, device ceiling) and `area_split.png` (core vs encoder stacked, per rung).
+
+Two constraints worth recording because they are not aesthetic:
+
+- **Scatter caps at three categorical colors** (all-pairs CVD separation). The grid's six groups
+  fold to ladder / one-factor / group-B — which is also the distinction that carries meaning.
+- **The device ceiling must not set the y-scale on `area_split`.** Anchoring the axis to 20,800
+  squashed a 1,619-LUT design into a sliver and made the 108-LUT core *invisible* — destroying
+  the one thing the figure exists to show. It now scales to the data and states the ceiling in
+  words when it is off-scale. Caught only by rendering the PNG and looking at it; the palette
+  validator checks color, never layout.
 
 ### 2026-08-07 — 2a step 6c: the sweep runner, and 2a is done
 

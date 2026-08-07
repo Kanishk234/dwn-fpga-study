@@ -28,3 +28,7 @@ numpy==2.3.4
 # Host-side serial link to the Basys 3 (scripts/host.py). Only needed to talk to the board;
 # the script's --selftest path verifies the protocol encoding without it.
 pyserial==3.5
+
+# Pareto plots for the Phase 2 DSE (dse/plot.py). Nothing else imports it -- the sweep runner
+# and the report tables work without it, so a missing matplotlib degrades plotting only.
+matplotlib==3.10.7
