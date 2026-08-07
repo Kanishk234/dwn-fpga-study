@@ -273,6 +273,36 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-08 — Group B paths validated before the sweep needs them
+
+Every run to that point had `pipe=1111, clock_ns=10.0`. All five Group B configs ride on
+`1x360`, which is not trained yet — so two paths had **never executed**: `cfg.hw.pipe_*` through
+`run_config` → `gate1()` → the emitters, and `cfg.hw.clock_ns` through `run_one(period=)` →
+`build.tcl`. Exercised deliberately against the baseline checkpoint, and both reproduce numbers
+Phase 1 already measured:
+
+| | measured | Phase 1 |
+|---|---|---|
+| 3-stage (`pipe_out=0`) latency | **3** cycles | 3 |
+| 3-stage Fmax | **122.9 MHz** | 122.9 MHz |
+| 3-stage WNS | **+1.864** | +1.864 |
+| 4-stage WNS at **8 ns** | **+1.790** | +3.790 at 10 ns |
+
+Gate 1 passed at latency 3 for the pipeline variant, so a swept depth is *verified*, not merely
+built.
+
+⚠️ **The clock check only works on WNS, and this nearly hid itself.** Fmax was **161.0 MHz at
+both 8 ns and 10 ns** — correctly, since it reflects the same critical path. A dropped `period`
+argument and a working one are **indistinguishable on Fmax**. Only WNS separates them, and
++3.790 → +1.790 is exactly the 2.000 ns of budget removed. Had the argument silently not reached
+Vivado, both clock configs would have reported the baseline's numbers and the clock axis would
+have read as *"target clock has no effect"* — a plausible-looking false finding.
+
+The two ad-hoc rows were removed from `build/dse/results.json` afterwards: that file should
+mirror `dse/grid.py`, or the record becomes ambiguous about what was actually swept. Group B on
+the baseline is a legitimate sweep point if wanted — but then it belongs in the grid, not in the
+results as a leftover.
+
 ### 2026-08-08 — 2d: the area filter, with a probe band that keeps the wall measurable
 
 **2d was never actually implemented.** `dse/grid.py` reported "will synthesize: 34" as a budget
