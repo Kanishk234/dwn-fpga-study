@@ -149,6 +149,88 @@ def run_xsim(vivado_bin, work, top, snapshot=None):
     return r.returncode == 0, r.stdout + r.stderr
 
 
+def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False):
+    """Run Gate 1 for ONE config. Returns (ok, info).
+
+    Importable so `dse/` can gate every sweep point on correctness without shelling out and
+    scraping stdout. That matters more here than convenience: Gate 1 is what makes an area
+    number mean anything (CLAUDE.md), so the sweep must be able to refuse to synthesize a
+    config whose RTL has not been proven to match the golden model.
+
+    `pipe` is a dict with any of lut/pop/out/enc; omitted keys keep the emitter defaults.
+    `info` carries the per-level vector counts so a caller can record them per config.
+    """
+    py = python_exe()
+    pipe = pipe or {}
+    rtl_dir = os.path.abspath(rtl_dir) if rtl_dir else DEFAULT_RTL_DIR
+    work = os.path.abspath(work) if work else os.path.join(REPO, 'build', 'gate1')
+
+    def say(*a):
+        if not quiet:
+            print(*a)
+
+    def pipe_flag(name, key):
+        v = pipe.get(key)
+        return [] if v is None else [f'--{name}', str(v)]
+
+    core_flags = (pipe_flag('pipe-lut', 'lut') + pipe_flag('pipe-pop', 'pop') +
+                  pipe_flag('pipe-out', 'out'))
+    info = {'rtl_dir': rtl_dir, 'work': work}
+
+    say('=== 1/4  emit core RTL from checkpoint ===')
+    if run([py, os.path.join(REPO, 'rtlgen', 'emit_core.py'), ckpt,
+            '--outdir', rtl_dir] + core_flags, capture=quiet).returncode != 0:
+        return False, dict(info, error='emit_core.py failed')
+
+    say('\n=== 2/4  emit encoder + top RTL from checkpoint ===')
+    if run([py, os.path.join(REPO, 'rtlgen', 'emit_encoder.py'), ckpt,
+            '--outdir', rtl_dir] + pipe_flag('pipe-enc', 'enc'),
+           capture=quiet).returncode != 0:
+        return False, dict(info, error='emit_encoder.py failed')
+
+    say('\n=== 3/4  generate test vectors ===')
+    if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt,
+            '--outdir', work], capture=quiet).returncode != 0:
+        return False, dict(info, error='gen_vectors.py failed')
+
+    # Latency is read from the emitted header, so a swept pipeline depth needs no special
+    # handling here -- the golden model follows the RTL automatically.
+    m = re.search(r'`define DWN_TOP_LATENCY (\d+)',
+                  open(os.path.join(rtl_dir, 'dwn_top_params.vh')).read())
+    info['latency'] = int(m.group(1)) if m else None
+
+    say('\n=== 4/4  simulate (xsim) ===')
+    ok, output = xvlog(vivado_bin, work, rtl_sources(rtl_dir), include=[work, rtl_dir])
+    if not ok:
+        say(output.strip())
+        say('\nGATE 1 FAILED (compile error)')
+        return False, dict(info, error='compile error')
+
+    failures = []
+    for top, label in TESTBENCHES:
+        say(f'\n--- {label} ---')
+        ok, output = run_xsim(vivado_bin, work, top)
+        # The testbench prints its own verdict. $finish always exits 0, so pass/fail has to be
+        # read out of the output rather than the exit code.
+        verdict = re.search(r'RESULT\s+:\s+(PASS|FAIL)', output)
+        n = re.search(r'vectors tested\s*:\s*(\d+)', output)
+        info[f'{top}_vectors'] = int(n.group(1)) if n else None
+        for line in output.splitlines():
+            if re.search(r'====|GATE 1|vectors tested|mismatches|RESULT|MISMATCH', line):
+                say(line)
+        if not ok or not verdict or verdict.group(1) != 'PASS':
+            failures.append(top)
+            if not ok:
+                say(output.strip()[-2000:])
+
+    say()
+    if failures:
+        say(f'GATE 1 FAILED ({", ".join(failures)})')
+        return False, dict(info, error=f'gate1 failed: {", ".join(failures)}')
+    say('GATE 1 PASSED (both levels)')
+    return True, info
+
+
 def main():
     ap = argparse.ArgumentParser(description='Run Gate 1 (golden-model testbench).')
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT)
@@ -166,69 +248,20 @@ def main():
     ap.add_argument('--pipe-enc', type=int, default=None)
     args = ap.parse_args()
 
-    py = python_exe()
     vivado_bin = find_vivado_bin(args.vivado_bin)
     ckpt = args.checkpoint if os.path.isabs(args.checkpoint) \
         else os.path.join(REPO, args.checkpoint)
     if not os.path.exists(ckpt):
         raise SystemExit(f'checkpoint not found: {ckpt}')
+
     rtl_dir = os.path.abspath(args.rtl_dir) if args.rtl_dir else DEFAULT_RTL_DIR
-    work = os.path.abspath(args.work) if args.work else os.path.join(REPO, 'build', 'gate1')
-
-    def pipe_flag(name, value):
-        return [] if value is None else [f'--{name}', str(value)]
-
-    core_flags = (pipe_flag('pipe-lut', args.pipe_lut) + pipe_flag('pipe-pop', args.pipe_pop) +
-                  pipe_flag('pipe-out', args.pipe_out))
-
-    if rtl_dir != DEFAULT_RTL_DIR or core_flags or args.pipe_enc is not None:
+    if rtl_dir != DEFAULT_RTL_DIR:
         print(f'rtl dir : {os.path.relpath(rtl_dir, REPO)}')
-        print(f'work    : {os.path.relpath(work, REPO)}\n')
 
-    print('=== 1/4  emit core RTL from checkpoint ===')
-    if run([py, os.path.join(REPO, 'rtlgen', 'emit_core.py'), ckpt,
-            '--outdir', rtl_dir] + core_flags).returncode != 0:
-        raise SystemExit('emit_core.py failed')
-
-    print('\n=== 2/4  emit encoder + top RTL from checkpoint ===')
-    if run([py, os.path.join(REPO, 'rtlgen', 'emit_encoder.py'), ckpt,
-            '--outdir', rtl_dir] + pipe_flag('pipe-enc', args.pipe_enc)).returncode != 0:
-        raise SystemExit('emit_encoder.py failed')
-
-    print('\n=== 3/4  generate test vectors ===')
-    if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt,
-            '--outdir', work]).returncode != 0:
-        raise SystemExit('gen_vectors.py failed')
-
-    print('\n=== 4/4  simulate (xsim) ===')
-    ok, output = xvlog(vivado_bin, work, rtl_sources(rtl_dir),
-                       include=[work, rtl_dir])
-    if not ok:
-        print(output.strip())
-        print('\nGATE 1 FAILED (compile error)')
-        return 1
-
-    failures = []
-    for top, label in TESTBENCHES:
-        print(f'\n--- {label} ---')
-        ok, output = run_xsim(vivado_bin, work, top)
-        # The testbench prints its own verdict. $finish always exits 0, so pass/fail has to be
-        # read out of the output rather than the exit code.
-        verdict = re.search(r'RESULT\s+:\s+(PASS|FAIL)', output)
-        for line in output.splitlines():
-            if re.search(r'====|GATE 1|vectors tested|mismatches|RESULT|MISMATCH', line):
-                print(line)
-        if not ok or not verdict or verdict.group(1) != 'PASS':
-            failures.append(top)
-            if not ok:
-                print(output.strip()[-2000:])
-
-    print()
-    if failures:
-        print(f'GATE 1 FAILED ({", ".join(failures)})')
-        return 1
-    print('GATE 1 PASSED (both levels)')
-    return 0
+    ok, _ = gate1(ckpt, vivado_bin, rtl_dir=args.rtl_dir, work=args.work,
+                  pipe={'lut': args.pipe_lut, 'pop': args.pipe_pop,
+                        'out': args.pipe_out, 'enc': args.pipe_enc})
+    return 0 if ok else 1
 
 
 if __name__ == '__main__':
