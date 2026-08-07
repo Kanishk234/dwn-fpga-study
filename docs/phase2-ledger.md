@@ -320,10 +320,25 @@ The standalone-synthesis open question stands.
 
 ### 2026-08-07 — 2a step 6b: the sweep grid
 
-`dse/grid.py` — 31 configs: 8 ladder rungs, 18 one-factor points on two mid-ladder rungs
+`dse/grid.py` — 37 configs: 8 ladder rungs, 24 one-factor points on two mid-ladder rungs
 (z, encoding, n, layer count), 5 Group B variants. Group B rides on the baseline rung's trained
 model — same `ModelConfig`, different `HardwareConfig`, no retraining. That is the payoff for
 splitting the two objects in step 1.
+
+**`z` gets six values (8, 25, 50, 100, 400, 800), spanning both regimes on purpose.** They
+answer different questions, and the area model predicts neither:
+
+| | z=8 | z=25 | z=50 | z=100 | z=400 | z=800 |
+|---|---|---|---|---|---|---|
+| `1×200` | 8.7% | 18.5% | 33.0% | 33.3% | 33.3% | 33.3% |
+| `1×360` | 10.2% | 20.1% | 34.5% | 58.2% | 58.2% | 58.2% |
+
+Below the binding point (`16z < slots × ratio`) encoder area is set by `z` directly. Above it
+the model says area is **flat**, because comparators become slot-limited. **Either outcome is a
+result:** if flat holds, accuracy above z≈50 is free, which would be the sweep's headline; if it
+does not, the 67% selection ratio is climbing toward 1.0 as collisions get rarer, and the area
+model needs a z-dependent ratio. The two rungs cross the transition at different z, which is
+what makes the flat region testable rather than assumed.
 
 - **The ladder brackets the wall rather than stopping short of it.** `1×500` fits at 80.0%,
   `1×600` fails at 95.6%, `1×800`/`1×1200` fail with the encoder saturated at 3,200. A config
@@ -332,10 +347,12 @@ splitting the two objects in step 1.
 - **`tau` interpolates the paper's schedule in log-width**, not copied from `sm`. Getting it
   wrong fails silently — it just trains a worse model, and the point then reports an accuracy
   that says more about tau than about the architecture.
-- **Budget: 28 synthesis points ≈ 5.6 h**, against dse-plan §6's 40–70 runs / 15–25 h on one
-  machine. **~3× headroom**, so there is room for a third OFAT rung, finer spacing near the wall
-  (500→600 is currently a single 100-node jump), or more `z` values — the last being where
-  measurement is most needed, per 2b above.
+- **Budget: 34 synthesis points ≈ 6.8 h**, against dse-plan §6's 40–70 runs / 15–25 h on one
+  machine, plus 32 training runs (Kaggle, step 2c). Still ~2× headroom. Remaining places to
+  spend it, in rough order of value: **finer ladder spacing near the wall** (500→600 is a single
+  100-node jump and the fit boundary is inside it), a **third OFAT rung**, and `n`×`z`
+  interaction points — since those are the two axes the area model cannot extrapolate over,
+  and it currently assumes they are independent.
 
 ### 2026-08-07 — 2a step 5: the restructure
 

@@ -87,7 +87,20 @@ OFAT_RUNGS = [200, 360]
 # The axes varied one at a time. `z` leads because it is the one the paper never sweeps, and
 # it sets the saturation ceiling on encoder area -- which dominates (phase2-ledger).
 OFAT = {
-    'z': [50, 100, 400],
+    # z spans roughly log-uniformly from far below the binding point to far above it, because
+    # the two regimes answer different questions and the model cannot predict either:
+    #
+    #   z small  (16z < slots x ratio)  encoder area is set by z -- fewer bits exist than the
+    #                                   mapping has slots, so z directly buys or costs LUTs.
+    #   z large  (16z > slots x ratio)  the model says area is FLAT, because comparators are
+    #                                   slot-limited. If that holds, accuracy above z~50 is
+    #                                   free -- which would be the sweep's headline result.
+    #                                   If it does not, the 67% selection ratio is rising
+    #                                   toward 1.0 as collisions get rarer, and the area model
+    #                                   needs a z-dependent ratio. EITHER OUTCOME IS A RESULT.
+    #
+    # 200 is the paper's value and is already the ladder rung, so it is not repeated here.
+    'z': [8, 25, 50, 100, 400, 800],
     'encoding': ['gaussian', 'linear'],
     'n': [4, 2],
     'layers': ['two', 'three'],
