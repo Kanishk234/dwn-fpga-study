@@ -20,7 +20,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 | Step | What | Status |
 |---|---|---|
-| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ❌ |
+| **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | 🟡 config object done; 4 hardcodings remain |
 | **2b** | Recalibrate the area model against measured encoder cost | ❌ |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ❌ |
 | **2d** | Filter on predicted area before spending any Vivado time | ❌ |
@@ -213,6 +213,41 @@ are interpreter-independent.
 
 **Verdict: this machine is safe to run Phase 2 sweeps on**, and its points are comparable to
 Phase 1's. Re-run afterwards as the single scripted command: **22/22 passed.**
+
+### 2026-08-07 — 2a step 1: the config object exists
+
+`rtlgen/config.py`. First piece of 2a, and the first thing to live in `rtlgen/` — which until
+now did not exist at all, despite being in the repo layout. **Nothing was moved and no existing
+file was touched**, so the flow provably cannot have changed and 22/22 still stands.
+
+`Config = ModelConfig (from the checkpoint) + HardwareConfig (chosen per run)`. The split is the
+point: the checkpoint knows only about *training*, while pipeline depth, clock, part and
+strategy are Group B axes swept on an already-trained model. Putting them in the checkpoint
+would be wrong — one checkpoint feeds several hardware configs. `with_hw()` produces a Group B
+variant without retraining, which is exactly what 2f needs.
+
+**Every default reproduces Phase 1 exactly**, so the object can be threaded through the flow
+without changing an emitted bit. `python rtlgen/config.py` asserts that against the constants
+still owned by other modules — `emit_core.PIPE_LUT/POP/OUT`, `extract.WORD_BITS/FRAC_BITS`,
+`run_synth.DEFAULT_PART`, and latency == 4. If someone edits one and not the other it fails
+loudly instead of desynchronizing silently. That guard is temporary by design: it deletes itself
+when those modules start reading the config instead of owning constants.
+
+Two details worth recording:
+
+- **`name` carries every swept axis** (`n6_z200_distributive_w50_q16.12_p1111_c10`). Two configs
+  differing in any axis must get different directories, or one silently overwrites the other's
+  build — the exact failure the object exists to prevent.
+- **`latency` is derived** (`pipe_enc+lut+pop+out`), never hand-copied. `benchmark_fsm` aligns
+  labels with it and a drifted value scores every sample against the wrong answer — a bug that
+  has already happened once in this project.
+- `ModelConfig.__post_init__` rejects `layers[-1] % num_classes != 0` up front, so a bad sweep
+  point dies before Vivado is launched rather than after GroupSum silently zero-pads.
+
+**Next**, in an order that keeps `verify_phase1.py` green after every step: output dir as a
+parameter → pipeline depth from config → path derivation in `run_gate1`/`run_synth`/
+`build_bitstream` → *then* the moves (`rtlgen/`, `build/<config>/rtl/`, delete `rtl/gen/`).
+The moves come last because by then everything already takes paths as inputs.
 
 ### 2026-08-04 — Encoder sharing: measured, and it is a dead end ❌
 
