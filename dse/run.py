@@ -144,7 +144,7 @@ def accuracy_of(checkpoint):
             'accuracy_best_epoch_pct': pct(r.get('best_acc'))}
 
 
-def run_config(cfg, checkpoint, vivado_bin, label='', impl=False, quiet=True):
+def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
     est = predict(list(cfg.model.layers), cfg.model.n, cfg.model.thermometer_bits,
@@ -152,6 +152,7 @@ def run_config(cfg, checkpoint, vivado_bin, label='', impl=False, quiet=True):
     rec = {
         'name': cfg.name,
         'label': label,
+        'group': group,
         'checkpoint': os.path.basename(checkpoint),
         'nodes': cfg.model.nodes,
         'n': cfg.model.n,
@@ -294,7 +295,8 @@ def main() -> int:
             print(f'--- {label} ---')
             print(f'    FILTERED: {why} -- recorded, not synthesized (--no-filter to force)')
             save_result({
-                'name': cfg.name, 'label': label, 'status': 'filtered-too-big',
+                'name': cfg.name, 'label': label, 'group': group,
+                'status': 'filtered-too-big',
                 'nodes': cfg.model.nodes, 'n': cfg.model.n,
                 'z': cfg.model.thermometer_bits, 'encoding': cfg.model.thermometer,
                 'layers': list(cfg.model.layers), 'pipe': cfg.hw.pipe_slug,
@@ -318,7 +320,7 @@ def main() -> int:
             print(f'    SKIP: no checkpoint for model {cfg.model.slug} '
                   f'(expected {cfg.model.slug}_checkpoint.pt) -- train it in step 2c')
             continue
-        run_config(cfg, ckpt, vivado_bin, label=label, impl=args.impl,
+        run_config(cfg, ckpt, vivado_bin, label=label, group=group, impl=args.impl,
                    quiet=not args.verbose)
         ran += 1
 
