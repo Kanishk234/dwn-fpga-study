@@ -273,6 +273,32 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-08 — ⚠️ LUT tables were emitted shifted at n=2
+
+Found by auditing what the grid uses that has never executed: **every config emitted or simulated
+so far is n=6**, but the grid has four at n=4 and n=2.
+
+`table_to_hex()` built the table with `np.packbits`, which pads a partial byte on the **low**
+side under `bitorder='big'`. A table shorter than 8 entries therefore came out shifted left. At
+n=2 the 4-entry table `[1,1,1,0]` emitted as `0x70` instead of `0x07` — **every entry at the
+wrong address**. n≥3 was unaffected, because `2**n` is then a whole number of bytes, which is
+exactly why n=6 never showed it.
+
+**This was more dangerous than an ordinary off-by-one.** `docs/dse-plan.md` §3 *predicts* n=2
+fails — routing congestion — and states that such a failure "is a data point marking the
+frontier's edge, not a mistake to prevent." A Gate 1 failure caused by this bug would have
+looked exactly like the expected architectural finding, and could plausibly have been written up
+as one. Gate 1 would have caught the mismatch; nothing would have caught the misattribution.
+
+Rewritten as an explicit loop over addresses. n ≤ 6, so at most 64 iterations per node —
+clarity beats vectorization, and the previous version's cleverness is what hid the bug.
+
+**Verified both directions:**
+- correct at n = 1, 2, 3, 4, 5, 6 (bit `addr` == `row[addr]`)
+- **byte-identical to the old packing for every n ≥ 3** across 200 random tables each, so Phase
+  1's RTL and every recorded number are unchanged — confirmed by re-running **Gate 1: 1504/1504
+  core, 1518/1518 top, PASS**
+
 ### 2026-08-08 — ⚠️ `tau` interpolation was wrong; training restarted
 
 Caught before the sweep produced anything, but only just — the first full Kaggle run was already
