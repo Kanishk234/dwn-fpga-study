@@ -273,6 +273,68 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-07 — First sweep points, and the area model recalibrated on them
+
+The two z=8 configs from the first Kaggle session, measured end to end. **The first sweep data
+that is not the Phase 1 baseline**, and it immediately corrected the area model twice.
+
+| Config | acc | core | encoder | top | % dev | Fmax |
+|---|---|---|---|---|---|---|
+| `1x50` (z=200) | 73.84% | 108 | 1519 | 1619 | 7.78% | 147.1 MHz |
+| `1x200 z=8` | 72.68% | 466 | 879 | 1345 | 6.47% | 118.8 MHz |
+| `1x360 z=8` | 73.18% | 865 | 970 | 1835 | 8.82% | 120.0 MHz |
+
+**The frontier had to discriminate for the first time, and did.** `1x360 z=8` costs *more* area
+than `1x50` for *less* accuracy, so it is dominated and correctly dropped; `1x200 z=8` is
+cheaper and less accurate, so it stays. Two points on the frontier, one off it.
+
+**Early signal on the z hypothesis, with a caveat.** Dropping z from 200 to 8 — a 25× cut in
+input bits — costs only **~0.7 pp** (73.84% → 73.18%, though at 360 nodes rather than 50).
+That is the direction the sweep was built to test. It is not yet a result: the widths differ, so
+the clean comparison is `1x200 z=8` against `1x200 z=200`, which needs the z=200 ladder.
+
+#### Correction 1: the core term was underestimating by up to 19%
+
+A flat **1.0 LUT per final-layer bit**, fitted on `sm` alone, does not survive wider layers:
+
+| Config | group | reduction | LUT per final bit |
+|---|---|---|---|
+| `1x50` | 10 | 58 | 1.00 |
+| `1x200 z=8` | 40 | 266 | 1.27 |
+| `1x360 z=8` | 72 | 505 | 1.36 |
+
+Cost per bit **rises with group width**, and it has to — a popcount is an adder tree, and wider
+groups mean more levels carrying wider adders. A constant was always going to be wrong away from
+the width it was fitted at; one data point simply could not show it. Now
+`1.0 + 0.13·log2(group/10)`, with the argmax term scaling on score width as `(K-1)·W/2`.
+
+**Core error: +14% / +19% → under 0.5% on all three configs.**
+
+This mattered: `1x600` sits at 96.9% of the device against a 90% fit threshold, so a 20% core
+underestimate is the difference between synthesizing a config and skipping it. No fit decision
+actually flipped — the wall stays between `1x500` (81.1%) and `1x600` — but the margins are now
+honest.
+
+#### Correction 2: encoder saturation is `used_features × z`, not `features × z`
+
+`1x200 z=8` predicted 963 encoder LUTs and measured **879** — about 117 comparators where the
+model assumed all 128 (16 features × 8 bits). `1x360 z=8` *did* reach ~128.
+
+So the ceiling is not the number of thermometer bits that exist, it is the number belonging to
+features the mapping actually **reads**. Phase 1 already recorded `d2_b2_mmdt` as never read at
+all; about 1.4 unused features at 200 nodes accounts for the 11 missing comparators exactly.
+
+**Not fixed, deliberately** — which features get used is learned, so it cannot be predicted
+without training the config. This is the same limit `is_extrapolated()` already marks, and it is
+why `dse/grid.py` never filters on an extrapolated estimate.
+
+#### The self-test now separates the two kinds of wrong
+
+It validates all three measured configs, and **fails only on calibrated-point error** (n=6,
+z=200), reporting extrapolated error separately. Holding an extrapolation to the same bar would
+force either a dishonest fit or a tolerance loose enough to hide a real regression where the
+model claims to be accurate. Currently: **0.5% calibrated, 9.5% extrapolated.**
+
 ### 2026-08-07 — `--impl` validated through the runner
 
 The last untested path in the sweep pipeline. Everything so far had gone through
