@@ -273,6 +273,41 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-07 — 2a step 3: pipeline depth is an argument, not a constant
+
+`emit_core.py` takes `--pipe-lut/--pipe-pop/--pipe-out`, `emit_encoder.py` takes `--pipe-enc`.
+`PIPE_LUT/POP/OUT` survive as the *defaults*, which is what keeps `rtlgen/config.py`'s drift
+guard working. Group B can now sweep depth without a code edit (dse-plan §1).
+
+**A real trap found while doing it.** `dwn_top` instantiates the core as
+`dwn_core #(.PIPE_LUT(PIPE_LUT), ...)`, so **dwn_top's own parameter defaults override the
+core's**. Emitting `PIPE_OUT=0` from `emit_core.py` while `emit_encoder.py` still defaulted
+`dwn_top`'s to 1 would have silently put the register back — the design would have looked
+3-stage in one file and 4-stage in another, and only a timing number would have hinted at it.
+
+Fixed by making the depth flow through **one** source rather than two: `emit_core.py` now writes
+`DWN_CORE_PIPE_LUT/POP/OUT` into `dwn_core_params.vh` alongside the latency, and
+`emit_encoder.py` reads them. The core's stages are deliberately **not** flags on
+`emit_encoder.py` — two ways to specify one value is how they end up contradicting. This extends
+the mechanism that file already existed for ("so the two emitters cannot disagree about pipeline
+depth").
+
+**Verified:**
+
+- defaults: only `dwn_core_params.vh` changes, gaining exactly the 3 new defines at 1/1/1.
+  `dwn_core.v`, `dwn_top.v`, `thermometer_encoder.v`, `dwn_top_params.vh` all byte-identical
+  to committed Phase 1.
+- non-default (`--pipe-out 0`): propagates to `dwn_core.v` **and** `dwn_top.v`, both reading
+  `PIPE_OUT = 0`, with `DWN_CORE_LATENCY 2` / `DWN_TOP_LATENCY 3`. That 3 matches the Phase 1
+  pipeline sweep's recorded 3-stage / no-OUT-reg point.
+- **Gate 1: 1504/1504 core, 1518/1518 top, PASS.** Config self-test still green.
+
+⚠️ **The non-default depth is verified textually, not behaviourally.** `run_gate1.py` still
+hardcodes `rtl/gen`, so a 3-stage variant cannot be simulated yet — the golden model would need
+to be told the new latency. **That is step 4**, and until it lands, no non-default pipeline
+config should be trusted past "the text looks right". Do not synthesize a swept depth and quote
+its Fmax before Gate 1 can run on it.
+
 ### 2026-08-04 — Encoder sharing: measured, and it is a dead end ❌
 
 `exporter/analyze_encoder_sharing.py`. Phase 1 left one encoder question genuinely open: Vivado
