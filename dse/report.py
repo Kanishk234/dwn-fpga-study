@@ -33,7 +33,7 @@ RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 # Columns worth dumping. Core and encoder stay separate on purpose.
 CSV_FIELDS = [
     'name', 'label', 'status', 'nodes', 'n', 'z', 'encoding', 'layers', 'pipe', 'clock_ns',
-    'accuracy', 'dwn_core_luts', 'thermometer_encoder_luts', 'dwn_top_luts', 'dwn_top_ff',
+    'accuracy_pct', 'dwn_core_luts', 'thermometer_encoder_luts', 'dwn_top_luts', 'dwn_top_ff',
     'device_pct', 'dwn_top_fmax_mhz', 'latency', 'predicted_board_luts',
     'predicted_extrapolated', 'impl', 'seconds',
 ]
@@ -47,7 +47,7 @@ def load():
         return list(json.load(f).values())
 
 
-def pareto(rows, x='dwn_top_luts', y='accuracy'):
+def pareto(rows, x='dwn_top_luts', y='accuracy_pct'):
     """Configs not beaten on BOTH axes: minimize x (area), maximize y (accuracy).
 
     Ties matter here. Two configs with identical area and accuracy are both on the frontier --
@@ -81,7 +81,7 @@ def main() -> int:
     print('-' * 82)
     for r in sorted(rows, key=lambda r: (r['status'] != 'ok', r.get('nodes') or 0)):
         print(f'{r["label"][:24]:24s} '
-              f'{fmt(r.get("accuracy"), ".2f"):>6} '
+              f'{fmt(r.get("accuracy_pct"), ".2f"):>6} '
               f'{fmt(r.get("dwn_core_luts")):>6} '
               f'{fmt(r.get("thermometer_encoder_luts")):>7} '
               f'{fmt(r.get("dwn_top_luts")):>7} '
@@ -112,7 +112,7 @@ def main() -> int:
     print(f'{"config":24s} {"acc%":>6} {"top LUTs":>9} {"%dev":>6} {"Fmax":>7}')
     print('-' * 58)
     for r in front:
-        print(f'{r["label"][:24]:24s} {fmt(r.get("accuracy"), ".2f"):>6} '
+        print(f'{r["label"][:24]:24s} {fmt(r.get("accuracy_pct"), ".2f"):>6} '
               f'{r["dwn_top_luts"]:>9} {fmt(r.get("device_pct"), ".2f"):>6} '
               f'{fmt(r.get("dwn_top_fmax_mhz"), ".1f"):>7}')
     print('-' * 58)
@@ -124,7 +124,7 @@ def main() -> int:
         print()
         print('HEADLINE (brief sec.10): largest DWN measured to fit an XC7A35T')
         print(f'  config   : {big["label"]}  ({big["nodes"]} nodes, n={big["n"]}, z={big["z"]})')
-        print(f'  accuracy : {fmt(big.get("accuracy"), ".2f")}%')
+        print(f'  accuracy : {fmt(big.get("accuracy_pct"), ".2f")}%')
         print(f'  area     : {big["dwn_top_luts"]} LUTs '
               f'({fmt(big.get("device_pct"), ".2f")}% of device) = '
               f'core {big.get("dwn_core_luts")} + encoder '

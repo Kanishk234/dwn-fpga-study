@@ -76,11 +76,26 @@ def accuracy_of(checkpoint):
     `final_acc` is the primary number: the saved weights are the final epoch, and there is no
     best-checkpoint tracking, so `best_acc` describes weights that were never saved
     (docs/phase1-ledger.md). Quote final, keep best for context.
+
+    UNITS: the checkpoint stores a FRACTION (0.7383614...), while every ledger, report and table
+    in this project quotes PERCENT (73.84%). Converted here, once, and the field is named
+    `_pct` so a consumer cannot be unsure. The assertion is deliberate -- if a future checkpoint
+    ever stores percent, this must fail loudly rather than silently report 7384%.
     """
     import torch
     ck = torch.load(checkpoint, map_location='cpu', weights_only=False)
     r = ck.get('results', {})
-    return {'accuracy': r.get('final_acc'), 'accuracy_best_epoch': r.get('best_acc')}
+
+    def pct(v):
+        if v is None:
+            return None
+        assert 0.0 <= v <= 1.0, (
+            f'accuracy {v} is not a fraction -- the checkpoint format changed, and converting '
+            f'it here would be wrong. Fix this function, do not relax the assertion.')
+        return round(100.0 * v, 4)
+
+    return {'accuracy_pct': pct(r.get('final_acc')),
+            'accuracy_best_epoch_pct': pct(r.get('best_acc'))}
 
 
 def run_config(cfg, checkpoint, vivado_bin, label='', impl=False, quiet=True):
