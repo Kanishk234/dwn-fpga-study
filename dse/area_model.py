@@ -27,6 +27,7 @@ Usage:
 """
 
 import argparse
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -51,13 +52,35 @@ LUT_PER_COMPARATOR_BIT = 1519 / (202 * 16)
 # synthesizes to exactly 50 LUTs out-of-context. See scripts/experiment_reduction.py.
 LUT_PER_NODE = 1.0
 
-# Reduction: a W-bit popcount is an adder tree costing ~1 LUT per input bit, plus a small
-# comparison tree over num_classes scores. 50 x 1.0 + 5 x 1.6 = 58.
-# MEASURED 2026-08-07: `reduction_only` synthesizes to exactly 58 LUTs, and 50 + 58 = 108 is
-# exactly what dwn_core measures -- so this term is no longer inferred by subtraction, and the
-# two halves share no logic in the real core.
-LUT_PER_FINAL_BIT = 1.0
-LUT_PER_CLASS_ARGMAX = 1.6
+# Reduction = per-class popcounts + an argmax tree.
+#
+# RECALIBRATED 2026-08-07 on three measured configs, after a flat 1.0 LUT/bit (fitted on `sm`
+# alone) underestimated the core by 14-19% at wider layers:
+#
+#   config       group  reduction  LUT per final bit
+#   1x50            10         58               1.00
+#   1x200 z=8       40        266               1.27
+#   1x360 z=8       72        505               1.36
+#
+# Cost per bit RISES with group width, and it has to: a popcount is an adder tree, and wider
+# groups mean more tree levels carrying wider adders. A constant was always going to be wrong
+# away from the width it was fitted at -- it just could not be seen from one data point.
+LUT_PER_FINAL_BIT_BASE = 1.0          # at the reference group width below
+REDUCTION_GROUP_REF = 10              # `sm`'s group size, where the base was measured
+LUT_PER_FINAL_BIT_SLOPE = 0.13        # per doubling of group width
+
+
+def popcount_lut_per_bit(group):
+    """LUTs per final-layer bit for a `group`-wide popcount."""
+    if group <= 0:
+        return LUT_PER_FINAL_BIT_BASE
+    return (LUT_PER_FINAL_BIT_BASE
+            + LUT_PER_FINAL_BIT_SLOPE * math.log2(group / REDUCTION_GROUP_REF))
+
+
+def argmax_luts(num_classes, score_w):
+    """A K-way argmax is K-1 comparisons of score_w bits, at about W/2 LUTs each."""
+    return (num_classes - 1) * score_w / 2.0
 
 # Everything outside dwn_top on the board: UART, loader, vector store, benchmark FSM, seg7,
 # I/O buffers. Measured as 2058 - 1619. Roughly constant -- it does not scale with the model.
@@ -138,7 +161,12 @@ def predict(layers, n, z, num_classes, word_bits=16, features=JSC_FEATURES):
     comparators = predict_comparators(layers, n, z, features)
 
     encoder = comparators * word_bits * LUT_PER_COMPARATOR_BIT
-    reduction = layers[-1] * LUT_PER_FINAL_BIT + num_classes * LUT_PER_CLASS_ARGMAX
+
+    # The reduction depends on GROUP width, not just on how many final bits there are: the same
+    # 360 bits cost more as 5 groups of 72 than as 36 groups of 10.
+    group = layers[-1] // num_classes
+    score_w = max(1, math.ceil(math.log2(group + 1)))
+    reduction = layers[-1] * popcount_lut_per_bit(group) + argmax_luts(num_classes, score_w)
     core = nodes * LUT_PER_NODE + reduction
 
     return AreaEstimate(nodes=nodes, comparators=comparators,
@@ -150,37 +178,64 @@ def predict(layers, n, z, num_classes, word_bits=16, features=JSC_FEATURES):
 # actually synthesized has no business filtering the other forty.
 # ---------------------------------------------------------------------------------------------
 
-MEASURED = {'comparators': 202, 'core': 108, 'encoder': 1519, 'top': 1619, 'board': 2058}
+# Every config measured out-of-context so far. A model fitted on one point cannot be checked
+# against that same point in any meaningful way -- these are what stop it drifting.
+MEASURED = [
+    # (label, layers, n, z, core, encoder, top)
+    ('1x50',      [50],  6, 200, 108, 1519, 1619),
+    ('1x200 z=8', [200], 6,   8, 466,  879, 1345),
+    ('1x360 z=8', [360], 6,   8, 865,  970, 1835),
+]
+MEASURED_BOARD = 2058     # 1x50 with the harness and I/O buffers
 
 
 def _selftest() -> int:
-    est = predict(layers=[50], n=6, z=200, num_classes=5)
-    rows = [
-        ('comparators', est.comparators, MEASURED['comparators']),
-        ('core LUTs', est.core_luts, MEASURED['core']),
-        ('encoder LUTs', est.encoder_luts, MEASURED['encoder']),
-        ('dwn_top LUTs', est.top_luts, MEASURED['top']),
-        ('board LUTs', est.board_luts, MEASURED['board']),
-    ]
-    print(f'{"quantity":16s} {"predicted":>10} {"measured":>10} {"error":>9}')
-    print('-' * 49)
-    worst = 0.0
-    for label, got, want in rows:
-        err = 100.0 * (got - want) / want
-        worst = max(worst, abs(err))
-        print(f'{label:16s} {got:>10.0f} {want:>10} {err:>+8.1f}%')
-    print('-' * 49)
-    print(f'worst error: {worst:.1f}%')
+    print(f'{"config":12s} {"quantity":10s} {"predicted":>10} {"measured":>10} {"error":>9}')
+    print('-' * 55)
+    worst, worst_extrap = 0.0, 0.0
+    for label, layers, n, z, core, enc, top in MEASURED:
+        est = predict(layers=layers, n=n, z=z, num_classes=5)
+        ex = is_extrapolated(n, z)
+        for q, got, want in (('core', est.core_luts, core),
+                             ('encoder', est.encoder_luts, enc),
+                             ('dwn_top', est.top_luts, top)):
+            err = 100.0 * (got - want) / want
+            # Only calibrated-point error is a FAILURE. Holding an extrapolation to the same
+            # bar would either force a dishonest fit or a tolerance loose enough to hide real
+            # regressions at the point the model actually claims to be accurate.
+            if ex:
+                worst_extrap = max(worst_extrap, abs(err))
+            else:
+                worst = max(worst, abs(err))
+            print(f'{label:12s} {q:10s} {got:>10.0f} {want:>10} {err:>+8.1f}%'
+                  f'{"  ~" if ex else ""}')
+    est50 = predict(layers=[50], n=6, z=200, num_classes=5)
+    err = 100.0 * (est50.board_luts - MEASURED_BOARD) / MEASURED_BOARD
+    worst = max(worst, abs(err))
+    print(f'{"1x50":12s} {"board":10s} {est50.board_luts:>10.0f} '
+          f'{MEASURED_BOARD:>10} {err:>+8.1f}%')
+    print('-' * 55)
+    print(f'worst error at the calibrated point (n=6, z=200): {worst:.1f}%')
+    if worst_extrap:
+        print(f'worst error on ~ extrapolated configs           : {worst_extrap:.1f}%')
     print()
     # 5% is not a hard theoretical bound -- it is the tolerance at which this model is useful
     # for FILTERING, which only has to separate "fits" from "does not fit by 4x".
     if worst > 5.0:
         print('FAIL: the model does not reproduce the config we actually measured.')
         return 1
-    print('OK: reproduces Phase 1 within tolerance.')
+    print('OK: reproduces the calibrated point within tolerance.')
+    if worst_extrap > 5.0:
+        print()
+        print(f'~ Extrapolated configs are off by up to {worst_extrap:.1f}%, which is EXPECTED and')
+        print('  is why dse/grid.py never filters on an extrapolated estimate. The known cause:')
+        print('  encoder area saturates at `used_features x z`, not `features x z` -- the')
+        print('  learnable mapping ignores some features entirely (Phase 1: d2_b2_mmdt was')
+        print('  never read), so fewer bits exist to select than the ceiling assumes.')
     print()
+    ratio = MEASURED[0][6 - 1] / MEASURED[0][4]     # encoder / core at 1x50
     print(f'encoder/core ratio: predicted {predict([50], 6, 200, 5).encoder_ratio:.2f}x, '
-          f'measured {MEASURED["encoder"]/MEASURED["core"]:.2f}x')
+          f'measured {ratio:.2f}x')
     # No non-ASCII in printed output: the Windows console is cp1252 and mangles it.
     print(f'the superseded dse-plan sec.5 assumption was 3.2x -- filtering with it would have '
           f'underestimated\nthe encoder by {1519/(3.2*108):.1f}x at this config alone.')
