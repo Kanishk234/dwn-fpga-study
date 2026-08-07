@@ -3,8 +3,10 @@
 **Live document. Update it as work lands, not afterwards.** Status table first, then the
 chronological log, then the numbers worth quoting, then what is still open.
 
-**Status: not started.** Phase 1 is complete (`docs/phase1-report.md`); Gate 1b passed
-166,000/166,000 on hardware.
+**Status (2026-08-08): tooling complete, waiting on training.** 2a, 2b and 2d are done and
+validated against Phase 1's measured numbers; 2g's tooling is built. **2c is the critical path**
+— 32 Kaggle training runs, restarted after the tau fix below. 2e/2f/2g are then one command
+each. Phase 1 remains complete (`docs/phase1-report.md`), Gate 1b 166,000/166,000 on hardware.
 
 Phase 2's question (brief §10, Study 1): *what is the accuracy/area/latency Pareto frontier for
 DWN on a fixed small FPGA?* Its deliverables are Pareto plots plus one headline number — **the
@@ -71,9 +73,15 @@ point synthesizes code that has not passed Gate 1 — forty points would mean fo
 re-verifications.
 
 **What is already done:** `extract.py` and both emitters handle arbitrary layer counts, widths,
-`n` and class counts — Phase 1 proved it by running the same code over a `[300,100]` two-layer
-model and a `[50]` single-layer one. What is missing is plumbing: where they write, and what
-tells them what to build.
+`n` and class counts. What is missing is plumbing: where they write, and what tells them what to
+build.
+
+⚠️ **Correction (2026-08-08).** This previously read *"Phase 1 proved it by running the same code
+over a `[300,100]` two-layer model"*. Phase 1 ran only `extract.py` over that model — it never
+emitted or simulated multi-layer RTL, so the claim overstated the evidence. Multi-layer is now
+genuinely verified (Gate 1, 400 nodes, 2 layers — see the log), and `n < 3` turned out to be
+**broken** until 2026-08-08, which the original claim would have discouraged anyone from
+checking.
 
 ## What Phase 1 already answered
 
@@ -97,8 +105,12 @@ thresholds the mapping selects*, which grows with node count and **saturates at
 | Config | Nodes | Comparators | Encoder LUTs | Core LUTs | vs 20,800 |
 |---|---|---|---|---|---|
 | `sm` 1×50 | 50 | **202 (measured)** | **1,519** | 108 | **7.8%** ✅ |
-| `md` 1×360 | 360 | ≤ 2,160 | ≲ 16,000 | ~720 | ~80% — tight |
+| `md` 1×360 | 360 | ≤ 2,160 | ≲ 16,000 | ~720 | ~~~80% — tight~~ **see below** |
 | `lg` 1×2400 | 2400 | → ~3,200 | ~24,000 | ~4,972 | **>100%** ❌ |
+
+⚠️ **`md`'s row is superseded.** It used the *upper bound* of 2,160 comparators (every wiring
+slot distinct). With the measured 67% selection ratio it is **1,454 comparators and 58.2% of the
+device** — a comfortable rung, not a marginal one. See the 2b log entry.
 
 **`lg` almost certainly does not fit on a Basys 3, and the network is not the reason.** Its 4,972
 core LUTs are 24% of the part, exactly as brief §6 predicts. Plan the size ladder against the
@@ -272,6 +284,34 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-08 — Multi-layer verified, not assumed
+
+I had asserted Phase 1 proved multi-layer emission works. **It did not** — Phase 1 ran
+`extract.py` over the `[300,100]` model but never emitted or simulated RTL from it. Four grid
+configs are multi-layer (`2x100`, `3x65`, `2x180`, `3x120`), so that was an untested path
+carrying real sweep points.
+
+Tested with a Phase 1 checkpoint that was already on disk (`t8_distributive_300-100`, n=6, z=8):
+
+```
+400 lut_node instances, 128-bit input, 2 layer(s)
+core latency 4 cycles (= PIPE_LUT x 2 + POP + OUT), top latency 5
+read-back: 400/400 nodes, 124/124 comparators
+GATE 1: core 1504/1504, top 1519/1519, PASS
+```
+
+Three things this covers that nothing else did:
+
+- **`emit_core` looping over layers** — layer 0 into layer 1 into the popcounts.
+- **Latency arithmetic at L>1.** Core latency is 4, not 3, because `PIPE_LUT` applies per layer.
+  Had the golden model and the RTL disagreed here, every vector would have been compared against
+  the wrong cycle — the exact bug class that has bitten this project twice.
+- **Both wiring representations.** This checkpoint declares one mapping for two layers, so layer
+  0 resolves through `.mapping.weights` (checkpoint-format §3a, argmax) while layer 1 falls to
+  the fixed-wiring path (§3b), which had never been through Gate 1. `extract.py` warns that
+  `__dummy_mapping` "has the same shape and dtype as a real mapping", so keying off shape yields
+  "a valid-looking, totally wrong export" — silent, like the n=2 packing bug.
 
 ### 2026-08-08 — ⚠️ LUT tables were emitted shifted at n=2
 
