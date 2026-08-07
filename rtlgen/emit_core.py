@@ -46,8 +46,25 @@ PIPE_OUT = 1
 
 
 def table_to_hex(row):
-    """bool[2**n] -> integer where bit `addr` is row[addr]."""
-    return int(np.packbits(row[::-1], bitorder='big').tobytes().hex(), 16)
+    """bool[2**n] -> integer where bit `addr` is row[addr].
+
+    Written as an explicit loop, not np.packbits. packbits pads a partial byte on the LOW side
+    with bitorder='big', so a table shorter than 8 entries came out shifted left: at n=2 the
+    4-entry table [1,1,1,0] emitted as 0x70 instead of 0x07 and every entry sat at the wrong
+    address. n>=3 was unaffected (2**n is then a whole number of bytes), which is why n=6 never
+    showed it.
+
+    That mattered more than a normal off-by-one: dse-plan §3 PREDICTS n=2 fails (routing
+    congestion) and says such a failure is a data point marking the frontier's edge. A Gate 1
+    failure caused by this bug would have looked exactly like that expected finding.
+
+    n <= 6, so at most 64 iterations per node -- clarity beats vectorization here.
+    """
+    v = 0
+    for addr, bit in enumerate(row):
+        if bit:
+            v |= 1 << addr
+    return v
 
 
 def emit(ck, out_path, pipe_lut=PIPE_LUT, pipe_pop=PIPE_POP, pipe_out=PIPE_OUT):
