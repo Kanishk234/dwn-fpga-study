@@ -67,9 +67,27 @@ def table_to_hex(row):
     return v
 
 
+MAX_N = 6      # one LUT6 holds 2**6 entries; see the assertion in emit()
+
+
 def emit(ck, out_path, pipe_lut=PIPE_LUT, pipe_pop=PIPE_POP, pipe_out=PIPE_OUT):
     cfg = ck['config']
     n, num_classes = cfg['n'], cfg['num_classes']
+
+    # n > 6 would emit a 2**n-bit table into a 64-bit parameter and Verilog would TRUNCATE it
+    # silently -- the design elaborates, synthesizes, and computes garbage for every address
+    # above 63. Same shape as the n=2 packing bug: valid-looking, totally wrong.
+    #
+    # Supporting n=8 is not just a width change. Three things move together (this format string,
+    # `parameter [63:0] TABLE` in rtl/lut_node.v, and verify_emitted's `64'h([0-9A-F]{16})`
+    # regex) -- but more importantly one node would no longer BE one LUT6, so the architectural
+    # premise brief §4 rests on, and every area estimate built on it, stops holding. That is a
+    # different study, not a wider parameter.
+    assert n <= MAX_N, (
+        f'n={n} exceeds MAX_N={MAX_N}. A {2**n}-entry table does not fit the 64-bit TABLE '
+        f'parameter and would be silently truncated. Supporting it requires changing '
+        f'rtl/lut_node.v, this emitter and verify_emitted together -- and reworking the area '
+        f'model, since one node would no longer map to one LUT6 (brief §4).')
     sd = ck['state_dict']
 
     layers = []

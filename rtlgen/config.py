@@ -69,6 +69,14 @@ class ModelConfig:
                 f'final layer {self.layers[-1]} is not divisible by num_classes '
                 f'{self.num_classes} -- GroupSum would zero-pad and hardware would disagree '
                 f'with software about group boundaries')
+        # Caught here as well as in the emitter, because this fires when the GRID is built --
+        # before a Kaggle training run is spent on a config that could never be emitted.
+        # rtlgen/emit_core.py explains what supporting n>6 would actually take.
+        if self.n > 6:
+            raise ValueError(
+                f'n={self.n} > 6: a {2**self.n}-entry table does not fit lut_node\'s 64-bit '
+                f'TABLE parameter and would be silently truncated. One node would also stop '
+                f'being one LUT6, which every area estimate assumes (brief §4).')
 
 
 @dataclass(frozen=True)
