@@ -285,6 +285,20 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-09 — Filtered configs keep their accuracy
+
+`run.py` bailed out of a too-big config before reading its checkpoint, so `1x800` and `1x1200`
+would have produced rows of dashes despite being trained. `1x800` reached **76.20%**.
+
+Now a filtered config still records accuracy when a checkpoint exists. The point is not
+tidiness: **"76.20% is achievable but needs 128% of the device" is the frontier-edge datapoint
+Study 1 owes** (brief §12 risk #2). Without it the accuracy-vs-width curve stops at `1x600` and
+says nothing about the wall it is supposed to locate -- while the measurement sat unread in a
+file we had already spent GPU time producing.
+
+Costs nothing: it only reads a checkpoint for configs that were being skipped anyway, and it
+degrades to "no checkpoint, so no accuracy -- area prediction only" when the file is absent.
+
 ### 2026-08-08 — The deliverable figures were broken at full grid size
 
 `report.py` and `plot.py` are what Study 1 actually hands over, and they had only ever run on
