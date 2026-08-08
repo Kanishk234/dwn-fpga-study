@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from run_gate1 import find_vivado_bin, gate1  # noqa: E402
+from run_gate1 import find_vivado_bin, gate1, python_exe, run  # noqa: E402
 from run_synth import (DEVICE_LUTS, parse_utilization, parse_wns,  # noqa: E402
                        run_one, targets)
 import grid as grid_mod  # noqa: E402
@@ -174,6 +174,45 @@ def checkpoint_matches(cfg, checkpoint):
     return True, 'matches'
 
 
+def measure_only(cfg, checkpoint, vivado_bin):
+    """Emit + synthesize a config WITHOUT Gate 1 and without place-and-route.
+
+    Used only for configs the filter has already rejected, to replace a predicted area with a
+    measured one. Two deliberate omissions:
+
+    - **No place-and-route.** It is what fails on an over-budget design, and it is the expensive
+      step. Synthesis alone reports utilization past 100%, which is the number wanted here.
+    - **No Gate 1.** This config is not entering the frontier as a working design -- it is
+      entering it as the point where the part runs out. Area is the claim; correctness is not,
+      and running a simulation on something that will never be built would be time spent to
+      support a claim nobody is making.
+
+    That second point is the reason this is a separate function rather than a flag on
+    `run_config`: Gate 1 gates synthesis THERE, and it must keep doing so. A config that is
+    going to be reported as `ok` has to be verified. This one is reported as too big.
+    """
+    py = python_exe()
+    out = {}
+    for script, extra in (('emit_core.py', []), ('emit_encoder.py', [])):
+        r = run([py, os.path.join(REPO, 'rtlgen', script), checkpoint,
+                 '--outdir', cfg.rtl_dir] + extra, capture=True)
+        if r.returncode != 0:
+            return {'measure_error': f'{script} failed'}
+
+    for top, sources in targets(cfg.rtl_dir):
+        ok, out_dir = run_one(vivado_bin, top, sources, cfg.hw.part,
+                              os.path.join(cfg.build_dir, 'synth'),
+                              period=cfg.hw.clock_ns, impl=False)
+        if not ok:
+            out['measure_error'] = f'{top} failed to synthesize'
+            return out
+        util = parse_utilization(os.path.join(out_dir, 'utilization.rpt'))
+        out[f'{top}_luts'] = util.get('luts')
+        out[f'{top}_ff'] = util.get('ff')
+    out['measured_synth_only'] = True
+    return out
+
+
 def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
@@ -281,6 +320,9 @@ def main() -> int:
     ap.add_argument('--force', action='store_true', help='re-run configs already in results')
     ap.add_argument('--no-filter', action='store_true',
                     help='synthesize even configs confidently predicted not to fit')
+    ap.add_argument('--measure-filtered', action='store_true',
+                    help='synthesize (not implement) too-big configs so their area is '
+                         'MEASURED rather than predicted -- the frontier edge')
     ap.add_argument('--list', action='store_true', help='show grid vs results and exit')
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--verbose', action='store_true', help='stream Gate 1 output')
@@ -356,10 +398,37 @@ def main() -> int:
                 rec['checkpoint'] = os.path.basename(ck)
             print(f'--- {label} ---')
             acc = rec.get('accuracy_pct')
-            print(f'    FILTERED: {why} -- recorded, not synthesized (--no-filter to force)'
+            print(f'    FILTERED: {why} -- not implemented (--no-filter to force)'
                   + (f'\n    accuracy {acc:.2f}% (trained, kept as a frontier-edge point)'
                      if acc is not None else
                      '\n    no checkpoint, so no accuracy -- area prediction only'))
+
+            # --measure-filtered: SYNTHESIZE (never implement) a too-big config, so its area is
+            # measured rather than predicted.
+            #
+            # Vivado's synthesis reports utilization even past 100% of the part -- verified at
+            # 139.28% on a 2400-node design. Only place-and-route actually fails on an
+            # over-budget design, and that is the step this skips. So the cost is one synthesis,
+            # not a full implementation, and the payoff is that the frontier's edge stops being
+            # a prediction: "measured 28,970 LUTs at 76.20%, does not fit" is the claim brief
+            # §12 risk #2 asks for, where "predicted 128% of device" is not.
+            #
+            # Off by default because a normal sweep should not spend Vivado time on configs it
+            # has already decided against.
+            if args.measure_filtered and ck:
+                ok, why_ck = checkpoint_matches(cfg, ck)
+                if not ok:
+                    print(f'    skipping measurement: {why_ck}')
+                else:
+                    print('    --measure-filtered: synthesizing for MEASURED area '
+                          '(no place-and-route)')
+                    m = measure_only(cfg, ck, vivado_bin)
+                    rec.update(m)
+                    if m.get('dwn_top_luts'):
+                        rec['device_pct'] = round(100.0 * m['dwn_top_luts'] / DEVICE_LUTS, 2)
+                        print(f'    measured core {m.get("dwn_core_luts")} | '
+                              f'encoder {m.get("thermometer_encoder_luts")} | '
+                              f'top {m["dwn_top_luts"]} ({rec["device_pct"]}% of device)')
             save_result(rec)
             continue
         if args.checkpoint:
