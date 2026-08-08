@@ -285,6 +285,48 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-09 — The frontier edge can be MEASURED, not predicted
+
+Tested whether Vivado reports utilization for a design that exceeds the part, by synthesizing a
+2400-node / 3177-comparator config (the paper's `lg` scale). **It does** -- no error, full report
+at **139.28% of the device**:
+
+| module | LUTs | % dev | WNS |
+|---|---|---|---|
+| `dwn_core` | 5,663 | 27.23% | |
+| `thermometer_encoder` | 23,307 | 112.05% | +7.013 |
+| `dwn_top` | **28,970** | **139.28%** | **-0.948 (fails 100 MHz, 91.3 MHz)** |
+
+Only *place-and-route* fails on an over-budget design; synthesis alone gives measured area. So
+`--measure-filtered` now synthesizes (never implements) a too-big config, turning
+*"predicted 128% of device"* into *"measured N LUTs at 76.20% accuracy, does not fit"* -- which
+is the claim brief §12 risk #2 asks for. Off by default; a normal sweep should not spend Vivado
+time on configs it has already rejected.
+
+`measure_only()` is deliberately a separate function rather than a flag on `run_config`, because
+it skips **Gate 1**. That is safe only because such a config enters the frontier as *the point
+where the part runs out*, not as a working design -- area is the claim, correctness is not.
+`run_config` must keep gating synthesis on Gate 1, and mixing the two paths would erode that.
+Verified against `1x50`: returns exactly 108 / 1519 / 1619.
+
+#### The area model extrapolates well -- 7x past its calibration range
+
+The same run is an independent check on `dse/area_model.py`, which was fitted on 50-360 nodes:
+
+| | predicted | measured | error |
+|---|---|---|---|
+| encoder | 24,063 | 23,307 | **+3.2%** |
+| dwn_top | 30,624 | 28,970 | **+5.7%** |
+| core | 6,561 | 5,663 | +15.8% |
+
+The core term now *over*-estimates at extreme width (the `0.13·log2(group/10)` slope, fitted on
+groups of 10-72, extrapolates hard at group=480). **That is the safe direction for a filter** --
+it errs toward skipping a config that might have fit, which the probe band then catches.
+
+⚠️ **Not added as a calibration point.** The design had random tables, and random tables are
+maximally incompressible, so 5,663 is an upper bound on what a trained model of that size would
+cost. Useful as validation, wrong as a fitting point.
+
 ### 2026-08-09 — Filtered configs keep their accuracy
 
 `run.py` bailed out of a too-big config before reading its checkpoint, so `1x800` and `1x1200`
