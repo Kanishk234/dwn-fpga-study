@@ -285,6 +285,48 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-09 — ⚠️ The encoder narrowing result was fitted and tested on the same data
+
+Phase 1 recorded per-feature comparator narrowing as **-17.1% and "bit-exact against the Q3.12
+spec (0 differences across 202 comparators x 1000 samples)"**. The area saving is real. **The
+bit-exactness is not established**, and the method is circular:
+
+`analyze_encoder.min_frac_bits()` searches for the fewest fractional bits that reproduce every
+comparison **for the samples it is given**, and `experiment_narrow_encoder.py` gives it the
+1000-sample test vectors -- then validates the result against those same 1000 samples. Fitting
+and testing on one sample of the data.
+
+Re-derived against the full 166k set:
+
+| | frac bits from 1000 | required on 166k |
+|---|---|---|
+| feature 4 | 6 | **12** |
+| features 5, 6, 8 | 8 | **12** |
+| feature 9 | 9 | 11 |
+| feature 10 | 11 | 12 |
+| feature 11 | 10 | 12 |
+| feature 12 | 11 | 12 |
+
+**8 of 15 features were narrowed too far.** On the full test set those comparators would produce
+different bits than the Q3.12 spec -- so the shipped design would not match the golden model,
+and Gate 1b would have found it on hardware rather than here.
+
+**The safe saving is roughly half.** By the linear cost model: -10.7% for the (unsafe)
+1000-sample fit against **-8.5%** for widths safe on 166k. Scaling by the model's known
+underestimate (it predicted -12.4% where measurement gave -17.1%), a safe narrowing is likely
+around **-13%**, not -17.1%.
+
+**Consequences:**
+
+- The "-17.1%, not adopted" line in `docs/phase1-ledger.md` should be read as **-13%, and the
+  original was never safe to adopt**. Not adopting it was right for a better reason than the one
+  recorded.
+- **Narrowing is data-dependent per config.** Widths must be derived from the full test set, not
+  a subset, and re-derived for every sweep point -- its thresholds differ. Any future adoption
+  has to fit on 166k and re-verify through Gate 1.
+- The general lesson is the same one the emitter read-back check taught: **a check that uses the
+  same input as the thing it checks proves only self-consistency.**
+
 ### 2026-08-09 — The frontier edge can be MEASURED, not predicted
 
 Tested whether Vivado reports utilization for a design that exceeds the part, by synthesizing a
@@ -1101,6 +1143,7 @@ multiplexer cost entirely. The measured ceiling is −5%.
 | **Slim checkpoint format — would make every trained config committable** | Sweep checkpoints total ~933 MB and one is ~122 MB, over GitHub's per-file limit, so they are gitignored. But **91% of a checkpoint is `mapping.weights`**, an `input_bits × (nodes×n)` tensor used *only during training*: `extract_wiring()` reads it once, takes `argmax(axis=0)`, and keeps `nodes × n` integers. Storing the resolved wiring instead would cut a 101 MB checkpoint to **~350 KB** and the whole grid to **~4 MB** — committable, with faster loads as a bonus. **Not attempted mid-sweep**, deliberately: it changes the checkpoint format on the Gate 1 path, and `extract.py`'s own comment warns that `__dummy_mapping` has the same shape and dtype as a real mapping, so getting this wrong yields "a valid-looking, totally wrong export" — silently. Build it after the sweep, with a Gate 1 re-run proving slim and fat checkpoints emit byte-identical RTL. **Zipping is not the alternative: measured 1.09×**, since float32 weights are near-incompressible. |
 | **3-stage pipeline** | Closes 100 MHz post-synthesis but was never re-verified post-route. One cheap Group B point. |
 | **FTDI D2XX for >5 Mbaud** | Optional; the VCP driver, not the design, is the wall. Two more I/O-wall points if Phase 3 leaves time. |
+| **Package the generator as a reusable tool** — *scoped, after Phase 3* | `docs/reusable-generator.md`. No open RTL implementation of DWN targets small FPGAs, which is why this project exists — and the generator is most of one already: verified across 20–2400 nodes, 1–3 layers, n=2/4/6, z=8–800, three encodings, and both wiring representations. What is JSC-specific is the *plumbing*: hardcoded Q3.12, and a harness shaped around 33-byte records and 5 classes. **~1–2 weeks, almost none of it RTL.** The load-bearing item is the MNIST port, because it is the only one that *tests* generality rather than asserting it. Split by forking after Phase 3 — the history is where the reasoning lives. |
 | **MNIST port** | Stretch, after Phase 3. Scoped in `docs/phase1-ledger.md` — three harness breakages, ~1–2 days, and a *higher* accuracy number that means less, not more. |
 
 ---
