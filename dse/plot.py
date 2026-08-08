@@ -102,9 +102,15 @@ def plot_frontier(rows, path):
         ax.step([r[AREA] for r in front], [r[ACC] for r in front], where='post',
                 color=INK_2, linewidth=2, alpha=0.7, zorder=2, label='Pareto frontier')
     # Relief rule + "never a number on every point": label the frontier only.
-    for r in front:
+    #
+    # Offsets ALTERNATE above/below. A Pareto frontier is monotonic by construction, so its
+    # points march up-and-right and a fixed offset stacks every label along the same diagonal --
+    # which collided once the frontier reached 15 points (1x500/1x600, 1x360 z=100/clock 12ns).
+    for i, r in enumerate(front):
+        above = i % 2 == 0
         ax.annotate(r['label'], (r[AREA], r[ACC]), textcoords='offset points',
-                    xytext=(9, 4), fontsize=8, color=INK)
+                    xytext=(9, 5 if above else -11), fontsize=8, color=INK,
+                    va='bottom' if above else 'top')
 
     ax.axvline(DEVICE_LUTS, color=INK_2, linewidth=1.5, linestyle=(0, (4, 3)), alpha=0.6)
     # Ceiling label at the BOTTOM of the line. At full grid size the top-right corner is where
