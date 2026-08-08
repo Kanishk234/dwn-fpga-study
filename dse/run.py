@@ -292,9 +292,7 @@ def main() -> int:
         run_it, why = grid_mod.should_synthesize(cfg)
         if not run_it and not args.no_filter:
             filtered += 1
-            print(f'--- {label} ---')
-            print(f'    FILTERED: {why} -- recorded, not synthesized (--no-filter to force)')
-            save_result({
+            rec = {
                 'name': cfg.name, 'label': label, 'group': group,
                 'status': 'filtered-too-big',
                 'nodes': cfg.model.nodes, 'n': cfg.model.n,
@@ -305,7 +303,24 @@ def main() -> int:
                 'predicted_extrapolated': is_extrapolated(
                     cfg.model.n, cfg.model.thermometer_bits),
                 'error': why,
-            })
+            }
+            # Record ACCURACY even though this config is never synthesized. It was trained --
+            # the checkpoint is sitting right there -- and "76.20% is achievable but needs 128%
+            # of the device" is exactly the frontier-edge datapoint Study 1 owes (brief §12
+            # risk #2). Bailing out before reading it would throw away a measurement we already
+            # paid GPU time for, and leave the accuracy-vs-width curve stopping short of the
+            # wall it is supposed to locate.
+            ck = resolve_checkpoint(cfg)
+            if ck:
+                rec.update(accuracy_of(ck))
+                rec['checkpoint'] = os.path.basename(ck)
+            print(f'--- {label} ---')
+            acc = rec.get('accuracy_pct')
+            print(f'    FILTERED: {why} -- recorded, not synthesized (--no-filter to force)'
+                  + (f'\n    accuracy {acc:.2f}% (trained, kept as a frontier-edge point)'
+                     if acc is not None else
+                     '\n    no checkpoint, so no accuracy -- area prediction only'))
+            save_result(rec)
             continue
         if args.checkpoint:
             ckpt = (args.checkpoint if os.path.isabs(args.checkpoint)
