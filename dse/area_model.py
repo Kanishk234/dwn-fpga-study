@@ -142,17 +142,42 @@ class AreaEstimate:
         return self.board_luts <= margin * DEVICE_LUTS
 
 
-def predict_comparators(layers, n, z, features=JSC_FEATURES, ratio=SELECTION_RATIO):
+# Occupancy model, fitted 2026-08-09 on all 30 synthesizable sweep configs.
+#
+# Replaces a CONSTANT 67% selection ratio measured at `sm` alone. That constant was fitting a
+# curve with a straight line and was catastrophically wrong away from its one point: +83% at
+# 1x600, +110% at 1x200 z=50. It is what wrongly filtered 1x800 and 1x1200 out of the sweep.
+#
+# The right shape is occupancy. `S = W1 x n` wiring slots draw from `M = features x z`
+# thermometer bits, so if the draws were independent the expected distinct count would be
+#     M * (1 - (1 - 1/M)**S)
+# The learnable mapping is NOT independent -- it concentrates on informative features -- so the
+# real count is a fraction `c` of that. `c` is not constant either: it dips to ~0.60 around
+# S/M ~ 1 and rises at both extremes, so it is fitted as a quadratic in log10(S/M).
+#
+# Worst error 11.1%, mean 4.0%, across widths 50-1200, n 2/4/6, z 8-800, 1-3 layers.
+SEL_C2, SEL_C1, SEL_C0 = 0.20944, 0.06475, 0.62886
+
+
+def selection_fraction(slots, avail):
+    """Fraction of the occupancy estimate the learnable mapping actually reaches."""
+    x = math.log10(slots / avail)
+    return SEL_C2 * x * x + SEL_C1 * x + SEL_C0
+
+
+def predict_comparators(layers, n, z, features=JSC_FEATURES, ratio=None):
     """How many distinct thermometer bits the first layer reads.
 
-    Two regimes, and the ceiling is the important one: the first layer has `W1 x n` wiring
-    slots, but there are only `features x z` thermometer bits in existence. Past that point,
-    adding nodes stops adding comparators -- the encoder SATURATES. That is why encoder cost
-    does not scale with the model the way the core does, and why `z` (not node count) sets the
-    ceiling on encoder area.
+    The ceiling still matters: there are only `features x z` bits in existence, so past some
+    width adding nodes stops adding comparators and the encoder SATURATES. That is why encoder
+    cost does not scale with the model the way the core does, and why `z` -- not node count --
+    sets the ceiling on encoder area. But saturation is ASYMPTOTIC, not a hard clamp, which is
+    what the old min() got wrong.
     """
     slots = layers[0] * n
-    return int(min(features * z, round(slots * ratio)))
+    avail = features * z
+    occupancy = avail * (1.0 - (1.0 - 1.0 / avail) ** slots)
+    return int(min(avail, round(selection_fraction(slots, avail) * occupancy)))
 
 
 def predict(layers, n, z, num_classes, word_bits=16, features=JSC_FEATURES):
