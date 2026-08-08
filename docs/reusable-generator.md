@@ -47,6 +47,29 @@ Neither has a hardcoded model size.
 The hand-written primitives (`rtl/lut_node.v`, `popcount.v`, `argmax.v`, `pipe_reg.v`) are
 already parameterized and are the whole of the generated design's structure.
 
+
+### The emitted RTL is vendor-agnostic, not merely board-agnostic
+
+Verified 2026-08-09: `rtl/` contains **no vendor primitives at all**. The only Xilinx references
+in the whole directory are comments. `lut_node` is `assign out = TABLE[addr]`; `popcount` and
+`argmax` are behavioural loops; `pipe_reg` is a `generate` around `always @(posedge clk)`. Plain
+synthesizable Verilog-2001 -- nothing instantiated from UNISIM, no `LUT6`, no `CARRY4`.
+
+So the output should go through Quartus, Lattice tooling, Yosys or an ASIC flow unchanged. The
+generator never learns what part is being targeted: emission is text generation from a
+checkpoint, demonstrated by emitting a 2400-node design that synthesizes to **139% of the
+XC7A35T** without complaint.
+
+⚠️ **The RTL is portable; the efficiency premise is not.** "One DWN node = one LUT6" holds on
+6-input LUT fabrics (Xilinx 7-series and up, recent Intel). On a 4-input LUT architecture
+(iCE40, older Cyclone) an n=6 node needs roughly four LUT4s, and the area story changes entirely
+even though the Verilog is identical. The honest claim for a packaged tool is **portable RTL
+with an area model calibrated for 6-LUT fabrics**.
+
+Vivado-specific pieces live outside the generator and would stay optional: `scripts/build.tcl`,
+`constraints/basys3.xdc`, and `--part`. `area_model.py`'s `DEVICE_LUTS` is a DSE concern, not a
+generator one.
+
 ## 3. What is specific to this project
 
 Three layers, in increasing order of coupling:
