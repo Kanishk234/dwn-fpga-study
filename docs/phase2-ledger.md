@@ -26,9 +26,9 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | 🟡 `training/train_grid_kaggle.ipynb` written; needs a Kaggle run |
 | **2d** | Filter on predicted area before spending any Vivado time | ✅ `grid.should_synthesize()`, with a probe band so the wall is measured |
-| **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ❌ |
-| **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ❌ |
-| **2g** | Merge into one Pareto frontier + the headline number | 🟡 tooling done (`dse/report.py`, `dse/plot.py`); needs data |
+| **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ✅ 35 configs measured, ~3 h |
+| **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ✅ on `1x360` only — see the caveat in the log |
+| **2g** | Merge into one Pareto frontier + the headline number | 🟡 frontier + figures produced; headline still "largest tried" until 1600/2000 land |
 | — | *Optional:* n=2 congestion characterization, reported separately | ❌ |
 
 ### Prerequisites before any of the above
@@ -284,6 +284,115 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-09 — THE SWEEP: 35 configs measured, and the area model was rebuilt on them
+
+Ran `dse/run.py --all --impl` over the grid. **35 configs synthesized and placed-and-routed in
+~3 hours** -- against a 7 h budget, because the same over-prediction that broke the filter also
+made every design smaller and faster to route than planned.
+
+#### Headline
+
+```
+1x1200   76.30%   16,061 LUTs (77.22% of device) = core 2,868 + encoder 12,824
+         100.7 MHz, 4 cycles, II=1
+```
+
+⚠️ **Still "largest TRIED", not "largest that fits".** Nothing failed. The ladder has been
+extended to 1600 and 2000 (training in flight) to find the actual edge.
+
+#### The area model was wrong by 2x, and it cost two configs
+
+`1x600` was predicted at **96.9%** and measured at **51.11%**. The cause was the constant 67%
+selection ratio, measured at `sm` alone. Across the sweep the true ratio falls monotonically
+with width -- 67% at `1x50`, 44% at `1x360`, **25% at `1x1200`** -- because more wiring slots
+compete for the same `features x z` thermometer bits.
+
+**That mis-prediction filtered `1x800` and `1x1200` out of the sweep entirely.** Both were re-run
+afterwards and both fit comfortably (62.0% and 77.2%).
+
+Replaced with an **occupancy model**: `S` slots drawing from `M` bits give
+`M(1-(1-1/M)^S)` distinct if independent, times a concentration factor `c(S/M)` fitted as a
+quadratic in `log10(S/M)` because the learnable mapping is not independent.
+
+| | old (constant ratio) | new (occupancy) |
+|---|---|---|
+| worst error, comparators | **+110%** | **11.1%** |
+| mean error, comparators | ~35% | **4.0%** |
+| worst error, `dwn_top` area | >100% | 17.7% |
+
+Fitted on 30 configs spanning widths 50-1200, n 2/4/6, z 8-800, 1-3 layers.
+
+#### Results that answer the study's questions
+
+**`z=200` is past the knee -- the paper's unexamined constant, now costed.** At 1x360:
+
+| z | 8 | 25 | 50 | 100 | **200** | 400 | 800 |
+|---|---|---|---|---|---|---|---|
+| accuracy | 73.11 | 75.27 | 75.61 | 75.75 | **75.85** | 75.81 | 75.77 |
+| LUTs | 1,822 | 3,381 | 4,825 | 6,421 | **8,006** | 9,334 | 10,572 |
+
+z=50 gives up **0.24 pp for 40% less silicon**, and z=400/800 are *worse* than z=200 while
+costing more. The paper fixes z=200 for every JSC config and never reports its cost.
+
+**The 14x encoder ratio is a small-model artifact, measured across the ladder:**
+14.1x → 12.7x → 9.8x → 8.2x → 7.5x → 7.1x → 5.8x → **4.5x** from `1x50` to `1x1200`. And past
+~1200 nodes comparators saturate toward the 3200 ceiling, so **the core overtakes the encoder as
+the growth term** -- reversing the entire Phase 1 story, exactly where the paper's `lg` sits.
+
+**`n=2` is ON the frontier, contradicting dse-plan §3.** The plan predicted n=2 and n=4 would be
+"worse on both axes." At 1x200, n=2 scores 74.06% at **2,319 LUTs** against n=6's 75.32% at
+5,036 -- worse accuracy, **2.2x cheaper**, and not dominated. Fewer slots select fewer distinct
+thresholds, which shrinks the encoder faster than accuracy falls.
+
+**Single layer wins on accuracy; multi-layer wins on speed.** 1x200 (75.32%) > 2x100 (74.42%) >
+3x65 (73.87%), matching the paper. But `2x100` hit **155.5 MHz** and `3x120` 152.3 -- the
+fastest in the sweep -- because `PIPE_LUT` inserts a register per layer, so depth buys
+pipelining for free.
+
+#### ⚠️ Group B: no reduced-pipeline variant meets the board clock at 1x360
+
+| variant | cycles | Fmax | latency ns | WNS at 10 ns |
+|---|---|---|---|---|
+| baseline (4-stage) | 4 | 104.6 | 38.24 | +0.440 |
+| 3-stage: no OUT reg | 3 | 99.4 | **30.18** | **-0.059** |
+| 3-stage: no POP reg | 3 | 72.5 | 41.38 | -3.793 |
+| 2-stage | 2 | 66.5 | 30.08 | -5.040 |
+| clock 8 ns (125 MHz) | 4 | 124.7 | 32.08 | **-0.020** |
+
+**The lowest-latency variant is the one that does not run on the board** -- missing 100 MHz by
+0.6%. And 125 MHz misses by 0.25%. Two results sit agonisingly on the wrong side of a
+constraint.
+
+Also: the two "3-stage" variants are *nothing alike*. Dropping the output register costs 5 MHz;
+dropping the popcount register costs **32 MHz**. The popcount tree is the critical path, and it
+worsens with width -- the same gap was 7 MHz at `1x50` in Phase 1.
+
+⚠️ **Group B ran on ONE rung.** `dse-plan` §6 step 4 says "pipeline/clock sweeps on ~5
+already-trained models"; the implementation does five hardware variants of `1x360`. Since
+timing tightens sharply with width (147 MHz at `1x50` → 100 MHz at `1x1200`), whether a reduced
+pipeline is viable almost certainly depends on size -- and that has been measured at exactly one
+size. Cheap to extend: no training, ~5 min per variant.
+
+⚠️ **4 stages is the architectural maximum for a single-layer model** (encoder, LUT layer,
+popcount, argmax; `pipe_reg.ENABLE` is 0/1). If a config ever misses timing at 4 stages, the
+current RTL cannot rescue it -- but a multi-layer model of similar size could, since each layer
+adds a stage.
+
+#### Failures, kept as results
+
+- `1x200 linear`, `1x360 linear` -- **unbuildable at Q3.12**. Evenly-spaced thresholds span the
+  data range and reach 8.906, past the +8 ceiling; 23 of 3200 overflow. Q4.11 would represent
+  them at *identical* area (still 16-bit), but the encoding axis shows a 0.12 pp spread --
+  below the 0.15 pp run-to-run noise -- so it was not worth the precision plumbing. Recorded as
+  `gate1-failed` with the reason.
+
+#### Calibration: the noise floor
+
+Phase 1's `1x50` checkpoint and the sweep's own `1x50` are the same config, seed and tau, trained
+in different sessions: **73.8361% vs 73.9855%, a 0.15 pp spread.** That is the resolution limit
+for every accuracy comparison here -- and it means the encoding differences (0.12 pp) and the
+z=400-vs-z=800 "reversal" (0.12 pp) are noise, not signal.
 
 ### 2026-08-09 — ⚠️ The encoder narrowing result was fitted and tested on the same data
 
