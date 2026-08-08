@@ -144,6 +144,36 @@ def accuracy_of(checkpoint):
             'accuracy_best_epoch_pct': pct(r.get('best_acc'))}
 
 
+def checkpoint_matches(cfg, checkpoint):
+    """Does this checkpoint actually describe the config we think it does? (ok, reason).
+
+    Filenames are slug-based, so a checkpoint from an ABANDONED run has exactly the same name
+    as its replacement. That is not hypothetical: the 2026-08-08 tau fix invalidated every
+    interpolated-width model, and a pre-fix `n6_z8_distributive_w200` survived in the artifacts
+    folder afterwards, silently contributing a row measured against a model that no longer
+    exists.
+
+    `tau` is the sharp one. It never reaches the hardware -- it is a uniform divisor and cannot
+    change an argmax -- so a wrong-vintage checkpoint produces perfectly valid RTL and perfectly
+    plausible area numbers, with only its accuracy quietly belonging to a different model. The
+    slug cannot encode it either, since the slug is the training identity and tau is derived
+    from width. So it has to be checked.
+    """
+    import torch
+    c = torch.load(checkpoint, map_location='cpu', weights_only=False).get('config', {})
+    m = cfg.model
+    for field, want, got in (('n', m.n, c.get('n')),
+                             ('thermometer_bits', m.thermometer_bits, c.get('thermometer_bits')),
+                             ('thermometer', m.thermometer, c.get('thermometer')),
+                             ('layers', list(m.layers), list(c.get('layers') or []))):
+        if got != want:
+            return False, f'{field}: checkpoint has {got!r}, grid expects {want!r}'
+    if c.get('tau') is not None and abs(c['tau'] - m.tau) > 1e-6:
+        return False, (f'tau: checkpoint has {c["tau"]:.4f}, grid expects {m.tau:.4f} '
+                       f'-- this checkpoint predates a schedule change and is a DIFFERENT model')
+    return True, 'matches'
+
+
 def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
@@ -171,6 +201,16 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
     print(f'    predicted {est.board_luts:.0f} LUTs '
           f'({est.device_pct:.1f}% of device)'
           f'{"  [extrapolated]" if rec["predicted_extrapolated"] else ""}')
+
+    ok, why = checkpoint_matches(cfg, checkpoint)
+    if not ok:
+        rec['status'] = 'checkpoint-mismatch'
+        rec['error'] = why
+        rec['seconds'] = round(time.time() - t0, 1)
+        print(f'    CHECKPOINT MISMATCH: {why}')
+        print('    Not building. Re-download this config, or delete the stale file.')
+        save_result(rec)
+        return rec
 
     ok, info = gate1(checkpoint, vivado_bin, rtl_dir=cfg.rtl_dir,
                      work=os.path.join(cfg.build_dir, 'gate1'),
