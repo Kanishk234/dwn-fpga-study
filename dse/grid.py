@@ -92,7 +92,20 @@ def tau_for(nodes):
 # saturation point near W~800 and the fit boundary near W~550-600, so the top rungs are
 # expected to fail. That is the point: a config that does not fit locates the frontier's edge.
 # ---------------------------------------------------------------------------------------------
-SIZE_LADDER = [50, 100, 200, 360, 500, 600, 800, 1200]
+SIZE_LADDER = [50, 100, 200, 360, 500, 600, 800, 1200, 1600, 2000]
+
+# 1600 and 2000 added 2026-08-09, after the sweep found NOTHING that failed to fit -- the
+# largest config tried (`1x600`) used 51% of the device, so the frontier had no measured edge
+# and brief §10's headline could only be answered as "the largest we tried".
+#
+# The recalibrated area model puts the wall right here: 1200 -> 87%, **1600 -> 100.3%**,
+# 2000 -> 111%. With the model's ~10-18% error, 1600 could land anywhere from 82% to 118%, so
+# it is genuinely uncertain and therefore worth measuring rather than predicting.
+#
+# The mechanism has also flipped by this point. Comparators saturate toward the features x z
+# = 3200 ceiling (1940 at w=1200, 2407 at w=2400), so past ~1200 nodes the ENCODER stops being
+# the binding constraint and the CORE takes over at ~1 LUT/node -- the reverse of the Phase 1
+# story, and it happens exactly where the paper's `lg` config sits.
 
 # Rungs used for one-factor-at-a-time. Mid-ladder on purpose: at 50 nodes everything fits and
 # nothing discriminates; at 1200 nothing fits and nothing discriminates.
