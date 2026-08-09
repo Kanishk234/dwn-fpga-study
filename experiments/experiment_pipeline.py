@@ -23,8 +23,9 @@ Usage:
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_gate1 import REPO, find_vivado_bin  # noqa: E402
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, 'scripts'))
+from run_gate1 import find_vivado_bin  # noqa: E402
 from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
                        parse_utilization, parse_wns, run_one)
 

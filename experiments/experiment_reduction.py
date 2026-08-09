@@ -39,7 +39,7 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
 sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, 'scripts'))
 
 from extract import load_checkpoint, layer_indices, extract_tables, extract_wiring  # noqa: E402
 from emit_core import table_to_hex  # noqa: E402
