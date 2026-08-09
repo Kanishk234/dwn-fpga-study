@@ -133,6 +133,46 @@ OFAT = {
     'layers': ['two', 'three'],
 }
 
+# ---------------------------------------------------------------------------------------------
+# CORNER configs -- combinations of two axes at their knees. Added 2026-08-09.
+#
+# One-factor-at-a-time has a structural blind spot: every non-baseline axis value was only ever
+# tested at widths 200 and 360, so NO pair of non-baseline values was ever tried. The sweep
+# found two independent knees -- accuracy saturates in width around 600 nodes, and in z around
+# 50 -- and never asked what happens when both are taken.
+#
+# It matters because the two axes trade against each other. Width buys accuracy and costs core
+# area; z costs encoder area and, past ~50, buys almost nothing. The encoder is the larger term,
+# so cutting z frees the budget to buy width.
+#
+# The sharpest prediction: `1x2400` -- the paper's `lg` -- was projected in Phase 1 as ">100% of
+# the device, does not fit". That was at z=200. At z=100 it is predicted at **84.6%**. If it
+# holds, the paper's largest JSC model fits on a Basys 3 and the limit was never the model.
+#
+# Ranked against the alternatives before choosing: multi-layer at scale is dominated (the layer
+# penalty is -0.75 pp, far more than z=100's -0.10 pp) and n=4 likewise (-0.38 pp). Width x z is
+# the only pair where both terms are close to free.
+CORNERS = [
+    ([1200], 50),    # best-value candidate: predicted 42.7% dev at ~76.06%
+    ([1600], 100),   # predicted 69.1% at ~76.25%
+    ([2400], 100),   # THE PAPER'S lg -- predicted 84.6%, Phase 1 said it could not fit
+    ([2400], 50),    # same width, cheaper: predicted 62.6%
+    ([3000], 50),    # larger than the paper's largest: predicted 71.1%
+]
+
+# Rungs that get pipeline variants. Extended 2026-08-09 from one rung to four, because the
+# original sweep reported "no reduced-pipeline variant meets the board clock" from a SINGLE
+# measurement -- and slack at 4 stages varies enormously with width:
+#
+#     1x50    +3.200 ns   (147.1 MHz)   3 stages would close easily
+#     1x360   +0.440 ns   (104.6 MHz)   3 stages misses by 0.059 ns
+#     1x1600  +0.310 ns   (103.2 MHz)   the headline config, no data at all
+#
+# So the one-point claim was being stated as a general result, and the config it matters most
+# for -- the largest that fits -- had never been tested. Each variant is ~5 min of Vivado and
+# needs no training, since Group B reuses its rung's checkpoint.
+GROUP_B_RUNGS = [50, 360, 600, 1600]
+
 # 3. Group B -- no retraining, synthesis only. (label, HardwareConfig kwargs)
 GROUP_B = [
     ('3-stage: no OUT reg', dict(pipe_out=0)),
@@ -188,10 +228,21 @@ def build():
 
     # Group B rides on the baseline rung's already-trained model: same ModelConfig, different
     # HardwareConfig. That is the whole reason the two are separate objects.
-    base = _model([OFAT_RUNGS[-1]])
-    for label, hw_kw in GROUP_B:
-        out.append(('group-b', f'1x{OFAT_RUNGS[-1]} {label}',
-                    Config(model=base, hw=HardwareConfig(**hw_kw)), False))
+    for layers, z in CORNERS:
+        w = 'x'.join(str(x) for x in layers)
+        out.append(('corner', f'{len(layers)}x{layers[0]} z={z}',
+                    Config(model=_model(layers, z=z)), True))
+
+    for rung in GROUP_B_RUNGS:
+        base = _model([rung])
+        for label, hw_kw in GROUP_B:
+            # Clock variants only on the baseline rung: they answer "what does asking for a
+            # different clock do", which does not need repeating per width. PIPELINE DEPTH does,
+            # because the answer depends entirely on how much slack a width has left.
+            if rung != OFAT_RUNGS[-1] and 'clock' in label:
+                continue
+            out.append(('group-b', f'1x{rung} {label}',
+                        Config(model=base, hw=HardwareConfig(**hw_kw)), False))
 
     return out
 
