@@ -1,7 +1,13 @@
 # Phase 2 — the design-space exploration: what we swept, what we found, and what broke
 
 Phase 2 is Study 1 of the project (brief §10): *what is the accuracy/area/latency Pareto frontier
-for DWN on a fixed small FPGA?* It answers that with **36 configurations, every one Gate 1
+for DWN on a fixed small FPGA?*
+
+**Where Phase 1 sits in this.** Phase 1 built and verified exactly one configuration —
+**`1x50`: n=6, z=200, `DistributiveThermometer`, a single learnable-mapped layer of 50 nodes**,
+the paper's `sm`, at 73.84% and 1,619 LUTs. That is the sweep's first ladder rung and its only
+config ever run on hardware (Gate 1b, 166,000/166,000). Phase 2 asks what happens when each axis
+of that config is varied. It answers that with **36 configurations, every one Gate 1
 verified and placed-and-routed on `xc7a35tcpg236-1`**, and it locates the device wall by
 measurement rather than by extrapolation.
 
@@ -71,7 +77,7 @@ the encoder's cost invisible in the literature.
 
 | config | group | acc % | core | encoder | top | % dev | Fmax | cyc | lat ns |
 |---|---|---|---|---|---|---|---|---|---|
-| `1x50` | ladder | 73.84 | 108 | 1519 | 1619 | 7.78 | 147.1 | 4 | 27.2 |
+| **`1x50`** † | ladder | 73.84 | 108 | 1519 | 1619 | 7.78 | 147.1 | 4 | 27.2 |
 | `1x100` | ladder | 74.81 | 206 | 2608 | 2814 | 13.53 | 139.9 | 4 | 28.6 |
 | `1x200` | ladder | 75.32 | 466 | 4570 | 5036 | 24.21 | 113.9 | 4 | 35.1 |
 | `1x360` | ladder | 75.85 | 868 | 7138 | 8006 | 38.49 | 104.6 | 4 | 38.2 |
@@ -109,7 +115,13 @@ the encoder's cost invisible in the literature.
 | `1x360 clock 8ns` ⚠️ | group B | 75.85 | 872 | 7138 | 8037 | 38.64 | 124.7 | 4 | 32.1 |
 | `1x360 clock 12ns` | group B | 75.85 | 868 | 7138 | 8006 | 38.49 | 102.1 | 4 | 39.2 |
 
-❌ exceeds the device · ⚠️ misses its constrained clock
+❌ exceeds the device · ⚠️ misses its constrained clock · † **the Phase 1 reference config**
+
+**† `1x50` is Phase 1.** Everything Phase 1 built and verified is this one configuration —
+**n=6, z=200, `DistributiveThermometer`, a single learnable-mapped layer of 50 nodes**, which is
+the paper's `sm`. Its 1,619 LUTs, 147.1 MHz and 166,000/166,000 Gate 1b run on real silicon are
+the anchor the whole sweep extends from, and it is the only config that has ever been on a
+board. The sweep re-measured it and reproduced 108 / 1519 / 1619 exactly.
 
 **Every config: 0 BRAM, 0 DSP.** Omitted from the table because the value never varies — which
 is the point. That column is the claim against hls4ml, whose quantized MLPs spend DSPs on
@@ -129,11 +141,11 @@ multiply-accumulate, and it is now measured across 36 designs rather than observ
 ### 4.1 Width — accuracy saturates well before the device does
 
 ```
-50   73.84    600   76.10  (51% dev)
-100  74.81    800   76.20
-200  75.32   1200   76.30
-360  75.85   1600   76.35  (90% dev)
-500  76.04   2000   76.43  (103% dev -- does not fit)
+50   73.84  <- Phase 1 (7.8% dev)    600   76.10  (51% dev)
+100  74.81                          800   76.20
+200  75.32                         1200   76.30
+360  75.85                         1600   76.35  (90% dev)
+500  76.04                         2000   76.43  (103% dev -- does not fit)
 ```
 
 From `1x600` to `1x1600` — a 2.7× increase in nodes and 39 points of device occupancy —

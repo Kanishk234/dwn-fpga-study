@@ -13,6 +13,10 @@ DWN on a fixed small FPGA?* Its deliverables are Pareto plots plus one headline 
 largest DWN that fits an XC7A35T, and what it scores** — with **core and encoder LUTs reported
 separately, always** (brief §6).
 
+**The Phase 1 config is `1x50`** — n=6, z=200, `DistributiveThermometer`, a single
+learnable-mapped layer of 50 nodes (the paper's `sm`), 73.84% at 1,619 LUTs. It is the sweep's
+first ladder rung and the only config ever run on hardware. Every Phase 2 axis varies from it.
+
 Read first: `docs/dse-plan.md` (what gets swept and why), `docs/phase2-handoff.md` (machine
 setup and the restructure decision), `docs/phase1-report.md` (what already works).
 
