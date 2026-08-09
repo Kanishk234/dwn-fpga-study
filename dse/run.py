@@ -88,11 +88,31 @@ def resolve_checkpoint(cfg):
     return None
 
 
+SNAPSHOT = os.path.join(REPO, 'docs', 'results', 'sweep-results.json')
+
+
 def load_results():
-    if not os.path.exists(RESULTS):
-        return {}
-    with open(RESULTS) as f:
-        return json.load(f)
+    """Measured results, preferring the working copy and falling back to the committed one.
+
+    `build/dse/results.json` is the one thing under `build/` that CLAUDE.md's rule does not
+    actually cover: everything there is supposed to be "regenerable by re-running the flow that
+    made it", and this is not -- regenerating it costs a Kaggle GPU session plus hours of
+    Vivado. That made `build/` unsafe to delete, which is the opposite of what the rule intends.
+
+    So the committed snapshot (`docs/results/sweep-results.json`, written by
+    `dse/report.py --snapshot`) doubles as the recovery source. Wiping `build/` now costs
+    nothing but disk: the next run reloads what was already measured and only builds what is
+    genuinely missing.
+    """
+    for path in (RESULTS, SNAPSHOT):
+        if os.path.exists(path):
+            with open(path) as f:
+                data = json.load(f)
+            if path is SNAPSHOT:
+                print(f'(resuming from the committed snapshot: {len(data)} configs -- '
+                      f'build/dse/results.json is absent)')
+            return data
+    return {}
 
 
 def save_result(rec):
