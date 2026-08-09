@@ -96,7 +96,14 @@ def plot_frontier(rows, path):
                        label=name, zorder=3, edgecolors=SURFACE, linewidths=2)
             drawn += 1
 
-    front = pareto(ok)
+    # The frontier is computed over GROUP A only. Group B varies register placement on an
+    # already-trained model, so its points sit at the same accuracy as their rung and differ in
+    # area by a handful of LUTs -- enough to technically dominate (3-stage `1x1600` is 15 LUTs
+    # cheaper than the 4-stage one) while saying nothing about the accuracy/area tradeoff this
+    # figure is about. They stay plotted, so the reader sees them; they just do not define the
+    # curve or claim label space. Their real axis is latency, which report.py's 3-objective
+    # frontier and the Group B table cover.
+    front = pareto([r for r in ok if group_of(r) != 'group-b'])
     if len(front) > 1:
         # The frontier is an annotation, not a series, so it wears ink rather than a hue.
         ax.step([r[AREA] for r in front], [r[ACC] for r in front], where='post',
