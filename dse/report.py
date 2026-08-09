@@ -34,6 +34,10 @@ RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 CSV_FIELDS = [
     'name', 'label', 'status', 'nodes', 'n', 'z', 'encoding', 'layers', 'pipe', 'clock_ns',
     'accuracy_pct', 'dwn_core_luts', 'thermometer_encoder_luts', 'dwn_top_luts', 'dwn_top_ff',
+    # BRAM and DSP are ZERO for every DWN config measured. That zero is the point -- it is the
+    # claim against hls4ml (whose MLPs spend DSPs on MACs) and conifer, so it belongs in the
+    # published table rather than in a footnote.
+    'dwn_top_bram', 'dwn_top_dsp',
     'device_pct', 'dwn_top_fmax_mhz', 'latency', 'predicted_board_luts',
     'predicted_extrapolated', 'impl', 'seconds',
 ]

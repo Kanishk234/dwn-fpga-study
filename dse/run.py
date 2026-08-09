@@ -292,8 +292,14 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
         util = parse_utilization(os.path.join(out_dir, u_rpt))
         wns = parse_wns(os.path.join(out_dir, t_rpt))
         # Rule 3: per-module, never collapsed into one total.
-        rec[f'{top}_luts'] = util.get('luts')
-        rec[f'{top}_ff'] = util.get('ff')
+        #
+        # BRAM and DSP are recorded even though every DWN design so far uses ZERO of both. That
+        # zero IS the result: it is the central claim against hls4ml, whose quantized MLPs spend
+        # DSPs on multiply-accumulate, and against conifer. A comparison table cannot assert
+        # "no DSPs, no BRAM" from data that never captured the columns -- and `parse_utilization`
+        # was already returning them, so they were being parsed and thrown away.
+        for key in ('luts', 'ff', 'bram', 'dsp'):
+            rec[f'{top}_{key}'] = util.get(key)
         if wns is not None:
             rec[f'{top}_wns'] = round(wns, 3)
             rec[f'{top}_fmax_mhz'] = round(1000.0 / (cfg.hw.clock_ns - wns), 1)
