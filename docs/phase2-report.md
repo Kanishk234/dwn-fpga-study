@@ -7,9 +7,12 @@ for DWN on a fixed small FPGA?*
 **`1x50`: n=6, z=200, `DistributiveThermometer`, a single learnable-mapped layer of 50 nodes**,
 the paper's `sm`, at 73.84% and 1,619 LUTs. That is the sweep's first ladder rung and its only
 config ever run on hardware (Gate 1b, 166,000/166,000). Phase 2 asks what happens when each axis
-of that config is varied. It answers that with **36 configurations, every one Gate 1
+of that config is varied. It answers that with **46 configurations, every one Gate 1
 verified and placed-and-routed on `xc7a35tcpg236-1`**, and it locates the device wall by
 measurement rather than by extrapolation.
+
+*(Six further configurations combining the width and `z` knees are queued for training; they are
+noted in §7 and will extend §3.1 when measured.)*
 
 `docs/phase2-ledger.md` is the raw dated log this was written from. `docs/results/` holds the
 committed evidence: both figures, every measurement, and the grid as trained.
@@ -23,7 +26,7 @@ committed evidence: both figures, every measurement, and the grid as trained.
 | **Largest DWN measured to fit an XC7A35T** | **`1x1600`** — 1600 nodes, n=6, z=200 |
 | **Its accuracy** | **76.35%** |
 | **Its area** | **18,777 LUTs (90.27% of device)** = core 4,124 + encoder 14,316 |
-| **BRAM / DSP** | **0 / 0** — at every one of 36 configs |
+| **BRAM / DSP** | **0 / 0** — at every one of 46 configs |
 | **Timing** | 103.2 MHz, latency 4 cycles, II=1 |
 | **The measured edge** | `1x2000` — 21,382 LUTs (**102.80%**), WNS −0.538 ns. Fails on **both** axes |
 
@@ -75,7 +78,12 @@ All post-route, out-of-context, `xc7a35tcpg236-1`, constrained at 10.0 ns unless
 **Core and encoder are reported separately, always** (brief §6) — a combined total is what makes
 the encoder's cost invisible in the literature.
 
-| config | group | acc % | core | encoder | top | % dev | Fmax | cyc | lat ns |
+### 3.1 Group A — model architecture
+
+Each config is its own trained model. These are the points the accuracy/area frontier is built
+from.
+
+| config | axis | acc % | core | encoder | top | % dev | Fmax | cyc | lat ns |
 |---|---|---|---|---|---|---|---|---|---|
 | **`1x50`** † | ladder | 73.84 | 108 | 1519 | 1619 | 7.78 | 147.1 | 4 | 27.2 |
 | `1x100` | ladder | 74.81 | 206 | 2608 | 2814 | 13.53 | 139.9 | 4 | 28.6 |
@@ -109,13 +117,8 @@ the encoder's cost invisible in the literature.
 | `3x65` | layers | 73.87 | 273 | 2123 | 2365 | 11.37 | 148.1 | 6 | 40.5 |
 | `2x180` | layers | 75.10 | 559 | 4410 | 4281 | 20.58 | 114.3 | 5 | 43.7 |
 | `3x120` | layers | 74.49 | 516 | 3271 | 3658 | 17.59 | 152.3 | 6 | 39.4 |
-| `1x360 3-stage: no OUT` ⚠️ | group B | 75.85 | 872 | 7138 | 8010 | 38.51 | 99.4 | 3 | **30.2** |
-| `1x360 3-stage: no POP` ⚠️ | group B | 75.85 | 1048 | 7138 | 8200 | 39.42 | 72.5 | 3 | 41.4 |
-| `1x360 2-stage` ⚠️ | group B | 75.85 | 1079 | 7138 | 8215 | 39.50 | 66.5 | 2 | 30.1 |
-| `1x360 clock 8ns` ⚠️ | group B | 75.85 | 872 | 7138 | 8037 | 38.64 | 124.7 | 4 | 32.1 |
-| `1x360 clock 12ns` | group B | 75.85 | 868 | 7138 | 8006 | 38.49 | 102.1 | 4 | 39.2 |
 
-❌ exceeds the device · ⚠️ misses its constrained clock · † **the Phase 1 reference config**
+❌ exceeds the device · † **the Phase 1 reference config**
 
 **† `1x50` is Phase 1.** Everything Phase 1 built and verified is this one configuration —
 **n=6, z=200, `DistributiveThermometer`, a single learnable-mapped layer of 50 nodes**, which is
@@ -123,9 +126,35 @@ the paper's `sm`. Its 1,619 LUTs, 147.1 MHz and 166,000/166,000 Gate 1b run on r
 the anchor the whole sweep extends from, and it is the only config that has ever been on a
 board. The sweep re-measured it and reproduced 108 / 1519 / 1619 exactly.
 
-**Every config: 0 BRAM, 0 DSP.** Omitted from the table because the value never varies — which
+**Every config: 0 BRAM, 0 DSP.** Omitted from the tables because the value never varies — which
 is the point. That column is the claim against hls4ml, whose quantized MLPs spend DSPs on
-multiply-accumulate, and it is now measured across 36 designs rather than observed once.
+multiply-accumulate, and it is now measured across 46 designs rather than observed once.
+
+### 3.2 Group B — hardware variants of one trained model
+
+No retraining: same weights, same accuracy, different register placement or clock target. So
+accuracy is constant within a rung and the interesting columns are timing and latency. Extended
+2026-08-09 from one rung to four, because a single measurement had been stated as a general
+result.
+
+| variant | pipe | clk ns | top LUTs | FF | Fmax | WNS | cyc | lat ns | meets 100 MHz |
+|---|---|---|---|---|---|---|---|---|---|
+| `1x50 3-stage, no POP` | 1101 | 10 | 1623 | 249 | 107.5 | +0.699 | 3 | 27.9 | ✅ |
+| `1x50 3-stage, no OUT` | 1110 | 10 | 1619 | 266 | 113.9 | +1.221 | 3 | **26.3** | ✅ |
+| `1x50 2-stage` | 1100 | 10 | 1631 | 246 | 101.6 | +0.161 | 2 | **19.7** | ✅ |
+| `1x360 3-stage, no OUT` | 1110 | 10 | 8010 | 1323 | 99.4 | −0.059 | 3 | 30.2 | ❌ |
+| `1x360 3-stage, no POP` | 1101 | 10 | 8200 | 1300 | 72.5 | −3.793 | 3 | 41.4 | ❌ |
+| `1x360 2-stage` | 1100 | 10 | 8215 | 1302 | 66.5 | −5.040 | 2 | 30.1 | ❌ |
+| `1x360 clock 8ns` | 1111 | 8 | 8037 | 1326 | 124.7 | −0.020 | 4 | 32.1 | ❌ |
+| `1x360 clock 12ns` | 1111 | 12 | 8006 | 1326 | 102.1 | +2.207 | 4 | 39.2 | ✅ |
+| `1x600 3-stage, no OUT` | 1110 | 10 | 10641 | 1845 | 102.7 | +0.265 | 3 | **29.2** | ✅ |
+| `1x600 3-stage, no POP` | 1101 | 10 | 10993 | 1825 | 64.5 | −5.505 | 3 | 46.5 | ❌ |
+| `1x600 2-stage` | 1100 | 10 | 10987 | 1814 | 61.3 | −6.300 | 2 | 32.6 | ❌ |
+| `1x1600 3-stage, no OUT` | 1110 | 10 | 18762 | 3499 | 100.9 | +0.086 | 3 | **29.7** | ✅ |
+| `1x1600 3-stage, no POP` | 1101 | 10 | 18796 | 3460 | 58.6 | −7.069 | 3 | 51.2 | ❌ |
+| `1x1600 2-stage` | 1100 | 10 | 18794 | 3462 | 50.7 | −9.739 | 2 | 39.4 | ❌ |
+
+`pipe` is `ENC/LUT/POP/OUT` — which of the four register stages are enabled.
 
 ### Not buildable
 
@@ -202,29 +231,45 @@ At 1×360: distributive 75.85, gaussian 75.73, linear 75.78. A **0.12 pp** sprea
 0.15 pp noise floor. On JSC, the choice of thermometer does not matter for accuracy — but it
 does for representability (§5.3).
 
-### 4.6 Group B — the lowest-latency variant does not run on the board
+### 4.6 Group B — drop the output register, never the popcount one
 
-| variant | cycles | Fmax | latency ns | WNS @ 10 ns |
+Pipeline depth was swept at four rungs spanning the full slack range. `Fmax`, and whether it
+meets the board's 100 MHz:
+
+| rung | slack at 4 stages | no OUT reg | no POP reg | 2-stage |
 |---|---|---|---|---|
-| baseline (4-stage) | 4 | 104.6 | 38.24 | +0.440 |
-| 3-stage: no OUT reg | 3 | 99.4 | **30.18** | **−0.059** ⚠️ |
-| 3-stage: no POP reg | 3 | 72.5 | 41.38 | −3.793 ⚠️ |
-| 2-stage | 2 | 66.5 | 30.08 | −5.040 ⚠️ |
-| clock 8 ns (125 MHz) | 4 | 124.7 | 32.08 | **−0.020** ⚠️ |
+| `1x50` | +3.200 ns | **113.9 ✅** | **107.5 ✅** | **101.6 ✅** |
+| `1x360` | +0.440 ns | 99.4 ❌ | 72.5 ❌ | 66.5 ❌ |
+| `1x600` | +0.400 ns | **102.7 ✅** | 64.5 ❌ | 61.3 ❌ |
+| `1x1600` | +0.310 ns | **100.9 ✅** | 58.6 ❌ | 50.7 ❌ |
 
-Two results sit agonisingly on the wrong side of a constraint: the fastest variant misses
-100 MHz by **0.6%**, and the 125 MHz target misses by **0.25%**.
+**The two 3-stage variants are not interchangeable, and the gap grows with width.** Removing the
+argmax register costs 6 MHz at `1x50` and 2 MHz at `1x1600`. Removing the popcount register
+costs 6, 27, 38 and **42 MHz** as width rises. The popcount is an adder tree whose depth grows
+with layer width, and it is the critical path — the argmax is a small comparison over five
+scores and is nearly free to un-register.
 
-**The two "3-stage" variants are nothing alike.** Dropping the output register costs 5 MHz;
-dropping the popcount register costs **32 MHz**. The popcount tree is the critical path, and it
-worsens with width — the same gap was 7 MHz at `1x50` in Phase 1.
+So the design rule is unambiguous: **to cut latency, drop the output register. Never the
+popcount one.**
 
-**Latency must be ranked in nanoseconds, not cycles.** 4 stages → 38.2 ns, 3 stages → 30.2 ns,
-2 stages → 30.1 ns. Removing the third register buys *nothing*: the Fmax loss exactly cancels
-the cycle saved. Ranked on cycles it looks like a win; ranked on Fmax it looks like a loss. Both
-are wrong.
+**This buys real latency on the configs that matter.** `1x1600`, the largest that fits, runs at
+3 stages and **29.7 ns instead of 38.8 — 23% lower latency, 15 fewer LUTs, still meeting the
+board clock.** `1x600` likewise, at 29.2 ns.
 
----
+⚠️ **Two of these margins are inside placement noise.** `1x1600` at 3 stages passes with
+**+0.086 ns** and `1x360` fails with **−0.059 ns**. Phase 1 measured placement varying by tens
+of picoseconds between runs, so neither should be quoted as settled without a repeat. `1x360`
+failing while `1x600` passes is not a trend — it is two configs either side of a knife edge.
+
+**Latency must be ranked in nanoseconds, not cycles.** At `1x360`: 4 stages → 38.2 ns, 3 stages
+→ 30.2 ns, 2 stages → 30.1 ns. Removing the third register buys nothing — the Fmax loss exactly
+cancels the cycle saved. Ranked on cycles it looks like a win; ranked on Fmax, a loss. Both are
+wrong.
+
+⚠️ **Correction, kept visible.** This section previously read *"no reduced-pipeline variant meets
+the board clock"*. That was measured at `1x360` alone and stated as a general result. Extending
+to four rungs showed it false at three of them — at `1x50` **every** variant passes, including
+2-stage at 19.7 ns, half the baseline latency.
 
 ## 5. The things that actually cost time
 
@@ -386,11 +431,13 @@ belonging to a different model.
 - **No board runs.** Phase 2 measures area and timing from Vivado reports; Gate 1b on silicon was
   Phase 1's exit condition and is not required per sweep point. Any config could be taken to
   hardware with `scripts/build_bitstream.py --rtl-dir build/configs/<name>/rtl`.
-- **Group B on one rung only.** `dse-plan` §6 step 4 asks for pipeline/clock sweeps on ~5
-  trained models; the implementation varies hardware on `1x360` alone. Since timing tightens
-  sharply with width (147 MHz at `1x50` → 100 MHz at `1x1200`), whether a reduced pipeline is
-  viable almost certainly depends on size — measured here at exactly one size. Cheap to extend:
-  no training, ~5 min per variant.
+- **Clock variants on one rung only.** Pipeline depth was extended to four rungs (§4.6), but the
+  8 ns / 12 ns clock targets were only tried at `1x360`. "What does asking for a different clock
+  do" does not obviously need repeating per width, but that is an assumption rather than a
+  measurement.
+- **The width × z corner is queued, not measured.** Six configs combining both knees are in
+  training. The sharpest is `1x2400 z=100` — the paper's `lg`, which Phase 1 projected as
+  ">100% of the device" at z=200 and which is predicted at **84.6%** at z=100.
 - **No pipeline depths above 4.** `pipe_reg.ENABLE` is 0/1 and a single-layer model has exactly
   four register sites. If a config ever misses timing at 4 stages, the current RTL cannot rescue
   it — though a multi-layer model of similar size could, since each layer adds a stage.
