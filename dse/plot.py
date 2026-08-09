@@ -181,8 +181,11 @@ def plot_area_split(rows, path):
     ax.set_ylim(0, top * 1.30)
     if DEVICE_LUTS <= top * 1.30:
         ax.axhline(DEVICE_LUTS, color=INK_2, linewidth=1.5, linestyle=(0, (4, 3)), alpha=0.6)
-        ax.annotate(f'XC7A35T = {DEVICE_LUTS:,}', (len(ok) - 0.5, DEVICE_LUTS),
-                    textcoords='offset points', xytext=(0, 5), ha='right',
+        # Label on the LEFT. The bars ascend, so the right end is where the tallest bar and its
+        # ratio label sit -- and that bar is the one that breaks the ceiling, i.e. the whole
+        # point of the figure. Never obscure it.
+        ax.annotate(f'XC7A35T = {DEVICE_LUTS:,}', (-0.5, DEVICE_LUTS),
+                    textcoords='offset points', xytext=(4, 5), ha='left',
                     fontsize=8, color=INK_2)
     else:
         ax.annotate(f'XC7A35T ceiling {DEVICE_LUTS:,} LUTs — above this scale '
