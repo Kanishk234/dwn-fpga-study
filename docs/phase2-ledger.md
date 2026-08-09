@@ -31,7 +31,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | 🟡 `training/train_grid_kaggle.ipynb` written; needs a Kaggle run |
 | **2d** | Filter on predicted area before spending any Vivado time | ✅ `grid.should_synthesize()`, with a probe band so the wall is measured |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ✅ 35 configs measured, ~3 h |
-| **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ✅ on `1x360` only — see the caveat in the log |
+| **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ✅ 14 variants across 4 rungs |
 | **2g** | Merge into one Pareto frontier + the headline number | ✅ **`1x1600`, 76.35%, 90.27% of device** — edge measured at `1x2000` |
 | — | *Optional:* n=2 congestion characterization, reported separately | ❌ |
 
@@ -288,6 +288,94 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-09 — Group B extended to four rungs, and it overturned the reported result
+
+Group B had run on `1x360` alone -- one measurement, written up as *"no reduced-pipeline variant
+meets the board clock."* Slack at 4 stages varies enormously with width, so that was a
+one-point claim stated generally. Extended to 50 / 360 / 600 / 1600 (9 new configs, no training,
+~5 min each).
+
+| rung | slack @ 4 stages | no OUT | no POP | 2-stage |
+|---|---|---|---|---|
+| `1x50` | +3.200 ns | **113.9 ✅** | **107.5 ✅** | **101.6 ✅** |
+| `1x360` | +0.440 ns | 99.4 ❌ | 72.5 ❌ | 66.5 ❌ |
+| `1x600` | +0.400 ns | **102.7 ✅** | 64.5 ❌ | 61.3 ❌ |
+| `1x1600` | +0.310 ns | **100.9 ✅** | 58.6 ❌ | 50.7 ❌ |
+
+**The old claim was false at three of the four rungs.** At `1x50` every variant passes --
+including 2-stage at **19.7 ns**, half the baseline latency. Corrected in `phase2-report.md`
+§4.6 with the retraction kept visible.
+
+**The real rule, and it is clean: drop the output register, never the popcount one.** Removing
+the argmax register costs 6 MHz at `1x50` and 2 MHz at `1x1600`; removing the popcount register
+costs 6 / 27 / 38 / **42 MHz** as width rises. The popcount is an adder tree whose depth grows
+with layer width and is the critical path; the argmax is a 5-way comparison and nearly free.
+
+**It buys real latency where it matters.** `1x1600` -- the largest config that fits -- runs at 3
+stages in **29.7 ns against 38.8, a 23% cut, with 15 fewer LUTs**, still meeting 100 MHz.
+
+⚠️ **Two margins are inside placement noise**: `1x1600` passes at **+0.086 ns**, `1x360` fails at
+**−0.059 ns**. Phase 1 measured placement varying by tens of picoseconds between runs, so
+neither is settled without a repeat, and `1x360` failing while `1x600` passes is two configs
+either side of a knife edge rather than a trend.
+
+### 2026-08-09 — Vivado thread count raised, verified not to move the numbers
+
+The whole sweep ran at Vivado's default of **2 threads on a 16-core machine** -- ~12% of
+capacity, because `build.tcl` never set `general.maxThreads`. Raising it is a one-line change,
+but not a free one: **Vivado's placer and router are multithreaded and the tool documents that
+results may differ between thread counts.** This project's comparability argument is that every
+sweep point comes from one machine and one flow, so a silent change in placement would split the
+frontier exactly the way two Vivado versions would.
+
+Tested rather than assumed. `1x600` re-synthesized at 8 threads:
+
+| | 2 threads | 8 threads |
+|---|---|---|
+| `dwn_core` LUTs | 1312 | **1312** |
+| `thermometer_encoder` LUTs | 9367 | **9367** |
+| `dwn_top` LUTs | 10631 | **10631** |
+| `dwn_top` WNS | +0.400 | **+0.400** |
+
+**Bit-identical**, so configs measured before and after remain comparable. Now the default in
+`build.tcl`, overridable via `DWN_VIVADO_THREADS`. The speedup is unmeasured -- the test
+overlapped with another Vivado run, so wall-clock was contaminated; correctness was the point.
+
+### 2026-08-09 — `build/` is now safely disposable
+
+`build/dse/results.json` was the one thing under `build/` that CLAUDE.md's rule does not cover:
+everything there is meant to be "regenerable by re-running the flow that made it", and this is
+not -- regenerating it costs a Kaggle session plus hours of Vivado. That made `build/` unsafe to
+delete, the opposite of the rule's intent.
+
+`load_results()` now falls back to the committed snapshot (`docs/results/sweep-results.json`),
+so wiping `build/` costs nothing but disk and the next run rebuilds only what is genuinely
+missing. **The ordering matters: snapshot, commit, then delete** -- the fallback recovers what
+was committed, not what was not.
+
+### 2026-08-09 — Corner configs queued: the two knees were never combined
+
+One-factor-at-a-time has a structural blind spot. Every non-baseline axis value was only tested
+at widths 200 and 360, so **no pair of non-baseline values was ever tried** -- and the sweep
+found two independent knees (width saturates ~600, z saturates ~50) without ever asking what
+happens when both are taken.
+
+Ranked every pair before choosing, and only one survives:
+
+| pair | verdict |
+|---|---|
+| width × z | **the only one worth running** -- both terms nearly free |
+| width × n | n=2 costs −1.25 pp vs z=50's −0.24; n=4 costs −0.38 for less saving than z=100's −0.10. Dominated |
+| width × layers | layer penalty −0.75 pp. Dominated |
+| width × encoding | 0.12 pp spread, below the 0.15 pp noise floor |
+| z × n | **structurally pointless** — at z≤100 the encoder is already saturated, so cutting n barely shrinks it while still costing accuracy |
+
+Six configs queued for training. The sharpest is **`1x2400 z=100`**: the paper's `lg`, which the
+Phase 1 ledger projected as ">100% of the device, does not fit" -- computed at z=200. At z=100 it
+is predicted at **84.6%**. If it holds, the paper's largest JSC model fits on a Basys 3 and the
+limit was never the network. `1x3000 z=50` is predicted at 71.1% — larger than anything the
+paper reports.
 
 ### 2026-08-09 — THE WALL, MEASURED: `1x1600` fits, `1x2000` does not
 
