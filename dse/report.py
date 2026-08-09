@@ -196,7 +196,14 @@ def main() -> int:
                   f'at {fmt(r.get("clock_ns"), ".1f")} ns')
 
     # ---- the headline number brief §10 asks for ----
-    fits = [r for r in ok if r.get('dwn_top_luts') and r['dwn_top_luts'] <= DEVICE_LUTS]
+    # "Fits" means BOTH: inside the LUT budget AND meeting the clock it was constrained at.
+    # Area alone is not enough -- `1x3000 z=50` uses 67% of the device and would win on nodes,
+    # but runs at 96.2 MHz against the board's 100 MHz. A design that cannot be clocked is not
+    # a design that fits, and reporting it as the headline would be the same class of error as
+    # trusting Vivado's exit status over the measured routed area.
+    fits = [r for r in ok
+            if r.get('dwn_top_luts') and r['dwn_top_luts'] <= DEVICE_LUTS
+            and r.get('meets_timing') is not False]
     if fits:
         big = max(fits, key=lambda r: r['nodes'])
         print()
