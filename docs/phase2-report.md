@@ -23,30 +23,35 @@ committed evidence: both figures, every measurement, and the grid as trained.
 
 | | |
 |---|---|
-| **Largest DWN measured to fit an XC7A35T** | **`1x1600`** — 1600 nodes, n=6, z=200 |
-| **Its accuracy** | **76.35%** |
-| **Its area** | **18,777 LUTs (90.27% of device)** = core 4,124 + encoder 14,316 |
-| **BRAM / DSP** | **0 / 0** — at every one of 46 configs |
-| **Timing** | 103.2 MHz, latency 4 cycles, II=1 |
-| **The measured edge** | `1x2000` — 21,382 LUTs (**102.80%**), WNS −0.538 ns. Fails on **both** axes |
+| **Largest DWN measured to fit an XC7A35T** | **`1x2400 z=50`** — 2400 nodes, n=6, z=50 |
+| **Its accuracy** | **76.18%** |
+| **Its area** | **12,751 LUTs (61.30% of device)** = core 6,850 + encoder 5,753 |
+| **BRAM / DSP** | **0 / 0** — at every one of 52 configs |
+| **Timing** | 101.3 MHz, latency 4 cycles, II=1 |
+| **Best accuracy that fits** | `1x1600 z=100` — **76.35%** at 66.0% of the device |
+| **The measured edge** | area: `1x2000` at **102.8%**. Timing: `1x2400 z=100` and `1x3000 z=50`, both **96.2 MHz** |
 
-**But the number worth quoting is not the maximum.** `1x600` scores **76.10% at 51% of the
-device** — within **0.25 pp** of the largest config that fits, which occupies 90%. The measured
-run-to-run noise floor is **0.15 pp**. Accuracy saturates long before the part runs out.
+**2400 nodes is the paper's `lg` — its largest JSC model.** It runs on a $150 Basys 3 using
+under two-thirds of the chip. Phase 1 projected this exact configuration as *">100% of the
+device, does not fit"*, from a ~24,000-LUT encoder estimate; measured at z=50 the encoder is
+**5,753 LUTs**, a 4× error, and the whole design fits comfortably.
 
-Three findings, in order of how much they change what is known:
+Four findings, in order of how much they change what is known:
 
-1. **DWN accuracy on JSC saturates around 600 nodes.** `1x1200` matches the paper's `lg`
-   (1×2400) accuracy of 76.3% **at half the width** — something the paper could not have seen,
-   because it never swept between `md` and `lg`.
-2. **z=200 is past its own knee.** z=50 gives up **0.24 pp for 40% less silicon**, and z=400 and
-   z=800 are *worse than z=200 while costing more*. The paper fixes z=200 for every JSC config
-   and never reports what it costs.
-3. **The encoder/core ratio inverts across the ladder: 14.1× → 2.8×.** Phase 1's "the encoder
-   costs 14× the core" is a small-model artifact. Comparators saturate toward the
-   `features × z` ceiling while the core grows at ~1 LUT/node, so past ~1200 nodes **the core is
-   the growth term** — the reverse of Phase 1's central finding, and it happens exactly where
-   the paper's largest config sits.
+1. **The paper's largest model fits, and the limit was never the network.** `lg` was thought
+   impossible on this part. Cutting `z` from 200 to 50 — which costs 0.2 pp — makes it fit in
+   61% of the device at 101.3 MHz.
+2. **The binding constraint is timing, not area.** Everything past ~2400 nodes has area to
+   spare and no clock headroom: `1x3000 z=50` uses 67% of the device and misses 100 MHz;
+   `1x2400 z=100` uses 80% and misses. Four pipeline stages is the architectural maximum for a
+   single-layer model, so there is no fix within this RTL.
+3. **z=200 is past its own knee, and this is what makes (1) possible.** z=50 gives up 0.24 pp
+   for 40% less silicon; z=400 and z=800 are *worse than z=200 while costing more*. The paper
+   fixes z=200 for every JSC config and never reports what it costs.
+4. **Accuracy saturates around 600 nodes.** `1x600` scores 76.10% at 51% of the device — within
+   0.25 pp of the best config measured, against a 0.15 pp run-to-run noise floor. The
+   encoder/core ratio also **inverts** across the ladder, 14.1× → 2.8×: past ~1200 nodes the
+   *core* is the growth term, reversing Phase 1's central finding.
 
 ---
 
@@ -118,7 +123,14 @@ from.
 | `2x180` | layers | 75.10 | 559 | 4410 | 4281 | 20.58 | 114.3 | 5 | 43.7 |
 | `3x120` | layers | 74.49 | 516 | 3271 | 3658 | 17.59 | 152.3 | 6 | 39.4 |
 
-❌ exceeds the device · † **the Phase 1 reference config**
+| `1x800 z=50` | width×z | 75.95 | 1893 | 4970 | 6981 | 33.56 | 104.9 | 4 | 38.1 |
+| `1x1200 z=50` | width×z | 76.05 | 2875 | 5384 | 8444 | 40.60 | 102.3 | 4 | 39.1 |
+| `1x1600 z=100` | width×z | 76.35 | 4153 | 9260 | 13729 | 66.00 | 101.8 | 4 | 39.3 |
+| **`1x2400 z=50`** | width×z | **76.18** | 6850 | 5753 | **12751** | **61.30** | 101.3 | 4 | 39.5 |
+| `1x2400 z=100` ⚠️ | width×z | 76.39 | 6988 | 10084 | 16681 | 80.20 | 96.2 | 4 | 41.6 |
+| `1x3000 z=50` ⚠️ | width×z | 76.16 | 8230 | 5887 | 13972 | 67.17 | 96.2 | 4 | 41.6 |
+
+❌ exceeds the device · ⚠️ misses the 100 MHz board clock · † **the Phase 1 reference config**
 
 **† `1x50` is Phase 1.** Everything Phase 1 built and verified is this one configuration —
 **n=6, z=200, `DistributiveThermometer`, a single learnable-mapped layer of 50 nodes**, which is
@@ -270,6 +282,45 @@ wrong.
 the board clock"*. That was measured at `1x360` alone and stated as a general result. Extending
 to four rungs showed it false at three of them — at `1x50` **every** variant passes, including
 2-stage at 19.7 ns, half the baseline latency.
+
+### 4.7 The two knees compound — and that is what makes the paper's `lg` fit
+
+One-factor-at-a-time has a structural blind spot: every non-baseline axis value was tested only
+at widths 200 and 360, so **no pair of non-baseline values was ever tried**. The sweep found two
+independent knees — width saturates around 600 nodes, `z` around 50 — and never asked what
+happens when both are taken.
+
+Six configs were added to close that. Every predicted accuracy landed within **0.10 pp**:
+
+| config | accuracy | LUTs | % dev | Fmax | |
+|---|---|---|---|---|---|
+| `1x800 z=50` | 75.95 | 6,981 | 33.6 | 104.9 | |
+| `1x1200 z=50` | 76.05 | 8,444 | 40.6 | 102.3 | |
+| `1x1600 z=100` | **76.35** | 13,729 | 66.0 | 101.8 | best accuracy that fits |
+| **`1x2400 z=50`** | 76.18 | **12,751** | **61.3** | 101.3 | **the headline** |
+| `1x2400 z=100` | 76.39 | 16,681 | 80.2 | 96.2 | ⚠️ misses the clock |
+| `1x3000 z=50` | 76.16 | 13,972 | 67.2 | 96.2 | ⚠️ misses the clock |
+
+**The axes compound because they cost in different places.** Width buys accuracy and spends
+*core* LUTs; `z` spends *encoder* LUTs and, past ~50, buys almost nothing. The encoder is the
+larger term at every size the paper reports — so cutting `z` frees the budget to buy width.
+
+Two comparisons make it concrete:
+
+- **`1x1600 z=100` vs `1x1600`** — *identical* accuracy (76.35%), **13,729 vs 18,777 LUTs**.
+  27% less silicon for literally no accuracy cost.
+- **`1x2400 z=50` vs the Phase 1 projection** — `lg` was written off at ">100% of the device"
+  on a ~24,000-LUT encoder estimate. Measured, its encoder is **5,753 LUTs** and the design
+  occupies **61.3%**.
+
+**And the constraint changed identity.** Every config that now fails, fails on *timing* with
+area to spare: `1x3000 z=50` at 67% of the device and 96.2 MHz, `1x2400 z=100` at 80% and
+96.2 MHz. Four stages is the architectural maximum for a single-layer model (§7), so neither has
+a remedy in this RTL — though a multi-layer model of the same node count would gain a fifth
+stage *and* a smaller encoder, since only the first layer reads thermometer bits.
+
+⚠️ **The two failures land on the same 96.2 MHz.** With only two points that is as likely to be
+coincidence as a structural limit, and it is not investigated here.
 
 ## 5. The things that actually cost time
 
@@ -435,9 +486,15 @@ belonging to a different model.
   8 ns / 12 ns clock targets were only tried at `1x360`. "What does asking for a different clock
   do" does not obviously need repeating per width, but that is an assumption rather than a
   measurement.
-- **The width × z corner is queued, not measured.** Six configs combining both knees are in
-  training. The sharpest is `1x2400 z=100` — the paper's `lg`, which Phase 1 projected as
-  ">100% of the device" at z=200 and which is predicted at **84.6%** at z=100.
+- **Only the width × z corner was explored.** The other axis pairs were ranked and rejected on
+  measured penalties before spending GPU time: n=2 costs −1.25 pp against z=50's −0.24; n=4
+  costs −0.38 pp for less saving than z=100's −0.10; multi-layer costs −0.75 pp; encoding varies
+  by 0.12 pp, below the noise floor. **z × n is structurally pointless** — at z≤100 the encoder
+  is already saturated, so cutting `n` barely shrinks it while still costing accuracy.
+- **No multi-layer model at scale.** `2x1200` would carry a fifth pipeline stage and a smaller
+  encoder than `1x2400`, which is the obvious candidate for making a 2400-node model meet
+  100 MHz with headroom. It was ranked out on the single-layer accuracy advantage and never
+  tried at that size.
 - **No pipeline depths above 4.** `pipe_reg.ENABLE` is 0/1 and a single-layer model has exactly
   four register sites. If a config ever misses timing at 4 stages, the current RTL cannot rescue
   it — though a multi-layer model of similar size could, since each layer adds a stage.
