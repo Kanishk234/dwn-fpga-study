@@ -3,6 +3,10 @@
 **Live document. Update it as work lands, not afterwards.** Status table first, then the
 chronological log, then the numbers worth quoting, then what is still open.
 
+**Status (2026-08-10): PHASE 2 COMPLETE.** 54 configurations measured, all Gate 1 verified and
+placed-and-routed. Headline: **`1x2400 z=50` — the paper's `lg` width — 76.18% at 61.3% of the
+device, 101.3 MHz.** Report: `docs/phase2-report.md`. Superseded status note follows.
+
 **Status (2026-08-08): tooling complete, waiting on training.** 2a, 2b and 2d are done and
 validated against Phase 1's measured numbers; 2g's tooling is built. **2c is the critical path**
 — 32 Kaggle training runs, restarted after the tau fix below. 2e/2f/2g are then one command
@@ -28,12 +32,12 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 |---|---|---|
 | **2a** | **Make the flow config-driven** — see below. Mostly code, not file moves | ✅ baseline reproduces 108/1519/1619 through `dse/run.py` |
 | **2b** | Recalibrate the area model against measured encoder cost | ✅ `dse/area_model.py`, 0.5% on the measured config |
-| **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | 🟡 `training/train_grid_kaggle.ipynb` written; needs a Kaggle run |
+| **2c** | Train the Group A grid (GPU-bound, Kaggle, batched) | ✅ 40 models trained across two accounts |
 | **2d** | Filter on predicted area before spending any Vivado time | ✅ `grid.should_synthesize()`, with a probe band so the wall is measured |
-| **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ✅ 35 configs measured, ~3 h |
+| **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ✅ 52 configs measured (2 unbuildable, recorded) |
 | **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ✅ 14 variants across 4 rungs |
-| **2g** | Merge into one Pareto frontier + the headline number | ✅ **`1x1600`, 76.35%, 90.27% of device** — edge measured at `1x2000` |
-| — | *Optional:* n=2 congestion characterization, reported separately | ❌ |
+| **2g** | Merge into one Pareto frontier + the headline number | ✅ **`1x2400 z=50`, 76.18%, 61.30% of device** — edge measured on BOTH area and timing |
+| — | *Optional:* n=2 congestion characterization, reported separately | 🟡 n=2 measured as an accuracy/area axis at two rungs (and it lands **on** the frontier). Not characterized for **routing congestion** — both n=2 configs are small and routed cleanly, so the failure mode dse-plan §3 predicts was never reached |
 
 ### Prerequisites before any of the above
 
@@ -288,6 +292,63 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-10 — THE CORNER RESULT: the paper's `lg` fits, and the wall is timing
+
+Six width×z configs measured. **Every predicted accuracy landed within 0.10 pp** -- the method
+(ladder base + measured z-penalty) held.
+
+| config | acc | LUTs | % dev | Fmax | |
+|---|---|---|---|---|---|
+| `1x800 z=50` | 75.95 | 6,981 | 33.6 | 104.9 | |
+| `1x1200 z=50` | 76.05 | 8,444 | 40.6 | 102.3 | |
+| `1x1600 z=100` | **76.35** | 13,729 | 66.0 | 101.8 | best accuracy that fits |
+| **`1x2400 z=50`** | 76.18 | **12,751** | **61.3** | 101.3 | **new headline** |
+| `1x2400 z=100` | 76.39 | 16,681 | 80.2 | 96.2 | ❌ misses the clock |
+| `1x3000 z=50` | 76.16 | 13,972 | 67.2 | 96.2 | ❌ misses the clock |
+
+#### ⚠️ Correction to the Phase 1 projection, and it is a large one
+
+`docs/phase1-ledger.md` projected the paper's `lg` (1×2400) as **">100% of the device — does not
+fit"**, on an encoder estimate of ~24,000 LUTs against a 20,800-LUT part. That was computed at
+z=200 and reported as a property of the *model*.
+
+Measured at z=50, `lg`'s encoder is **5,753 LUTs** and the whole design occupies **61.3%**. The
+projection was wrong by roughly 4× on the term that dominated it. **The limit was never the
+network — it was paying for z=200**, which this sweep shows buys nothing above z≈50.
+
+#### The binding constraint changed identity
+
+Every config that now fails, fails on **timing with area to spare**:
+
+- `1x3000 z=50` -- 67.2% of the device, **96.2 MHz**
+- `1x2400 z=100` -- 80.2% of the device, **96.2 MHz**
+- `1x2000` (z=200) -- 102.8%, the one genuine *area* failure
+
+Four pipeline stages is the architectural maximum for a single-layer model, and Group B showed
+removing a register makes timing worse, so **neither failure has a remedy in the current RTL**.
+The untried candidate is a multi-layer model of the same node count: `2x1200` would gain a fifth
+register stage *and* a smaller encoder, since only the first layer reads thermometer bits.
+
+⚠️ Both failures land on **exactly 96.2 MHz**. With two points that is as likely coincidence as
+structure; not investigated.
+
+#### The mechanism: the knees compound because they cost in different places
+
+Width buys accuracy and spends **core** LUTs. `z` spends **encoder** LUTs and, past ~50, buys
+almost nothing. The encoder is the larger term at every size the paper reports, so cutting `z`
+frees budget to buy width. The cleanest single comparison:
+
+**`1x1600 z=100` vs `1x1600` — identical accuracy (76.35%), 13,729 vs 18,777 LUTs.** 27% less
+silicon for no accuracy cost at all.
+
+#### A bug the result exposed in `report.py`
+
+The headline picked the largest config by node count among those inside the LUT budget --
+**area only**. With `1x3000 z=50` measured (67% of the device, 96.2 MHz) it would have crowned a
+design that cannot be clocked on the target board. Now requires `meets_timing` as well. Same
+class of error as trusting Vivado's exit status over the measured routed area, which this phase
+also hit.
 
 ### 2026-08-09 — Group B extended to four rungs, and it overturned the reported result
 
