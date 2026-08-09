@@ -110,16 +110,18 @@ def plot_frontier(rows, path):
         # it. Thin and pale, so the staircase reads as a boundary rather than as the subject.
         ax.step([r[AREA] for r in front], [r[ACC] for r in front], where='post',
                 color=INK_2, linewidth=1.4, alpha=0.45, zorder=2, label='Pareto frontier')
-    # SELECTIVE labels. Labelling all 15 frontier points is "a number on every point" in
-    # disguise -- the frontier is exactly where the data is densest, so every label lands in the
-    # crowd. Label the ladder rungs (the spine of the study) plus the frontier's two ends, and
-    # let the rest be read off the table. Offsets alternate above/below because a Pareto
-    # frontier is monotonic, so a fixed offset stacks labels along one diagonal.
-    to_label = [r for r in front if group_of(r) == 'ladder']
-    for edge in (front[0], front[-1]):
-        if edge not in to_label:
-            to_label.append(edge)
-    for i, r in enumerate(sorted(to_label, key=lambda r: r[AREA])):
+    # EVERY frontier point is labelled, and only frontier points are.
+    #
+    # A previous version labelled only the ladder rungs, to cut crowding. That was the wrong
+    # cut: it silently dropped `1x360 z=50`, `1x200 n=2` and three others -- precisely the
+    # points that carry the study's arguments (z is nearly free; n=2 is not dominated). A
+    # frontier point with no label is unreadable, because nothing else in the figure identifies
+    # which config a dot is.
+    #
+    # The real cause of the crowding was canvas size, fixed by going to 11x6.8. Offsets
+    # alternate above/below because a Pareto frontier is monotonic, so a fixed offset would
+    # stack every label along one diagonal.
+    for i, r in enumerate(front):
         above = i % 2 == 0
         ax.annotate(r['label'], (r[AREA], r[ACC]), textcoords='offset points',
                     xytext=(10, 6 if above else -13), fontsize=9, color=INK,
