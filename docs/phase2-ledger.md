@@ -28,7 +28,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 | **2d** | Filter on predicted area before spending any Vivado time | ✅ `grid.should_synthesize()`, with a probe band so the wall is measured |
 | **2e** | Synthesize the survivors (serial Vivado, the expensive part) | ✅ 35 configs measured, ~3 h |
 | **2f** | Group B sweeps (pipeline depth, clock, strategy) on survivors only | ✅ on `1x360` only — see the caveat in the log |
-| **2g** | Merge into one Pareto frontier + the headline number | 🟡 frontier + figures produced; headline still "largest tried" until 1600/2000 land |
+| **2g** | Merge into one Pareto frontier + the headline number | ✅ **`1x1600`, 76.35%, 90.27% of device** — edge measured at `1x2000` |
 | — | *Optional:* n=2 congestion characterization, reported separately | ❌ |
 
 ### Prerequisites before any of the above
@@ -284,6 +284,83 @@ all and relies on the default — so keeping both spellings would have been dead
   not have failed, but the emitter changed and the rule is that confidence is not verification.
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
+
+### 2026-08-09 — THE WALL, MEASURED: `1x1600` fits, `1x2000` does not
+
+The ladder was extended to 1600 and 2000 because the original sweep found **nothing that failed**
+-- the largest config tried used 51% of the device, so brief §10's headline could only be
+answered as "the largest we tried". Both trained, both synthesized, and the edge is now measured.
+
+```
+HEADLINE: largest DWN measured to fit an XC7A35T
+  1x1600 -- 1600 nodes, n=6, z=200
+  76.35% accuracy
+  18,777 LUTs (90.27% of device) = core 4,124 + encoder 14,316
+  0 BRAM, 0 DSP
+  103.2 MHz, latency 4 cycles, II=1
+
+THE EDGE:
+  1x2000 -- 21,382 LUTs (102.80% of device), WNS -0.538 ns (94.9 MHz)
+            fails on BOTH axes: over the part AND misses the board clock
+```
+
+#### ⚠️ A config can complete Vivado's flow and still not fit
+
+`1x2000` was recorded `status: ok`, because `run_one` only checks that the flow returned
+success. It did:
+
+```
+post-synthesis : 20,126 LUTs  (96.76%)   <- fits, so placement proceeded
+post-route     : 21,382 LUTs (102.80%)   <- physical optimization pushed it over
+place_design completed successfully
+```
+
+Placement starts from the post-synthesis netlist, which fit. Physical optimization then
+replicated logic chasing timing and pushed the routed design past the device. **"Did it fit" has
+to be judged on the measured routed area and on timing, never on whether the tool exited zero.**
+`report.py` now does that -- its old caveat keyed off `status == 'synth-failed'` and would have
+gone on claiming no edge had been found while the data plainly showed one.
+
+#### The full ladder
+
+| config | acc | core | encoder | top | % dev | Fmax | enc/core |
+|---|---|---|---|---|---|---|---|
+| 1x50 | 73.84 | 108 | 1,519 | 1,619 | 7.78 | 147.1 | 14.1× |
+| 1x100 | 74.81 | 206 | 2,608 | 2,814 | 13.53 | 139.9 | 12.7× |
+| 1x200 | 75.32 | 466 | 4,570 | 5,036 | 24.21 | 113.9 | 9.8× |
+| 1x360 | 75.85 | 868 | 7,138 | 8,006 | 38.49 | 104.6 | 8.2× |
+| 1x500 | 76.04 | 1,118 | 8,432 | 9,542 | 45.88 | 110.6 | 7.5× |
+| **1x600** | **76.10** | 1,312 | 9,367 | 10,631 | **51.11** | 104.2 | 7.1× |
+| 1x800 | 76.20 | 1,878 | 10,866 | 12,904 | 62.04 | 100.3 | 5.8× |
+| 1x1200 | 76.30 | 2,868 | 12,824 | 16,061 | 77.22 | 100.7 | 4.5× |
+| **1x1600** | **76.35** | 4,124 | 14,316 | 18,777 | **90.27** | 103.2 | 3.5× |
+| 1x2000 | 76.43 | 5,496 | 15,538 | 21,382 | **102.80** ❌ | 94.9 ❌ | 2.8× |
+
+**Zero BRAM and zero DSP at every rung**, and across all 35 measured configs. That column is the
+claim against hls4ml (whose MLPs spend DSPs on multiply-accumulate) and conifer, and it is now
+measured rather than observed once.
+
+#### The finding that matters more than the headline
+
+**Accuracy saturates around 600 nodes.** From `1x600` to `1x1600` -- a 2.7× increase in nodes and
+39 points of device occupancy -- accuracy moves **76.10% → 76.35%, i.e. 0.25 pp**, against a
+measured run-to-run noise floor of **0.15 pp**. The last three rungs are within noise of each
+other.
+
+So the honest reading of brief §10 is two-sided: the largest that fits is `1x1600` at 90% of the
+device, **and it is not meaningfully better than `1x600` at 51%.** A frontier is more useful than
+a maximum here.
+
+**`1x1200` also matches the paper's `lg` (1×2400) accuracy of 76.3% at half the width** -- which
+the paper could not have seen, because it never swept between `md` and `lg`.
+
+#### The encoder/core ratio inverts across the ladder
+
+**14.1× → 2.8×.** Phase 1's headline "the encoder costs 14× the core" is a small-model artifact,
+as suspected -- but the sweep shows it does not merely shrink, it **inverts**: comparators
+saturate toward the `features × z` = 3200 ceiling while the core grows at ~1 LUT/node, so past
+~1200 nodes the CORE is the growth term. That is the reverse of the entire Phase 1 story, and it
+happens exactly where the paper's `lg` config sits.
 
 ### 2026-08-09 — THE SWEEP: 35 configs measured, and the area model was rebuilt on them
 
