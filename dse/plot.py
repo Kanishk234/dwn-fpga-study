@@ -83,7 +83,7 @@ def plot_frontier(rows, path):
         print('  frontier: skipped, no config has both area and accuracy yet')
         return False
 
-    fig, ax = plt.subplots(figsize=(7.5, 5), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(11, 6.8), facecolor=SURFACE)
     style(ax, 'dwn_top LUTs (core + encoder)', 'accuracy (%)',
           'Accuracy vs area — JSC on XC7A35T')
 
@@ -106,17 +106,23 @@ def plot_frontier(rows, path):
     front = pareto([r for r in ok if group_of(r) != 'group-b'])
     if len(front) > 1:
         # The frontier is an annotation, not a series, so it wears ink rather than a hue.
+        # Recessive: the frontier is an annotation over the data, not a series competing with
+        # it. Thin and pale, so the staircase reads as a boundary rather than as the subject.
         ax.step([r[AREA] for r in front], [r[ACC] for r in front], where='post',
-                color=INK_2, linewidth=2, alpha=0.7, zorder=2, label='Pareto frontier')
-    # Relief rule + "never a number on every point": label the frontier only.
-    #
-    # Offsets ALTERNATE above/below. A Pareto frontier is monotonic by construction, so its
-    # points march up-and-right and a fixed offset stacks every label along the same diagonal --
-    # which collided once the frontier reached 15 points (1x500/1x600, 1x360 z=100/clock 12ns).
-    for i, r in enumerate(front):
+                color=INK_2, linewidth=1.4, alpha=0.45, zorder=2, label='Pareto frontier')
+    # SELECTIVE labels. Labelling all 15 frontier points is "a number on every point" in
+    # disguise -- the frontier is exactly where the data is densest, so every label lands in the
+    # crowd. Label the ladder rungs (the spine of the study) plus the frontier's two ends, and
+    # let the rest be read off the table. Offsets alternate above/below because a Pareto
+    # frontier is monotonic, so a fixed offset stacks labels along one diagonal.
+    to_label = [r for r in front if group_of(r) == 'ladder']
+    for edge in (front[0], front[-1]):
+        if edge not in to_label:
+            to_label.append(edge)
+    for i, r in enumerate(sorted(to_label, key=lambda r: r[AREA])):
         above = i % 2 == 0
         ax.annotate(r['label'], (r[AREA], r[ACC]), textcoords='offset points',
-                    xytext=(9, 5 if above else -11), fontsize=8, color=INK,
+                    xytext=(10, 6 if above else -13), fontsize=9, color=INK,
                     va='bottom' if above else 'top')
 
     ax.axvline(DEVICE_LUTS, color=INK_2, linewidth=1.5, linestyle=(0, (4, 3)), alpha=0.6)
@@ -137,7 +143,7 @@ def plot_frontier(rows, path):
                   loc='upper center', bbox_to_anchor=(0.5, -0.13),
                   ncol=4, borderaxespad=0)
     fig.tight_layout()
-    fig.savefig(path, dpi=160, facecolor=SURFACE)
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
     print(f'  wrote {os.path.relpath(path, REPO)}')
     return True
