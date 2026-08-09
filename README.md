@@ -30,32 +30,78 @@ student FPGA board, far smaller and cheaper than the chips the original paper us
 
 ## Status
 
-✅ **It runs on real hardware.** The model classifies all 166,000 JSC test jets on a Basys 3 and
-agrees with the software model on **every single one**.
+✅ **It runs on real hardware**, and we have mapped how far it goes.
 
 | Phase | What | Status |
 |---|---|---|
 | 1 — Core | Get the model running on the board | ✅ **complete** |
-| 2 — Design Space Exploration | Map how big/accurate/fast it can go | next |
-| 3 — Controlled Comparison | Compare against standard tools + published results | not started |
+| 2 — Design Space Exploration | Map how big/accurate/fast it can go | ✅ **complete** |
+| 3 — Controlled Comparison | Compare against standard tools + published results | next |
 | Stretch — second dataset | Repeat 2 & 3 on a different problem | optional |
 
-### Phase 1 results
+### Phase 1 — it works on silicon
+
+The reference config is **`1x50`**: 50 lookup-table neurons, the paper's smallest JSC model.
 
 | | |
 |---|---|
 | Hardware vs software | **166,000 / 166,000** exact |
-| Accuracy | 73.83% (the paper's config: 74.0%) |
+| Accuracy | 73.84% (the paper's config: 74.0%) |
 | The neural network | **108 LUTs** — the paper reports 110 |
 | Whole design on the board | 2,058 LUTs (9.9% of the chip), 0 DSPs |
-| Speed | 4 clock cycles per classification, one result every clock |
-| | 99.5 million classifications/second |
+| Speed | 4 clock cycles, one result every clock — 99.5 M classifications/s |
 
-**Read this next:** [`docs/phase1-report.md`](./docs/phase1-report.md) — what was built, what
-broke, and copy-pasteable steps to reproduce every number above on another machine.
+### Phase 2 — how far it goes
 
-Full technical plan: [`project-brief.md`](./docs/project-brief.md) ·
-Running log: [`phase1-ledger.md`](./docs/phase1-ledger.md)
+**46 configurations**, every one verified bit-exact against the software model and
+placed-and-routed on the real part.
+
+![accuracy vs area](./docs/results/frontier.png)
+
+| | |
+|---|---|
+| **Largest model that fits** | **`1x1600`** — 76.35%, 18,777 LUTs (**90%** of the chip) |
+| **Best value** | **`1x600`** — 76.10% at **51%** of the chip |
+| The measured edge | `1x2000` — 21,382 LUTs (**102.8%**): does not fit, and misses timing |
+| Every config | **0 DSPs, 0 block RAM** |
+
+**Three findings the original paper could not have seen**, because it reports three model sizes
+and nothing between them:
+
+1. **Accuracy saturates at ~600 neurons.** Going from 600 to 1600 costs 39% of the chip and buys
+   0.25 points of accuracy — barely above run-to-run noise. Our 1200-neuron model matches the
+   paper's *largest* (2400-neuron) result.
+2. **The paper's thermometer setting is past its own knee.** It fixes `z=200` everywhere and
+   never reports the cost. `z=50` gives up 0.24 points for **40% less silicon**, and `z=400`/`800`
+   are *worse* while costing more.
+3. **The encoder dominates at small sizes and inverts at large ones** — 14.1× the network at 50
+   neurons, 2.8× at 2000. The input encoder is the real cost of a weightless network on a small
+   FPGA, and published LUT counts routinely exclude it.
+
+**Read this next:** [`docs/phase2-report.md`](./docs/phase2-report.md) — the full sweep, all 46
+configurations, and the six things that broke along the way.
+
+## Documentation
+
+| | |
+|---|---|
+| [`docs/phase1-report.md`](./docs/phase1-report.md) | what was built, what broke, how to reproduce it |
+| [`docs/phase2-report.md`](./docs/phase2-report.md) | the design-space exploration and its results |
+| [`docs/results/`](./docs/results/) | every measurement, both figures, the trained grid |
+| [`docs/project-brief.md`](./docs/project-brief.md) | the full technical plan |
+| [`docs/phase1-ledger.md`](./docs/phase1-ledger.md) · [`phase2-ledger.md`](./docs/phase2-ledger.md) | dated working logs |
+
+## Repository
+
+| | |
+|---|---|
+| `exporter/` | trained checkpoint → lookup tables, wiring, thresholds |
+| `rtlgen/` | that export → Verilog |
+| `rtl/` `tb/` | hand-written primitives · golden-model testbench |
+| `harness/` | UART, vector store, benchmark FSM — the board design |
+| `dse/` | the sweep: grid, runner, area model, report, plots |
+| `scripts/` | Gate 1, synthesis, bitstream, board host |
+| `experiments/` | analyses outside the shipped flow |
 
 ## Team
 
