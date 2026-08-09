@@ -153,12 +153,16 @@ OFAT = {
 # penalty is -0.75 pp, far more than z=100's -0.10 pp) and n=4 likewise (-0.38 pp). Width x z is
 # the only pair where both terms are close to free.
 CORNERS = [
-    ([1200], 50),    # best-value candidate: predicted 42.7% dev at ~76.06%
+    ([800], 50),     # the VALUE end: predicted 35.1% dev at ~75.96%
+    ([1200], 50),    # predicted 42.7% dev at ~76.06%
     ([1600], 100),   # predicted 69.1% at ~76.25%
     ([2400], 100),   # THE PAPER'S lg -- predicted 84.6%, Phase 1 said it could not fit
     ([2400], 50),    # same width, cheaper: predicted 62.6%
     ([3000], 50),    # larger than the paper's largest: predicted 71.1%
 ]
+# `1x800 z=50` covers the cheap end, which the other five leave open: it is ~19% smaller than
+# the cheapest of them for an estimated 0.10 pp -- inside the 0.15 pp noise floor. `1x600 z=50`
+# was considered and left out: at -0.24 pp below the plateau it starts costing real accuracy.
 
 # Rungs that get pipeline variants. Extended 2026-08-09 from one rung to four, because the
 # original sweep reported "no reduced-pipeline variant meets the board clock" from a SINGLE
