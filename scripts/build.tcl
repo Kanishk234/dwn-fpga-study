@@ -19,6 +19,25 @@ if {$argc < 8} {
     exit 1
 }
 
+# Threads for the placer and router. Vivado's default on this machine was 2, on a 16-core CPU --
+# the whole Phase 2 sweep ran at ~12% of available capacity.
+#
+# NOT raised blindly. Vivado's placer and router are multithreaded, and the tool documents that
+# results may differ between thread counts. This project's entire comparability argument is that
+# every sweep point comes from one machine and one flow, so a change that silently altered
+# placement would split the frontier in two. Overridable so the effect can be MEASURED against
+# an already-known config before being adopted; see docs/phase2-ledger.md.
+# VERIFIED IDENTICAL 2026-08-09: `1x600` re-synthesized at 8 threads reproduced 1312 / 9367 /
+# 10631 LUTs and WNS +0.400 exactly, matching the 2-thread run that is in the results. So
+# raising this does not split the frontier, and configs measured before and after the change
+# remain comparable.
+set dwn_threads 8
+if {[info exists ::env(DWN_VIVADO_THREADS)]} {
+    set dwn_threads $::env(DWN_VIVADO_THREADS)
+}
+set_param general.maxThreads $dwn_threads
+puts "general.maxThreads = $dwn_threads"
+
 set top      [lindex $argv 0]
 set part     [lindex $argv 1]
 set out_dir  [lindex $argv 2]
