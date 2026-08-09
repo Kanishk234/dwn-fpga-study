@@ -208,10 +208,29 @@ def main() -> int:
               f'{big.get("thermometer_encoder_luts")}')
         print(f'  Fmax     : {fmt(big.get("dwn_top_fmax_mhz"), ".1f")} MHz, '
               f'latency {big.get("latency")} cycles, II=1')
-        if not any(r['status'] == 'synth-failed' for r in rows):
+        # A config can complete Vivado's flow and still not fit: placement starts from the
+        # post-synthesis netlist, and physical optimization can push the routed design past the
+        # device while chasing timing. `1x2000` did exactly that -- 96.8% post-synthesis,
+        # 102.8% post-route. So "did it fit" must be judged on the MEASURED routed area and on
+        # timing, never on whether the tool returned success.
+        over = [r for r in rows if (r.get('dwn_top_luts') or 0) > DEVICE_LUTS]
+        missed = [r for r in rows if r.get('meets_timing') is False
+                  and (r.get('clock_ns') == 10.0)]
+        if not over and not any(r['status'] == 'synth-failed' for r in rows):
             print('  CAVEAT: no config in this sweep has actually FAILED to fit, so this is the')
             print('          largest TRIED, not the largest that fits. Extend the ladder upward')
             print('          until one fails -- otherwise the frontier has no measured edge.')
+        else:
+            print()
+            print('  THE EDGE IS MEASURED -- the ladder was extended until configs broke:')
+            for r in over:
+                print(f'    {r["label"]:22s} {r["dwn_top_luts"]:>6} LUTs '
+                      f'({r["device_pct"]:.1f}% of device) -- EXCEEDS the part')
+            for r in missed:
+                if r in over:
+                    continue
+                print(f'    {r["label"]:22s} WNS {r["dwn_top_wns"]:+.3f} ns '
+                      f'({r["dwn_top_fmax_mhz"]:.1f} MHz) -- MISSES the 100 MHz board clock')
         if not big.get('impl'):
             print('  CAVEAT: post-synthesis, not post-route. Phase 1 measured 161.0 -> 147.1 MHz')
             print('          across that boundary. Re-run with --impl before quoting Fmax.')
