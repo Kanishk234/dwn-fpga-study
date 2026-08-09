@@ -22,6 +22,7 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -258,7 +259,15 @@ def main() -> int:
         with open(os.path.join(out, 'sweep-results.json'), 'w') as f:
             json.dump({r['name']: r for r in rows}, f, indent=2, sort_keys=True)
         write_csv(os.path.join(out, 'sweep-results.csv'))
+        # The grid AS TRAINED, not as grid.py would regenerate it today. It has already changed
+        # once -- the ladder went from 8 rungs to 10 -- so this records what the notebook
+        # actually embedded, which is the thing the checkpoints correspond to.
+        src = os.path.join(REPO, 'build', 'dse', 'train_grid.json')
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(out, 'train_grid.json'))
         print(f'\nsnapshot -> docs/results/  ({len(rows)} configs) -- commit these')
+        print('  sweep-results.json/.csv + train_grid.json'
+              '  (figures: dse/plot.py --snapshot)')
     return 0
 
 

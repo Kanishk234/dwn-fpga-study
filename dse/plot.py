@@ -205,13 +205,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description='Pareto plots for the Phase 2 sweep.')
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'dse'))
     ap.add_argument('--results', help='read an alternate results.json')
+    ap.add_argument('--snapshot', action='store_true',
+                    help='write the figures into docs/results/ as committed evidence')
     args = ap.parse_args()
-    os.makedirs(args.outdir, exist_ok=True)
+    outdir = os.path.join(REPO, 'docs', 'results') if args.snapshot else args.outdir
+    os.makedirs(outdir, exist_ok=True)
 
     rows = derive(load(args.results))
     print(f'{len(rows)} result(s)')
-    plot_frontier(rows, os.path.join(args.outdir, 'frontier.png'))
-    plot_area_split(rows, os.path.join(args.outdir, 'area_split.png'))
+    plot_frontier(rows, os.path.join(outdir, 'frontier.png'))
+    plot_area_split(rows, os.path.join(outdir, 'area_split.png'))
     print('\nA one-point frontier is a dot, not a frontier. These fill in as 2c training and')
     print('2e synthesis land -- the figures are wired up now so the schema is settled first.')
     return 0
