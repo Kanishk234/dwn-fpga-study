@@ -53,30 +53,32 @@ The reference config is **`1x50`**: 50 lookup-table neurons, the paper's smalles
 
 ### Phase 2 — how far it goes
 
-**46 configurations**, every one verified bit-exact against the software model and
+**52 configurations**, every one verified bit-exact against the software model and
 placed-and-routed on the real part.
 
 ![accuracy vs area](./docs/results/frontier.png)
 
 | | |
 |---|---|
-| **Largest model that fits** | **`1x1600`** — 76.35%, 18,777 LUTs (**90%** of the chip) |
-| **Best value** | **`1x600`** — 76.10% at **51%** of the chip |
-| The measured edge | `1x2000` — 21,382 LUTs (**102.8%**): does not fit, and misses timing |
+| **Largest model that fits** | **`1x2400`** — 76.18%, 12,751 LUTs (**61%** of the chip) |
+| **Best accuracy that fits** | `1x1600` variant — 76.35% at **66%** of the chip |
+| The measured edge | timing, not area: two configs use <81% of the chip yet miss 100 MHz |
 | Every config | **0 DSPs, 0 block RAM** |
 
 **Three findings the original paper could not have seen**, because it reports three model sizes
 and nothing between them:
 
-1. **Accuracy saturates at ~600 neurons.** Going from 600 to 1600 costs 39% of the chip and buys
-   0.25 points of accuracy — barely above run-to-run noise. Our 1200-neuron model matches the
-   paper's *largest* (2400-neuron) result.
+1. **The paper's largest model runs on a $150 board.** Its 2400-neuron `lg` config was thought
+   not to fit — we projected >100% of the chip ourselves. It uses **61%**, once you stop paying
+   for a setting that buys nothing.
 2. **The paper's thermometer setting is past its own knee.** It fixes `z=200` everywhere and
    never reports the cost. `z=50` gives up 0.24 points for **40% less silicon**, and `z=400`/`800`
    are *worse* while costing more.
 3. **The encoder dominates at small sizes and inverts at large ones** — 14.1× the network at 50
    neurons, 2.8× at 2000. The input encoder is the real cost of a weightless network on a small
    FPGA, and published LUT counts routinely exclude it.
+4. **What runs out first is the clock, not the chip.** Every model too big for the board still
+   had a third of its area free — it just could not be clocked fast enough.
 
 **Read this next:** [`docs/phase2-report.md`](./docs/phase2-report.md) — the full sweep, all 46
 configurations, and the six things that broke along the way.
