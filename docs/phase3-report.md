@@ -4,7 +4,7 @@
 RTL compare to the standard FPGA-ML toolchains — and where does it sit against the published
 LUT-DNN literature?
 
-Two halves, run on two machines. The *hands-on* half (conifer) was measured through the same
+Two halves, run on two machines. The *hands-on* half (conifer **and hls4ml**) was measured through the same
 `scripts/build.tcl` flow as all 54 Phase 2 DWN configs. The *literature* half is citation and
 plotting only. Running log with the dated detail: `docs/phase3-ledger.md`.
 
@@ -22,8 +22,9 @@ result below is stated in a way that survives it.
 | **DWN vs conifer, identical silicon** | **+1.5 to +1.7 pp accuracy at every area budget**; 2.3–6.0× fewer LUTs at matched accuracy |
 | **Can a GBDT match DWN here?** | **No.** conifer tops out at **74.88%** using 73.9% of the device. DWN reaches that at **3,381 LUTs** and continues to 76.35% |
 | **Where conifer wins** | **Speed, decisively** — 477.3 MHz vs our 101–147 MHz; 4.2–16.8 ns vs our 27–40 ns. In *cycles* they are comparable (2–8 vs our 4) |
-| **DSP/BRAM** | 0/0 for **all** 14 conifer configs and **all** 52 DWN configs. The DSP argument is against hls4ml's MLPs only |
-| **hls4ml** | **Scoped out**, not attempted — see §5. Its published design is 3× over the device on LUTs alone |
+| **DSP/BRAM** | 0/0 for **all** 14 conifer and **all** 52 DWN configs. The fitting hls4ml design needs **53 DSPs — 59% of this part's 90** |
+| **hls4ml on our part** | Fits only at **quarter width + 12-bit + 4× reuse**: 75.67% at 8,749 LUTs, 53 DSP, **34 cycles / II=4**. The published architecture is 2.2× over even at 16× reuse |
+| **hls4ml vs DWN, matched area** | DWN is smaller, **+0.38 pp**, 0 DSP, **8.5× lower latency, 4× the throughput** |
 | **Best published LUT count at ≥76% on our dataset** | NeuraLUT-Assemble, **1,780 LUTs** — against our 12,751 |
 
 ---
@@ -37,6 +38,7 @@ Everything in the "measured" column below went through `scripts/build.tcl`, out-
 |---|---|---|
 | DWN (this project) | **51 fitting of 54** — 42 of those also close 100 MHz | measured, Phase 2 |
 | conifer (GBDT) | 10 fitting of 14 | measured, Phase 3 |
+| hls4ml (quantized MLP) | 1 fitting of 6 | measured, Phase 3 |
 | published LUT-DNN family | 32 rows, 11 methods | cited, `cc/literature/jsc_literature.json` |
 
 The three DWN counts are all used somewhere and are easy to conflate, so: **54** records in
@@ -154,33 +156,69 @@ own emitted ensemble JSON: the same golden-model pattern Gate 1 uses.
 
 ---
 
-## 5. hls4ml was scoped out — stated, not omitted
+## 5. hls4ml, measured on our part — it fits only at quarter width
 
-**A decision, not an unfinished task.**
+**Run after all.** Every predicted toolchain blocker turned out not to exist: hls4ml 1.3.0 needs
+no WSL, no second Vivado install, no `vitis_hls` shim and no TensorFlow. Its Vitis backend already
+issues `vitis-run --tcl build_prj.tcl --mode hls`, and `convert_from_pytorch_model` uses the torch
+already pinned.
 
-| | hls4ml (Fahim et al.) | ours (`1x2400 z=50`) |
-|---|---|---|
-| accuracy | 76.0% | **76.18%** |
-| LUTs | **63,251** | **12,751** |
-| DSPs | **38** | **0** |
-| part | `xcvu9p` | `xc7a35t-1` |
+The published architecture is **16→64→32→32→5** (Duarte/Fahim), trained in PyTorch on our split
+and pushed through the same `build.tcl` as everything else.
 
-63,251 against a 20,800-LUT device is **3× over** — arithmetic, not something that needs
-measuring — and the row is on our own OpenML split. Plan §4.2 already sanctions the cross-part LUT
-comparison ("LUT counts roughly transfer; Fmax and ns do not").
+| config | reuse | precision | acc (float) | LUTs needed | vs 20,800 | DSP |
+|---|---|---|---|---|---|---|
+| `64/32/32` **as published** | 1 | `<16,6>` | 76.69% | **259,492** | 12.5× over | 3,214 |
+| `64/32/32` | 4 | `<16,6>` | 76.69% | 189,608 | 9.1× over | 1,064 |
+| `32/16/16` | 4 | `<16,6>` | 76.33% | 52,927 | 2.5× over | 340 |
+| `64/32/32` | 16 | `<16,6>` | 76.69% | 45,844 | 2.2× over | 266 |
+| `32/16/16` | 4 | `<12,6>` | 76.33% | 26,883 | 1.3× over | 340 |
+| **`16/8/8`** | 4 | `<12,6>` | **75.67%** | **8,749** | ✅ **42.1% — FITS** | **53** |
 
-> **Wording for any writeup:** *hls4ml was not re-synthesized on our part. Its published JSC design
-> (76.0%, 63,251 LUTs, 38 DSPs on xcvu9p) exceeds the XC7A35T by 3× on LUTs alone, so the
-> comparison is made from published numbers with the part difference stated. What we do not
-> measure is what accuracy hls4ml retains when shrunk to fit this device.*
+**The published architecture does not fit at any reuse factor tested** — still 2.2× over at 16×
+time-multiplexing, at full accuracy. Fitting requires quarter-width layers *and* 12-bit precision
+*and* 4× reuse, and costs **1.02 pp**.
 
-⚠️ **What this weakens.** The 0 BRAM / 0 DSP column is the central claim against hls4ml — and
-conifer is also 0/0 across all 14 configs, because trees do not spend DSPs either. **On our own
-silicon the DSP argument is therefore unexercised**; it rests entirely on published hls4ml numbers.
+**Reuse beats width as an area lever.** 1→4 bought only 1.4×, 4→16 bought 4.1×; and `64/32/32` at
+reuse 16 is *smaller* than `32/16/16` at reuse 4 while scoring 0.36 pp better. Reuse costs latency,
+not accuracy — which is why it is the right knob, and why the fitting design pays for it below.
 
-**The cheap version, if time reappears:** one config, not a sweep. Because the control is *our*
-synthesis flow, hls4ml's version and OS never enter the comparison — generate Verilog anywhere and
-synthesize it here.
+### 5.1 At matched area, DWN wins every column
+
+| | LUTs | DSP | BRAM | latency | throughput | accuracy |
+|---|---|---|---|---|---|---|
+| hls4ml `16/8/8` | 8,749 | **53** | 2 | **34 cyc** | II=4 | 75.67% † |
+| **DWN `1x1200 z=50`** | **8,444** | **0** | **0** | **4 cyc** | **II=1** | **76.05%** |
+
+Smaller, more accurate, no DSPs, no BRAM, **8.5× lower latency and 4× the throughput**. DWN's
+headline `1x2400 z=50` reaches **76.18% at 12,751 LUTs** — an accuracy hls4ml never reaches at any
+size that fits this part.
+
+**The DSP claim is now measured rather than cited.** 53 DSPs is **59% of this part's 90**, against
+**0** for all 52 DWN configs and all 14 conifer configs. This was the gap an earlier draft of this
+report flagged as unexercised on our own silicon.
+
+† ⚠️ **The hls4ml accuracy is the FLOAT model's — an upper bound.** Measuring the real
+`ap_fixed<12,6>` figure needs `hls_model.predict()`, which compiles the generated C++, and no C++
+compiler is available here. conifer avoided this because its model is a declarative ensemble JSON
+we could evaluate in numpy; hls4ml's is a C++ dataflow program with no equivalent artifact. **The
+true number is lower, so every comparison above already favours hls4ml.**
+
+### 5.2 Two silent failures, one of which nearly shipped
+
+**Weight ROMs read as zero.** At `reuse>1` hls4ml moves weights into ROMs loaded by
+`$readmemh("./x.dat", rom0)` — a *relative* path. Staging the Verilog elsewhere left every ROM
+unresolved, the weights read as zero, the synthesizer folded the dead arithmetic away, and a
+64/32/32 MLP reported **235 LUTs, 0 DSP, status `ok`**. Two rows were recorded that way before the
+numbers were disbelieved. Staging now carries the `.dat` files and rewrites the paths, and a guard
+refuses to synthesize RTL with undefined modules or missing ROMs. conifer was verified unaffected
+(inline constants, no `$readmemh`).
+
+**Latency read zero, because of a unit.** Latency-strategy reports are in ns; Resource-strategy
+reports switch to **us** and report Pipeline Type `dataflow` rather than `yes`. A regex requiring
+`' ns|'` silently returned nothing, hiding the II=4 result entirely — and a missing `+ Detail:`
+boundary made the `reuse=1` row read 4 cycles when the true figure is 30. All 14 conifer rows were
+re-verified against the corrected parser and are unchanged.
 
 ---
 
@@ -253,7 +291,9 @@ full numbers.
 
 ## 8. Limitations
 
-- **hls4ml not measured on our part** (§5). The DSP claim is unexercised on our silicon.
+- **hls4ml's accuracy is the float model's, not the quantized design's** (§5). `hls_model.predict()`
+  compiles C++ and no compiler is available here, so the real `ap_fixed<12,6>` figure is lower than
+  75.67% — every hls4ml comparison in this report therefore favours hls4ml.
 - **⚠️ `PENDING-AUTHOR-REPLY` — which JSC dataset the DWN paper used is unresolved.** The paper says *"as in the NeuraLUT
   paper"* (CERNBox); its released code, FPGN's classification, our own reproduction within 0.12 pp,
   and its accuracy level all say OpenML. Four lines of evidence against one sentence. **Our
@@ -261,8 +301,8 @@ full numbers.
   reply yet.
 - **LLNN's dataset is unknown** (IEEE TCAS-I, paywalled). Two rows are on neither figure.
 - **SparseLUT, BitLogic, KANELE not extracted** — known to exist, numbers not pulled.
-- **conifer is one tool, not "the standard toolchains".** With hls4ml scoped out, the controlled
-  comparison rests on a single baseline.
+- **Two baselines, not "the standard toolchains".** conifer and hls4ml are both measured here, but
+  they are two tools; the wider LUT-DNN family is cited, not re-synthesized (§6).
 - **Datapath precision was fixed** at Q3.12 across all 54 Phase 2 configs, and §7 shows it was the
   largest unswept axis in the project.
 

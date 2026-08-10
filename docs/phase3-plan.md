@@ -58,6 +58,13 @@ setback. "The standard flow does not fit; the weightless one uses 61%" is the re
 
 Expect this to be the harder of the two (brief §12 risk #6). Budget accordingly.
 
+> ✅ **DONE 2026-08-10 — and it was not the harder of the two.** None of the anticipated
+> toolchain problems existed: hls4ml 1.3.0 needs no WSL, no second Vivado, no `vitis_hls` shim and
+> no TensorFlow. Rebuilt in PyTorch and swept over reuse × width × precision (6 configs):
+> **259,492 LUTs as published — 12.5× over — and still 2.2× over at 16× reuse.** It fits only at
+> quarter width + 12-bit + 4× reuse: **75.67% at 8,749 LUTs, 53 DSPs, 34 cycles, II=4.**
+> Full result in `docs/phase3-report.md` §5; the two silent failures it cost are in the ledger.
+
 ### 2.3 What to measure, for every design
 
 accuracy · LUT / FF / BRAM / DSP · Fmax · latency (cycles **and** ns) · throughput · Vivado
@@ -141,6 +148,13 @@ Published hls4ml on JSC: **76.2%, 63,251 LUTs.** Ours: **76.18%, 12,751 LUTs, 0 
 
 Same accuracy, ~5× fewer LUTs. That comparison currently spans two papers and two parts, so it
 is a hypothesis, not a result — verifying it on our silicon is the point of §2.2.
+
+> ✅ **SUPERSEDED 2026-08-10 by the measurement, and the guess was conservative.** On our own part
+> the published architecture needs **259,492 LUTs — 20× ours, not 5×** — because `reuse=1` gives
+> every multiply its own multiplier. Forced to fit, hls4ml reaches 75.67% at 8,749 LUTs with 53
+> DSPs and 34 cycles, against DWN's 76.05% at 8,444 LUTs with 0 DSPs and 4 cycles. Two corrections
+> to the numbers above: the published accuracy is **76.0%, not 76.2%**, and that design also
+> spends **38 DSPs**.
 
 ---
 
