@@ -17,6 +17,8 @@ which machine produced which rows.
 | 3L-b | Settle the encoder-convention trap (plan §4.1) | ✅ done 2026-08-10 |
 | 3L-c | Pull per-paper JSC numbers into a machine-readable table | ✅ done 2026-08-10 — `cc/literature/` |
 | 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ⬜ next — **one plot per dataset**, see below |
+| 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
+| 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ⬜ |
 | 3L-e | Phase 3 report — literature section | ⬜ |
 | 3M-a | conifer (GBDT) — *other machine* | ⬜ |
 | 3M-b | hls4ml (quantized MLP) — *other machine* | ⬜ |
@@ -95,6 +97,40 @@ field is much smaller and much tougher: DWN, TreeLUT, NeuraLUT-Assemble, FPGN, h
 row with the same convention and the same dataset. Resolving convention per row is what 3L-d needs
 and what the `encoder_included` field exists for.
 
+### 2026-08-10 — toolchain: which HLS command the comparison tools expect
+
+`docs/phase3-plan.md` and `phase3-handoff.md` listed the toolchain as "Vivado 2025.2 **and Vitis
+HLS**". Corrected, because the second half is not a thing you can simply install alongside 2025.2.
+
+**Observed on this machine:** no `vitis_hls` or `vivado_hls` executable exists anywhere under
+`C:\AMDDesignTools\2025.2` -- not in `Vivado/bin`, not in `Vitis/bin`. What exists is `v++`,
+`vitis-run` and `vitis`. This matches AMD's note that **Vitis HLS Classic was removed in 2025.1
+and later**, with HLS driven through `v++ --mode hls` instead. hls4ml and conifer's HLS backends
+shell out to `vitis_hls`.
+
+⚠️ **This is NOT recorded as a blocker.** Kanishk has run both hls4ml and conifer against this
+Vivado version before, first-hand. Treat the missing binary as something to resolve at setup, not
+as a known failure -- and if it does bite, the fixes in order of cost are:
+
+1. **conifer's direct-to-RTL backend needs no HLS at all** -- Vivado only, which we have. It is
+   also the better controlled comparison (RTL vs RTL, no HLS in the middle), and plan §2.1
+   already runs conifer first.
+2. **HLS only has to produce RTL.** Plan §2 synthesizes everything through *our* `build.tcl`, so
+   the HLS tool's version and OS never enter the comparison -- generate RTL anywhere, synthesize
+   at 2025.2 here. A second install (2024.1-2025.1, which still ships `vitis_hls`) is therefore
+   harmless to the control.
+3. WSL2 only if 1 and 2 both fail. Switching OS alone fixes nothing, since the constraint is the
+   tool *version*, not the platform.
+
+Stated support at time of writing: hls4ml up to **2025.1**; conifer's latest validated is
+**2024.1**.
+
+**Convention recorded in plan §2.4: generated HDL is Verilog.** Everything in `rtl/`, everything
+`rtlgen/` emits and the Gate 1 testbench are Verilog, and `build.tcl` reads `.v`. Vitis HLS emits
+Verilog by default -- keep it. The one unavoidable exception is conifer's direct-to-RTL backend,
+which is VHDL by construction; if used, `build.tcl` needs a `read_vhdl` branch and the results
+table must say which row it is.
+
 ### 2026-08-10 — the literature list, refreshed
 
 Brief §8 was written at project start and plan §3 flags it as stale. It is. What it misses:
@@ -172,7 +208,115 @@ per feature … 3,200 outputs are currently provided" — is **the `z` sweep we 
 the measurement they propose: `z=200 → 50` at 2400 nodes cuts the encoder from a projected ~23k to
 5,753 LUTs at a 0.2 pp accuracy cost. This is worth raising in the note to the authors.
 
-### 2026-08-10 — ⚠️ OPEN: our encoder is ~7.6× more expensive than theirs on the same workload
+### 2026-08-10 — RESOLVED: the 7.6x encoder gap is entirely input word width
+
+`experiments/experiment_encoder_width.py` (accuracy, all 166k) and
+`experiments/experiment_encoder_area.py` (area, out-of-context synthesis), both on `1x50`.
+
+**Accuracy first.** The harness validates itself: a float encoder reproduces the software model
+**exactly** (73.8361%), and Q3.12 costs 0.001 pp. Two schemes:
+
+| scheme | narrowest word holding accuracy | vs today |
+|---|---|---|
+| **in-place** — same scaling, drop fractional bits | **10 bits** (-0.110 pp) | 6 narrower |
+| **renorm** — per-feature affine into [-1,1) | **8 bits** (-0.099 pp) | 8 narrower |
+
+Renorm needs **no retraining**: `x > t` is invariant under a monotonic affine map applied to both
+sides, so it only changes the host's scaler constants. Mecik & Kumm got the same range by
+*training* on [-1,1); we can get it as an export-time transform.
+
+**Then area** — encoder only, `xc7a35tcpg236-1`, 10 ns:
+
+| word | format | distinct constants | LUTs | per comparator | vs today |
+|---|---|---|---|---|---|
+| 16 | Q3.12 | 197/202 | **1,519** | 7.52 | 1.00x |
+| 12 | Q3.8 | 196 | 1,121 | 5.55 | 1.36x |
+| **10** | Q3.6 | 185 | **257** | 1.27 | **5.91x** |
+| 9 | Q3.5 | 170 | 224 | 1.11 | 6.78x |
+| 8 | Q3.4 | 149 | 182 | 0.90 | 8.35x |
+| 6 | Q3.2 | 82 | 82 | 0.41 | 18.52x |
+
+The `w=16` row reproduces the Phase 1/2 measurement of **1,519** exactly, which is the control.
+
+**There is a cliff between 12 and 10 bits** — 1,121 to 257 LUTs, 4.4x for two bits. Above it a
+comparator is a carry chain; below it the whole per-feature encoder collapses into LUT logic.
+**Do not interpolate across it**: 12 bits buys almost nothing, 10 buys nearly everything.
+
+**Mecik & Kumm's `sm-50` encoder is 201 LUTs at 8-bit. Ours at 8-bit is 182.** So the gap was
+**entirely comparator width** — no FloPoCo trick, no sharing scheme we lacked. We were carrying
+16-bit comparators where 8 sufficed. The 2026-08-10 open question is closed.
+
+**The defensible result: 10 bits, in-place, 1,519 -> 257 LUTs (5.91x), -0.110 pp (inside the
+0.15 pp noise floor), no retraining.** Both halves measured under the same scheme.
+
+⚠️ **Do NOT pair "renorm holds accuracy at 8 bits" with "182 LUTs at 8 bits".** The area run used
+in-place constants, where 53 of 202 comparators collapsed onto duplicates. Renorm keeps more
+distinct constants and would cost more. Measuring it needs `emit_encoder` to accept per-feature
+affine constants, which it does not.
+
+**Incidental:** 5 wired thresholds are exact duplicates of another threshold on the same feature
+even at full precision -- removable today, no downside.
+
+#### What it does and does not change about Phase 2
+
+**Measurements: nothing.** Every Phase 2 config is a real design at a recorded configuration --
+`q16.12` is in every config name. `docs/results/` stays valid as evidence.
+
+**The headline probably survives, and for a reason worth stating.** Every config that scored
+above `1x2400 z=50`'s 76.18% failed on **timing**, not area:
+
+| config | acc | LUTs | device | Fmax | failed on |
+|---|---|---|---|---|---|
+| `1x2000` | 76.43% | 21,382 | 102.8% | 94.9 | area **and** timing |
+| `1x2400 z=100` | 76.39% | 16,681 | **80.2%** | 96.2 | **timing only** |
+| `1x3000 z=50` | 76.16% | 13,972 | **67.2%** | 96.2 | **timing only** |
+
+`1x2400 z=100` already had area to spare and still missed 100 MHz. **A smaller encoder gives it
+more of what it did not need.** And the encoder is not the critical path -- on the headline
+config it closed at 347 MHz against the core's 101.2. So Phase 2's central finding, *the wall is
+timing and not area*, is not merely unaffected: making the encoder ~6x smaller does not move it.
+That is the strongest confirmation of it we have.
+
+*(Caveat: less area usually means less routing congestion, which can help timing indirectly.
+`1x2000` at 102.8% was certainly congested. Unquantified -- do not claim it either way.)*
+
+**What does change:**
+
+1. **Every design gets much smaller.** Headline `1x2400 z=50` projects from 12,751 to ~7,800
+   LUTs -- **~38% of the device, from 61.3%**. The claim "the paper's `lg` fits on a $150 board"
+   holds; the number supporting it improves a lot. ⚠️ Projection, not measured -- that is 3X-b.
+2. **The `z` exchange rate moves a lot.** Phase 2 chose `z=50` over `z=200` because the encoder
+   dominated. Scaling all encoders by ~1/5.9 shrinks that penalty: at `1x360`, `z=200` costs
+   3,181 more LUTs than `z=50` today for +0.24 pp, but only ~540 more at 10 bits. The conclusion
+   is **weakened, not reversed** -- and it matters least at the top of the frontier, where the
+   binding constraint is timing anyway.
+3. **The encoder stops being the dominant block, and that reshuffles what to optimize next.**
+   At 10 bits the headline splits roughly: reduction 4,450 (~57%), core-minus-reduction 2,400
+   (~31%), encoder ~975 (~12%). The 14x-encoder framing that has driven this project since
+   Phase 1 would simply stop being true -- and **the Learnable Reduction reopening gets much
+   stronger**, since the reduction becomes the single largest block by a wide margin.
+4. **`dse/area_model.py` is calibrated against 16-bit encoders** and would need refitting before
+   it predicts anything at a narrower word.
+
+**Recommended handling: do not re-sweep.** Phase 2 stands as measured, with the fixed datapath
+precision stated as a limitation, and this recorded as a Phase 3 finding. If a refresh is ever
+wanted, re-run the **frontier points only** (~15 configs, not 54) -- a full re-sweep is not
+affordable on one machine.
+
+#### Does this transfer to the big configs? Probably, and here is the evidence
+
+Cost per wired comparator at 16-bit, across configs:
+
+| config | encoder LUTs | wired comparators (max) | per comparator |
+|---|---|---|---|
+| `1x50` z=200 | 1,519 | 202 | 7.52 |
+| `1x2400 z=50` | 5,753 | <=800 | >=7.19 |
+
+The per-comparator cost is a property of the comparator, not of design size, and it is flat.
+Still **measure before quoting** (3X-b): at `z=50` the thresholds are further apart, so fewer
+collapse at narrow widths -- likely *better* accuracy retention and slightly *more* area.
+
+### 2026-08-10 — ~~⚠️ OPEN~~ ✅ CLOSED: our encoder is ~7.6× more expensive than theirs on the same workload
 
 The most actionable thing the literature half has produced. Same model size, same `z`, same
 encoding scheme, both post-synthesis LUT counts:
@@ -273,13 +417,14 @@ plot until resolved.
 
 | Question | Status |
 |---|---|
-| **Why is our encoder 7.6× theirs at the same `z`?** | ⚠️ **Open, top priority.** Hypothesis: input-word quantisation to 6–9 bits makes each thermometer bit one LUT6. Ours compares a 16-bit Q3.12 word. Needs a training-side experiment, not an RTL change. See the 2026-08-10 entry. |
+| ~~Why is our encoder 7.6× theirs at the same `z`?~~ | ✅ **Closed 2026-08-10. Entirely comparator width.** At 8 bits ours is 182 LUTs against their 201. The hypothesis was right in mechanism and wrong about needing training: `in-place` at 10 bits gives **5.91×** with no retraining at all. |
+| Does the width result hold at `1x2400 z=50`? | ⚠️ **Open — measure before quoting (3X-b).** Per-comparator cost is flat across configs (7.5 vs ≥7.2), so it should, but the cliff between 12 and 10 bits means nothing here is safe to interpolate. |
+| Is `q16.12` worth sweeping? | ✅ **Answered: yes, it was the largest unswept axis.** 6 of 16 bits were doing nothing. See the entry above and the Phase 2 impact note. |
 | Do the non-DWN rows include an input encoder? | ⚠️ **Open.** Settled for DWN only. LogicNets/PolyLUT/NeuraLUT take quantised inputs directly, so the question may not apply in the same form — but that itself has to be stated per row, not assumed. |
 | ~~Which JSC split does each paper use?~~ | ✅ **Closed 2026-08-10, and it was the right thing to ask.** Two datasets, ~1.05 pp apart, and the standard tables conflate them. We are on OpenML with DWN, TreeLUT and hls4ml; the PolyLUT/NeuraLUT/LogicNets lineage is on CERNBox. Enforced in code by `cc/literature/table.py`. |
 | Does LLNN use OpenML or CERNBox? | ⚠️ **Open.** IEEE TCAS-I, paywalled. Two rows parked until resolved. Try an author preprint. |
 | Which convention do the non-DWN rows use? | ⚠️ **Open, now the main blocker for 3L-d.** `encoder_included` is `n/a` for LogicNets/PolyLUT/NeuraLUT/TreeLUT on the argument that they take quantised inputs with no separate encoder stage — **that argument has not been checked against any of their papers.** If any of them does have an unreported input stage, the same trap that caught DWN applies to them. |
 | Is the hls4ml 76.2% / 63,251 number real? | ⚠️ **Open, and load-bearing.** It is the headline comparison in our README and `docs/phase3-plan.md` §5, and it currently traces only to our own brief §8 with no primary citation. Must be found or the claim dropped. Marked `unverified` in the JSON. |
-| Is `q16.12` worth sweeping? | ⚠️ **Newly open.** Fixed across all 54 Phase 2 configs. The 7.6× gap suggests it is the largest unswept axis in the project. |
 | Does FPGN beat us on our own comparison? | ⬜ Unread. Compares against DWN directly; the most likely paper to change what we can claim. |
 | Fmax/latency comparability | ✅ **Closed by plan §4.2.** `xcvu9p-2` at 700 MHz vs `xc7a35t-1` at 100 MHz — LUT counts transfer, ns does not. Report cycles alongside ns. Our 4 cycles vs their 2–7 is the comparison that survives. |
 
