@@ -22,7 +22,7 @@ it says so rather than editing it away.
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
 | 3L-e | Phase 3 report | ✅ done 2026-08-11 — `docs/phase3-report.md`, covers both halves |
 | 3M-a | conifer (GBDT) — *hands-on machine* | ✅ done 2026-08-10 — **14 configs, `docs/results-cc/`** |
-| 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⚠️ **scoped out** — see the entry below |
+| 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ✅ done 2026-08-10 — **6 configs, it fits at 16/8/8** |
 
 **Both halves now have entries in this ledger.** The literature half (3L-\*) runs on the machine
 that wrote this file; the hands-on half (3M-\*) runs on the machine that holds the Phase 1/2
@@ -34,7 +34,88 @@ so it is directly comparable to the 54 DWN results.
 
 ## Log
 
-### 2026-08-10 — ⚠️ 3M-b: hls4ml is SCOPED OUT, with the limitation stated
+### 2026-08-10 — ✅ 3M-b RUN AFTER ALL: hls4ml fits an XC7A35T at 16/8/8, and the DSP claim is now measured
+
+*(hands-on machine)* `cc/hls4ml/run_hls4ml.py`. Supersedes the "scoped out" entry below, which
+stays visible because its *reasoning* about cost was right — it was the toolchain assessment that
+was wrong.
+
+**None of the predicted blockers were real.** hls4ml 1.3.0 needs **no WSL, no second Vivado
+install, no `vitis_hls` shim and no TensorFlow**: its Vitis backend already issues
+`vitis-run --tcl build_prj.tcl --mode hls`, guards its POSIX tool-detection with
+`if 'linux' in sys.platform`, passes build options through a *file* rather than trailing
+arguments, and `convert_from_pytorch_model` uses the torch already pinned. Install cost was five
+small packages; numpy 2.3.4 and torch 2.13.0 were untouched.
+
+#### The shrink sequence — the result plan §2.2 was actually after
+
+Published architecture is **16→64→32→32→5** (Duarte/Fahim). Trained in PyTorch on the same split,
+same seed, same scaler as everything else. All rows post-route on `xc7a35tcpg236-1` at 10 ns.
+
+| config | reuse | precision | acc (float) | LUTs needed | vs 20,800 | DSPs |
+|---|---|---|---|---|---|---|
+| `64/32/32` | 1 | `<16,6>` | 76.69% | **259,492** | 12.5× over | 3,214 |
+| `64/32/32` | 4 | `<16,6>` | 76.69% | 189,608 | 9.1× over | 1,064 |
+| `32/16/16` | 4 | `<16,6>` | 76.33% | 52,927 | 2.5× over | 340 |
+| `64/32/32` | 16 | `<16,6>` | 76.69% | 45,844 | 2.2× over | 266 |
+| `32/16/16` | 4 | `<12,6>` | 76.33% | 26,883 | 1.3× over | 340 |
+| **`16/8/8`** | 4 | `<12,6>` | **75.67%** | **8,749** | ✅ **42.1% — FITS** | **53** |
+
+**It takes quarter-width layers plus 12-bit precision plus 4× time-multiplexing to fit.** The
+published architecture does not fit at *any* reuse tested — still 2.2× over at reuse=16, at full
+accuracy.
+
+**Reuse is sub-linear, and it beats width.** 1→4 bought only 1.4×; 4→16 bought 4.1×. And
+`64/32/32` at reuse 16 (45,844) is *smaller* than `32/16/16` at reuse 4 (52,927) while scoring
+0.36 pp better — so time-multiplexing dominates narrowing as an area lever, and it costs latency
+rather than accuracy.
+
+#### Against DWN at matched area — DWN wins every column
+
+| | LUTs | DSP | BRAM | latency | accuracy |
+|---|---|---|---|---|---|
+| hls4ml `16/8/8` | 8,749 | **53** | 2 | **34 cyc, II=4** | 75.67% *(float upper bound)* |
+| **DWN `1x1200 z=50`** | **8,444** | **0** | **0** | **4 cyc, II=1** | **76.05%** |
+
+Smaller, more accurate, no DSPs, no BRAM, **8.5× lower latency and 4× the throughput**. And DWN's
+headline `1x2400 z=50` reaches 76.18% at 12,751 LUTs — an accuracy hls4ml never reaches at any
+size that fits here.
+
+**The DSP argument is no longer unexercised.** 53 DSPs is **59% of this part's 90**, against 0 for
+all 52 DWN and all 14 conifer configs.
+
+#### ⚠️ Two silent failures caught, and one nearly shipped
+
+**1. Weight ROMs read as zero — a 235-LUT "result".** At `reuse=1` hls4ml bakes weights in as
+inline constants; at `reuse>1` it switches to the Resource strategy and loads them from ROMs via
+`$readmemh("./x.dat", rom0)` — a **relative** path. Staging the Verilog into another directory
+while Vivado ran from the repo root left every ROM unresolved, so the weights read as zero, the
+synthesizer folded the dead arithmetic away, and a 64/32/32 MLP reported **235 LUTs, 0 DSP,
+`status: ok`**. A second row (`reuse=16`, 264 LUTs) recorded the same way. Both deleted and
+re-measured.
+
+Staging now uses `impl/verilog`, copies the `.dat` files alongside, and rewrites `$readmemh` to
+absolute paths. `verify_staged()` refuses to synthesize RTL whose instantiated modules are not all
+defined or whose ROM targets do not exist — either check would have caught this immediately.
+**conifer was verified unaffected** (inline constants, no `$readmemh` anywhere).
+
+**2. Latency read 0, and the unit was why.** Latency-strategy reports are in **ns**;
+Resource-strategy reports switch to **us**, and their Pipeline Type is `dataflow`, not `yes`. A
+regex requiring `' ns|'` matched nothing, so every `reuse>1` row recorded **0 cycles** — hiding
+the II=4 finding entirely. The old regex also failed to stop at `+ Detail:`, so the `reuse=1` row
+reported **4 cycles when the true figure is 30**. Both fixed; **all 14 conifer rows re-verified
+against the corrected parser and unchanged** (2–9 cycles, II=1).
+
+#### Still not measured
+
+**The accuracy column is the float model's, an upper bound.** The real `ap_fixed<12,6>` number
+needs `hls_model.predict()`, which compiles the generated C++, and there is no C++ compiler on
+this machine — the same wall conifer's `compile()` hit. conifer escaped it because its model is a
+declarative ensemble JSON that could be evaluated in numpy; hls4ml's is a C++ dataflow program
+with no equivalent artifact. **So the true hls4ml accuracy is lower than 75.67%, and every
+comparison above already favours it.**
+
+### 2026-08-10 — ~~⚠️ 3M-b: hls4ml is SCOPED OUT~~ SUPERSEDED, see above
 
 Not "incomplete" — a decision, recorded so the writeup states it rather than omitting the row.
 
