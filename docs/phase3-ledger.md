@@ -20,12 +20,102 @@ which machine produced which rows.
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ⬜ |
 | 3L-e | Phase 3 report — literature section | ⬜ |
-| 3M-a | conifer (GBDT) — *other machine* | ⬜ |
-| 3M-b | hls4ml (quantized MLP) — *other machine* | ⬜ |
+| 3M-a | conifer (GBDT) — *hands-on machine* | 🟡 flow proven end to end, first row measured |
+| 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⬜ |
+
+**Both halves now have entries in this ledger.** The literature half (3L-\*) runs on the machine
+that wrote this file; the hands-on half (3M-\*) runs on the machine that holds the Phase 1/2
+toolchain — Vivado/Vitis 2025.2, and the venv `scripts/verify_phase1.py` validates. Every
+hands-on row below was produced there, through `scripts/build.tcl` at `xc7a35tcpg236-1` / 10 ns,
+so it is directly comparable to the 54 DWN results.
 
 ---
 
 ## Log
+
+### 2026-08-10 — 3M-a: the conifer flow runs end to end at 2025.2, and the first GBDT row
+
+*(hands-on machine — Vivado/Vitis 2025.2, the venv `verify_phase1.py` validates)*
+
+`cc/conifer/run_conifer.py`. sklearn/xgboost → conifer → HLS → Verilog → `scripts/build.tcl`,
+place-and-routed at `xc7a35tcpg236-1` / 10 ns — the same flow all 54 DWN rows came from.
+
+| config | acc | LUT | FF | BRAM | DSP | device | WNS | Fmax |
+|---|---|---|---|---|---|---|---|---|
+| `gbdt_d4_n10` (depth 4, 10 rounds = 50 trees) | **74.19%** | **8,005** | 1,418 | 0 | **0** | 38.5% | +7.905 | 477.3 MHz |
+
+One point, not a curve — `--sweep` (depth 3-6 × 10-80 rounds) is what the plan actually asks for.
+For orientation against the headline DWN config (76.18%, 12,751 LUTs, 61.3%): cheaper, and 2 pp
+behind. **conifer also uses 0 DSP**, so the DSP argument is specifically against hls4ml's MLPs,
+not against tree methods.
+
+#### ⚠️ Corrections to the toolchain entry below, from running it
+
+That entry was written before this machine had tried the flow. Two of its three recommendations
+do not survive contact:
+
+1. **"conifer's direct-to-RTL backend needs no HLS at all … the better controlled comparison"** —
+   **it cannot run on Windows.** `FixedPointConverter` compiles a pybind11 helper with a
+   hard-coded POSIX command: `g++ -O3 -shared -fPIC $(python3 -m pybind11 --includes) … -o X.so`.
+   `os.system` runs that through `cmd.exe`, where `$( )` never expands; `-fPIC`/`.so` are not MSVC
+   concepts; and no compiler is installed. It also dies earlier still, on
+   `np.random.randint(0, 2**32)` — fine where the default int is 64-bit, `ValueError: high is out
+   of bounds for int32` on Windows. **So the VHDL/`read_vhdl` question is moot**, and the Verilog
+   convention holds for every row.
+2. **"HLS Classic was removed in 2025.1 … hls4ml and conifer shell out to `vitis_hls`"** — the
+   removal is real, but **HLS is present and works**: a trivial design synthesized to Verilog on
+   `xc7a35tcpg236-1` at 370 MHz estimated. The entry point is `vitis-run --mode hls --tcl <script>`
+   (`--mode hls` alone errors; the positional form the `--help` advertises does not satisfy it).
+   There *is* a `vitis_hls.exe` under `Vitis/bin/unwrapped/win64.o/`, but it prints nothing for
+   `-h`/`-version` and is not usable as a CLI. **No second Vivado install is needed.**
+
+What is true is that conifer's own `build()` cannot work here — it detects the tool with
+`os.system('type X > /dev/null')`, a POSIX builtin, then invokes `vitis_hls`. That does not
+matter, because `docs/phase3-handoff.md` §2.1 forbids the vendor's default project flow anyway.
+**Driving HLS ourselves is the method, not a workaround.**
+
+#### Four more things that had to be fixed, all silent
+
+- **`vitis-run` accepts no trailing arguments** (*"option '--input_file' cannot be specified more
+  than once"*), but conifer's `build_hls.tcl` reads its flags from `$argv`. Injected via a
+  generated wrapper Tcl that sets `argv`/`argc` and then sources conifer's script.
+- **`csim=0` is mandatory.** conifer defaults to csim=1; its C++ testbench fails to link and the
+  run dies ~20 s in, before synthesis starts.
+- **"The command line is too long."** HLS emits one module per tree — 100 files and 14,341
+  characters of `-tclargs` for the *smallest* sweep config, against cmd.exe's ~8,191 limit, and
+  80 rounds would be ~8× worse. The sources are concatenated into one `.v` before synthesis
+  rather than changing `build.tcl`, which every Phase 1/2 number depends on. Verified safe: no
+  `include` directives, no duplicate module names.
+- **`HistGradientBoostingClassifier` cannot be used**, though `docs/phase3-plan.md` §2.1 names it.
+  conifer dispatches on `'GradientBoosting' in class name`, which it matches — so it is accepted
+  and *then* dies on `n_estimators`, because it stores `_predictors`/`TreePredictor` rather than
+  `estimators_`/`tree_`. Use xgboost (fast) or classic `GradientBoostingClassifier` (slow at 830k).
+
+#### ⚠️ The one that would have poisoned every row: a NaN base score
+
+conifer warns on import that *"prediction disagreements are observed for xgboost versions >=
+2.0.0"*. It is right, and the mechanism is specific: **xgboost ≥ 2.0 auto-fits a per-class base
+score, and conifer 1.9 cannot read it**, emitting
+
+```
+init_predict = [-4.965, NaN, -4.965, -5.742, -4.862]
+```
+
+One NaN makes that class's score NaN for every sample and sends the argmax arbitrary —
+**127,034 of 166,000 predictions wrong**, while producing entirely plausible-looking HDL. Setting
+`base_score=0.5` explicitly (xgboost's own pre-2.0 default) yields `init_predict` all zeros and a
+clean conversion. Not caused by passing `objective`/`num_class`; reproduced with bare defaults.
+
+Caught by an **independent numpy evaluator of conifer's own emitted ensemble JSON** — the same
+golden-model pattern Gate 1 uses, and it needs no C++ compiler, unlike `conifer.model.compile()`.
+
+**The gate was initially set wrong, and that is worth recording.** It first tested *prediction
+identity* and refused the row at 0.61% mismatch. But those mismatches sit where the model is
+nearly indifferent — median top-2 margin **0.082 against 1.773** for agreeing samples, 21× smaller
+— and they move accuracy by **0.029 pp**, well under the 0.15 pp noise floor. The gate now tests
+the accuracy delta, which is what actually goes in the table, and **the recorded accuracy is
+conifer's (74.1861%), not xgboost's (74.2151%)** — because conifer's is the model the HDL
+implements.
 
 ### 2026-08-10 — ⚠️ JSC is TWO DATASETS, and the standard comparison table conflates them
 
@@ -389,6 +479,7 @@ set with per-row source and convention: `cc/literature/jsc_literature.json`. Ren
 | Method | Model | Acc. | LUT | FF | Fmax | Lat (ns) | Encoder | Part |
 |---|---|---|---|---|---|---|---|---|
 | **this project** | `1x2400 z=50` | **76.18%** | **12,751** | 3,131 | 101 | 39.5 | **incl** | `xc7a35t-1` |
+| **this project (conifer)** | `gbdt_d4_n10` | 74.19% | 8,005 | 1,418 | 477 | — | n/a | `xc7a35t-1` |
 | DWN | lg-2400 (TEN) | 76.3% | 4,972 | 3,305 | 827 | 7.3 | core only | `xcvu9p-2` |
 | DWN | lg-2400 (PEN+FT 9-bit) | 76.3% | 7,011 | 961 | 947 | 2.1 | **incl** | `xcvu9p-2` |
 | DWN | lg (FPGN re-impl) | 76.3% | 6,302 | 4,128 | 695 | 14.4 | ? | `vu9p` |
