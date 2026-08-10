@@ -322,6 +322,24 @@ your DSE/CC plots without re-running anything:
   logic-gate-based, and table-decomposition approaches respectively; newer and smaller-community than
   the above, include if time allows.
 
+### Tier 3 — the weightless lineage DWN descends from (cite; no JSC numbers exist)
+
+Added 2026-08-10. DWN **is** a weightless neural network, and this section originally named none of
+its ancestors — a gap a reader in this field would notice immediately.
+
+- **WiSARD** (1981) — the original RAM-node weightless architecture.
+- **BTHOWeN** (arXiv:2203.01479) — counting Bloom filters, hardware-friendly hashing, Gaussian
+  non-linear thermometer encoding. The direct ancestor of the encoding this project implements.
+- **ULEEN** (arXiv:2304.10618, ACM TACO) — adds gradient-based multi-pass training and submodel
+  ensembles; the WNN state of the art DWN measures itself against, reporting a **63× energy-delay
+  improvement** over it.
+- **Distributive Thermometer** (Bacellar et al., ESANN 2022) — the specific encoding we and
+  Mecik & Kumm both use.
+
+⚠️ **None of these report JSC** — verified 2026-08-10 against the DWN paper (v5), which uses them
+only in its MNIST/KWS/FashionMNIST tables. They are related work to cite, not rows in the
+comparison table. See `docs/phase3-ledger.md`, 2026-08-10.
+
 Representative published JSC numbers (xcvu9p, out-of-context, ~700 MHz), for scale — pull the full,
 current set for your own comparison table rather than treating this as final:
 

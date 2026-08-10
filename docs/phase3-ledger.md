@@ -408,6 +408,70 @@ The per-comparator cost is a property of the comparator, not of design size, and
 Still **measure before quoting** (3X-b): at `z=50` the thresholds are further apart, so fewer
 collapse at narrow widths -- likely *better* accuracy retention and slightly *more* area.
 
+### 2026-08-10 — the weightless lineage has no JSC numbers, and the DWN paper's own JSC table mixes datasets
+
+Two results from closing the "no weightless related work" gap.
+
+#### 1. ULEEN / BTHOWeN / WiSARD are related work, not table rows
+
+Checked the DWN paper directly (v5). ULEEN appears only in its **MNIST/KWS/FashionMNIST** FPGA
+tables -- never in the JSC table -- and the DWN paper's framing is explicit: *"All datasets were
+chosen due to their use in prior work."* The weightless lineage was benchmarked on the BTHOWeN
+suite (MNIST plus small UCI sets), **not on JSC**.
+
+So the gap is real but it is a **citation gap, not a missing row**: brief §8 should name WiSARD ->
+BTHOWeN -> ULEEN -> DWN as the lineage this project sits in, and no JSC comparison changes. Cheap
+to fix, and it removes the "weightless project with no weightless related work" criticism.
+
+The number worth carrying: DWN reports a **63x energy-delay improvement over ULEEN**, the prior
+WNN state of the art -- that is the lineage's own measure of what DWN contributed.
+
+#### 2. ⚠️ Which JSC dataset are the DWN paper's own numbers on? Unresolved, and load-bearing
+
+The paper (v5, §4.1) says: *"We use the MNIST and Jet Substructure (JSC) datasets, **as in the
+NeuraLUT paper**, and compare our models against published results."* NeuraLUT is **CERNBox**
+(established 2026-08-10 from NeuraLUT-Assemble §5 and SparseLUT's own `jsc-cernbox` label).
+
+But everything else points to **OpenML**:
+
+| evidence | points to |
+|---|---|
+| paper text, "as in the NeuraLUT paper" | CERNBox |
+| `third_party/DWN` tutorial calls `openml.datasets.get_dataset(42468)` | OpenML |
+| FPGN (arXiv:2607.08427) Table V independently files DWN under **JSC-OpenML** | OpenML |
+| **our own reproduction**: we trained on OpenML and got 76.18% at 2400 nodes vs their 76.3% | OpenML |
+| DWN's accuracies (73.7-76.3%) sit **above every published CERNBox result** (max 75.1%) | OpenML |
+
+Four independent lines against one sentence. The likely reading is that the sentence means "the
+same *task* as NeuraLUT" loosely, not the same data file -- but that is inference, not evidence.
+
+**Why it matters to us:** our headline comparison is `1x2400 z=50` at 76.18% against DWN `lg` at
+76.3%. That is only a valid comparison if DWN `lg` is OpenML. If it is CERNBox, we are comparing
+across a ~1.05 pp dataset gap and the claim has to be withdrawn. **Our reproduction landing within
+0.12 pp of their number is the strongest evidence we have that we are on the same data** -- had
+they been on the harder CERNBox set, our OpenML training should have come out ~1 pp *above* theirs,
+not slightly below.
+
+**This is the single best question for the authors' email.** It is cheap for them to answer and it
+decides whether our central comparison stands.
+
+#### 3. The conflation starts in the primary literature
+
+DWN v5's JSC table lists, in one block: `hls4ml` (76.2%, 63,251, 38 DSP -- **OpenML**, via Fahim
+et al.) alongside `PolyLUT` (236,541) and `NeuraLUT` (92,357) -- both **CERNBox**. So the mixing we
+found in Mecik & Kumm's Table II and in the survey **originates upstream and propagates by
+copying**. Every downstream table inherits it.
+
+That strengthens the literature half's contribution: the dataset split is not a footnote we
+noticed, it is a defect running through the whole comparison chain.
+
+#### ⚠️ Version note: cite v5, not v1
+
+arXiv v1 and v5 report **different** JSC LUT counts -- v1 has DWN `sm` at 134 LUTs and `md` at
+2,144; v5 has **110** and **720**. `docs/paper-configs.md` was read from v5 and is correct, and v5
+matches Mecik & Kumm's reproduction exactly. Anything scraped from `arxiv.org/html/2410.11112v1`
+is superseded -- pin the version when quoting.
+
 ### 2026-08-10 — 3X-b: confirmed at `1x2400 z=50`, but the safe width moved and the cliff is elsewhere
 
 Re-run of both halves on the headline config. Control passes again: the emitted encoder at 16 bits
@@ -581,6 +645,8 @@ plot until resolved.
 | Which convention do the non-DWN rows use? | ⚠️ **Open, now the main blocker for 3L-d.** `encoder_included` is `n/a` for LogicNets/PolyLUT/NeuraLUT/TreeLUT on the argument that they take quantised inputs with no separate encoder stage — **that argument has not been checked against any of their papers.** If any of them does have an unreported input stage, the same trap that caught DWN applies to them. |
 | Is the hls4ml 76.2% / 63,251 number real? | ⚠️ **Open, and load-bearing.** It is the headline comparison in our README and `docs/phase3-plan.md` §5, and it currently traces only to our own brief §8 with no primary citation. Must be found or the claim dropped. Marked `unverified` in the JSON. |
 | Does FPGN beat us on our own comparison? | ⬜ Unread. Compares against DWN directly; the most likely paper to change what we can claim. |
+| **Which JSC dataset are the DWN paper's numbers on?** | ⚠️ **Open, load-bearing, and the top question for the authors.** Paper says "as in the NeuraLUT paper" (CERNBox); code, FPGN, our reproduction and the accuracy level all say OpenML. Our headline comparison against DWN `lg` is only valid if OpenML. See the 2026-08-10 entry. |
+| ~~Does the weightless lineage (ULEEN/BTHOWeN/WiSARD) need JSC rows?~~ | ✅ **Closed 2026-08-10, no.** None of them report JSC — they use the BTHOWeN suite. They belong in brief §8 as the lineage DWN descends from, which is a citation fix, not a table change. |
 | Fmax/latency comparability | ✅ **Closed by plan §4.2.** `xcvu9p-2` at 700 MHz vs `xc7a35t-1` at 100 MHz — LUT counts transfer, ns does not. Report cycles alongside ns. Our 4 cycles vs their 2–7 is the comparison that survives. |
 
 ---
