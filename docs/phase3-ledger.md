@@ -17,7 +17,7 @@ it says so rather than editing it away.
 | 3L-a | Refresh the literature list — brief §8 is stale (plan §3 ⚠️) | ✅ done 2026-08-10 |
 | 3L-b | Settle the encoder-convention trap (plan §4.1) | ✅ done 2026-08-10 |
 | 3L-c | Pull per-paper JSC numbers into a machine-readable table | ✅ done 2026-08-10 — `cc/literature/` |
-| 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ⬜ next — **one plot per dataset**, see below |
+| 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ✅ done 2026-08-11 — `cc/literature/plot.py`, figures in `docs/results-cc/` |
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
 | 3L-e | Phase 3 report — literature section | ⬜ |
@@ -508,6 +508,68 @@ The per-comparator cost is a property of the comparator, not of design size, and
 Still **measure before quoting** (3X-b): at `z=50` the thresholds are further apart, so fewer
 collapse at narrow widths -- likely *better* accuracy retention and slightly *more* area.
 
+### 2026-08-11 — 3L-d: the comparison figures, and DWN vs conifer on identical silicon
+
+`cc/literature/plot.py` -> `docs/results-cc/jsc-openml.png`, `jsc-cernbox.png`. `table.py` now
+also ingests `docs/results-cc/conifer-results.json`, so the combined table carries all three
+sources: 41 DWN configs, 10 conifer configs, 32 published rows.
+
+**The head-to-head, both measured through `scripts/build.tcl` at `xc7a35tcpg236-1` / 10 ns.**
+
+Iso-area — best accuracy within a LUT budget:
+
+| budget | DWN | conifer | gap |
+|---|---|---|---|
+| 4,000 | `1x360 z=25` 75.27% | `gbdt_d3_n10` 73.64% | **+1.63 pp** |
+| 8,000 | `1x800 z=50` 75.95% | `gbdt_d5_n5` 74.36% | **+1.59 pp** |
+| 12,751 | `1x2400 z=50` 76.18% | `gbdt_d6_n3` 74.50% | **+1.68 pp** |
+| 20,800 | `1x1600` 76.35% | `gbdt_d3_n40` 74.88% | **+1.48 pp** |
+
+Iso-accuracy — smallest design reaching a target:
+
+| target | DWN | conifer | ratio |
+|---|---|---|---|
+| 73.6% | 1,619 | 3,774 | **2.3x** |
+| 74.2% | 2,541 | 7,602 | **3.0x** |
+| 74.5% | 2,541 | 15,363 | **6.0x** |
+| >=74.9% | 3,381 | **never reaches it** | — |
+
+**A GBDT does not reach DWN's accuracy on this part at any size that fits.** conifer tops out at
+74.88% using 73.9% of the device; DWN reaches that at 3,381 LUTs and continues to 76.35%.
+
+⚠️ **The counterweight, which belongs in the report next to the above.** conifer wins latency
+outright: **477.3 MHz against our 101-147 MHz**, and 4.2-16.8 ns against our 27-40 ns. In *cycles*
+they are comparable (2-8 vs our 4) — which is exactly why brief §6 requires cycles alongside ns.
+The fair one-line summary is **DWN wins accuracy-per-LUT; conifer wins speed.** Also note conifer
+is 0 BRAM / 0 DSP on all 14 configs, so the DSP argument is against hls4ml's MLPs only.
+
+#### Two things the figures enforce, rather than leave to a caption
+
+- **One figure per dataset.** The script will not put OpenML and CERNBox on one axis. A combined
+  plot would show a gap that is partly architecture and partly the ~1.05 pp dataset offset.
+- **No Pareto curve spans two accounting conventions.** Series are keyed by
+  *(method, encoder convention)*, so `DWN (core only)` and `DWN (+encoder)` are drawn as two
+  curves. The first version of this plot did connect them, producing a frontier no single
+  accounting produces — the same class of error as the dataset mixing, committed inside the very
+  figure built to prevent it. Marker fill encodes the convention: filled = encoder included,
+  hollow = core only, square = no separate encoder stage.
+
+#### Closed while building it: the encoder convention for non-DWN rows
+
+`encoder_included: "n/a"` on the LogicNets/PolyLUT/NeuraLUT/TreeLUT/AmigoLUT rows was an
+assumption, flagged 2026-08-10 as unverified. It holds:
+
+- **TreeLUT** quantises inputs *"as a pre-processing step"* (§2.1) — host-side, exactly as our
+  StandardScaler is. Its reported LUTs are the tree comparators and adders.
+- **Mecik & Kumm settle it for the family**: *"In previous performance evaluations, only the
+  resource usage of the LUT layer and the classification logic was reported, which makes
+  meaningful comparison with LUT-based architectures difficult."* That is said **of DWN** — DWN
+  was the outlier omitting its encoder; the LUT-based architectures report complete designs.
+
+These architectures feed quantised inputs straight into LUT address lines and have no expansion
+stage. DWN is the one that needs an encoder, because thermometer coding turns 16 features into
+3,200 bits. `n/a` is correct and now sourced.
+
 ### 2026-08-10 — the weightless lineage has no JSC numbers, and the DWN paper's own JSC table mixes datasets
 
 Two results from closing the "no weightless related work" gap.
@@ -742,7 +804,7 @@ plot until resolved.
 | Do the non-DWN rows include an input encoder? | ⚠️ **Open.** Settled for DWN only. LogicNets/PolyLUT/NeuraLUT take quantised inputs directly, so the question may not apply in the same form — but that itself has to be stated per row, not assumed. |
 | ~~Which JSC split does each paper use?~~ | ✅ **Closed 2026-08-10, and it was the right thing to ask.** Two datasets, ~1.05 pp apart, and the standard tables conflate them. We are on OpenML with DWN, TreeLUT and hls4ml; the PolyLUT/NeuraLUT/LogicNets lineage is on CERNBox. Enforced in code by `cc/literature/table.py`. |
 | Does LLNN use OpenML or CERNBox? | ⚠️ **Open.** IEEE TCAS-I, paywalled. Two rows parked until resolved. Try an author preprint. |
-| Which convention do the non-DWN rows use? | ⚠️ **Open, now the main blocker for 3L-d.** `encoder_included` is `n/a` for LogicNets/PolyLUT/NeuraLUT/TreeLUT on the argument that they take quantised inputs with no separate encoder stage — **that argument has not been checked against any of their papers.** If any of them does have an unreported input stage, the same trap that caught DWN applies to them. |
+| ~~Which convention do the non-DWN rows use?~~ | ✅ **Closed 2026-08-11, `n/a` confirmed.** TreeLUT quantises host-side "as a pre-processing step"; Mecik & Kumm state that it was **DWN** whose evaluations reported only the LUT layer and classification logic, not the LUT-based family. See the 2026-08-11 entry. |
 | Is the hls4ml 76.2% / 63,251 number real? | ⚠️ **Open, and load-bearing.** It is the headline comparison in our README and `docs/phase3-plan.md` §5, and it currently traces only to our own brief §8 with no primary citation. Must be found or the claim dropped. Marked `unverified` in the JSON. |
 | Does FPGN beat us on our own comparison? | ⬜ Unread. Compares against DWN directly; the most likely paper to change what we can claim. |
 | **Which JSC dataset are the DWN paper's numbers on?** | ⚠️ **Open, load-bearing, and the top question for the authors.** Paper says "as in the NeuraLUT paper" (CERNBox); code, FPGN, our reproduction and the accuracy level all say OpenML. Our headline comparison against DWN `lg` is only valid if OpenML. See the 2026-08-10 entry. |

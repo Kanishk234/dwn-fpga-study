@@ -17,6 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 LIT = os.path.join(HERE, 'jsc_literature.json')
 OURS = os.path.join(REPO, 'docs', 'results', 'sweep-results.json')
+CONIFER = os.path.join(REPO, 'docs', 'results-cc', 'conifer-results.json')
 
 OUR_PART = 'xc7a35t-1'
 
@@ -68,6 +69,31 @@ def load_ours(path=OURS, fitting_only=True):
     return out
 
 
+def load_conifer(path=CONIFER, fitting_only=True):
+    """The conifer GBDT sweep, in the same record shape. Same silicon, same build.tcl, same
+    10 ns clock as every DWN row -- these are measurements, not citations."""
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding='utf-8') as fh:
+        raw = json.load(fh)
+    out = []
+    for c in raw:
+        fits = c.get('status') == 'ok' and c.get('luts')
+        if fitting_only and not fits:
+            continue
+        out.append({
+            'method': 'conifer (GBDT)', 'model': c['name'], 'variant': None,
+            'dataset': 'openml', 'accuracy_pct': c['accuracy_pct'],
+            'lut': c.get('luts'), 'ff': c.get('ff'), 'dsp': c.get('dsp'), 'bram': c.get('bram'),
+            'fmax_mhz': c.get('fmax_mhz'), 'latency_ns': c.get('latency_ns'),
+            'latency_cycles': c.get('latency_cycles'), 'part': OUR_PART,
+            'encoder_included': 'n/a', 'source': 'docs/results-cc/conifer-results.json',
+            'confidence': 'measured', 'fits': bool(fits), 'device_pct': c.get('device_pct'),
+        })
+    out.sort(key=lambda r: -r['accuracy_pct'])
+    return out
+
+
 def _conv(row):
     e = row.get('encoder_included')
     return {True: 'incl', False: 'core only', 'n/a': 'n/a', 'unknown': '?'}.get(e, '?')
@@ -112,6 +138,7 @@ def main(argv=None):
     rows = list(lit['results'])
     if not args.no_ours:
         rows += load_ours(fitting_only=not args.include_unfittable)
+        rows += load_conifer(fitting_only=not args.include_unfittable)
 
     wanted = ['openml', 'cernbox', 'unknown'] if args.dataset == 'all' else [args.dataset]
     ds = lit['datasets']

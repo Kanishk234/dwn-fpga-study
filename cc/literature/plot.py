@@ -1,0 +1,171 @@
+"""Phase 3 comparison plots: accuracy vs LUTs, ONE FIGURE PER JSC DATASET.
+
+Never one figure. JSC is two datasets ~1.05 pp apart (docs/phase3-ledger.md, 2026-08-10), so a
+combined plot would show a gap that is partly the data and partly the design. This script refuses
+to mix them, which is the whole point of it existing.
+
+Marker fill encodes the accounting convention, because that is the other way these numbers lie:
+    filled   the LUT count INCLUDES the input encoder (ours, DWN-PEN+FT)
+    hollow   core only, encoder excluded (the DWN paper's own numbers)
+    square   no separate encoder stage exists in that architecture
+
+    .venv\\Scripts\\python.exe cc\\literature\\plot.py
+    .venv\\Scripts\\python.exe cc\\literature\\plot.py --snapshot   # -> docs/results-cc/
+"""
+import argparse
+import os
+import sys
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt          # noqa: E402
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+
+from table import load_conifer, load_literature, load_ours   # noqa: E402
+
+OUT = os.path.join(REPO, 'build', 'cc', 'literature')
+SNAP = os.path.join(REPO, 'docs', 'results-cc')
+DEVICE_LUTS = 20800
+
+# Okabe-Ito: distinguishable under the common CVD types and in greyscale.
+C = {
+    'this project': '#0072B2',
+    'conifer (GBDT)': '#D55E00',
+    'DWN': '#009E73',
+    'TreeLUT': '#CC79A7',
+    'NeuraLUT-Assemble': '#E69F00',
+    'FPGN': '#56B4E9',
+    'hls4ml (Fahim et al.)': '#8B4513',
+}
+DEFAULT = '#666666'
+_LBL = [0]        # rotates label offsets across series
+
+
+def style(row):
+    """(marker, filled) from the encoder convention."""
+    e = row.get('encoder_included')
+    if e is True:
+        return 'o', True
+    if e is False:
+        return 'o', False
+    if e == 'n/a':
+        return 's', True
+    return 'D', False
+
+
+def pareto(rows):
+    """Non-dominated by (low LUT, high accuracy)."""
+    out, best = [], -1e9
+    for r in sorted(rows, key=lambda x: x['lut']):
+        if r['accuracy_pct'] > best:
+            out.append(r)
+            best = r['accuracy_pct']
+    return out
+
+
+def draw(ax, rows, dataset, ours_present):
+    # Series are keyed by (method, convention), never method alone: a Pareto curve drawn
+    # across both would connect core-only points to encoder-included ones and show a frontier
+    # that no single accounting produces. That is the error this whole figure exists to avoid.
+    groups = {}
+    for r in rows:
+        e = r.get('encoder_included')
+        tag = {True: ' (+encoder)', False: ' (core only)'}.get(e, '')
+        groups.setdefault(r['method'] + tag, []).append(r)
+
+    for method, pts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        col = C.get(method.split(' (+')[0].split(' (core')[0], DEFAULT)
+        curve = len(pts) > 2
+        if curve:
+            front = pareto(pts)
+            ax.plot([p['lut'] for p in front], [p['accuracy_pct'] for p in front],
+                    '-', color=col, lw=2, alpha=.85, zorder=2)
+        for p in pts:
+            m, filled = style(p)
+            ax.plot(p['lut'], p['accuracy_pct'], m, ms=8, color=col,
+                    mfc=col if filled else 'none', mew=2, zorder=3,
+                    label=method if p is pts[0] else None)
+
+        # Label only the extremes of a swept curve; every point on a 41-point sweep is noise.
+        to_label = pts if not curve else (
+            [max(pts, key=lambda x: x['accuracy_pct']), min(pts, key=lambda x: x['lut'])])
+        for i, p in enumerate(to_label):
+            text = p['model'] if curve else method
+            # Alternate the offset: several published points sit within 0.3 pp of each other
+            # at ~76%, and a fixed offset stacks their labels on top of one another.
+            dx, dy = ((8, 6), (8, -12), (-8, 8), (-8, -12))[(_LBL[0] + i) % 4]
+            ax.annotate(text, (p['lut'], p['accuracy_pct']),
+                        textcoords='offset points', xytext=(dx, dy), fontsize=7.5,
+                        ha='left' if dx > 0 else 'right', color=col, zorder=4)
+        _LBL[0] += len(to_label)
+
+    if ours_present:
+        ax.axvline(DEVICE_LUTS, color='#B00020', ls='--', lw=1.4, zorder=1)
+        lo, hi = ax.get_ylim()
+        ax.text(DEVICE_LUTS, lo + (hi - lo) * .42, ' XC7A35T limit — 20,800 LUTs ',
+                rotation=90, ha='right', va='center', fontsize=8, color='#B00020',
+                fontweight='bold', bbox=dict(fc='white', ec='none', alpha=.75, pad=1.5))
+
+    ax.set_xscale('log')
+    ax.set_xlabel('LUTs (log scale)  —  lower is better')
+    ax.set_ylabel('Accuracy (%)')
+    ax.grid(True, which='both', alpha=.22, lw=.6)
+    ax.set_axisbelow(True)
+    for s in ('top', 'right'):
+        ax.spines[s].set_visible(False)
+    ax.set_title(f'JSC-{dataset.upper()}', fontsize=13, fontweight='bold', loc='left')
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--snapshot', action='store_true',
+                    help='also write into docs/results-cc/ for committing')
+    args = ap.parse_args(argv)
+
+    lit = load_literature()
+    rows = list(lit['results']) + load_ours() + load_conifer()
+    os.makedirs(OUT, exist_ok=True)
+
+    written = []
+    for dataset in ('openml', 'cernbox'):
+        sel = [r for r in rows if r['dataset'] == dataset and r.get('lut')
+               and r.get('accuracy_pct')]
+        if not sel:
+            continue
+        ours = any(r['part'] == 'xc7a35t-1' for r in sel)
+        fig, ax = plt.subplots(figsize=(11, 6.8))
+        draw(ax, sel, dataset, ours)
+
+        sub = ('our silicon (xc7a35t-1) vs published (xcvu9p) — LUTs transfer, ns does not'
+               if ours else
+               'published only — NOT comparable to our results, different dataset')
+        fig.suptitle(f'JSC accuracy vs area — {sub}', fontsize=9.5, y=.965,
+                     x=.125, ha='left', color='#444')
+        h, l = ax.get_legend_handles_labels()
+        ax.legend(h, l, loc='lower center', fontsize=8, frameon=False, ncol=3,
+                  bbox_to_anchor=(.5, -.005), columnspacing=1.4, handletextpad=.4)
+        fig.text(.125, .012,
+                 'filled = LUT count includes input encoder   ·   hollow = core only, encoder '
+                 'excluded   ·   square = no separate encoder stage',
+                 fontsize=7.5, color='#666')
+        fig.tight_layout(rect=[0, .03, 1, .94])
+
+        for d in ([OUT, SNAP] if args.snapshot else [OUT]):
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, f'jsc-{dataset}.png')
+            fig.savefig(path, dpi=200)
+            written.append(os.path.relpath(path, REPO))
+        plt.close(fig)
+
+    for w in written:
+        print('wrote', w)
+    print('\nTwo figures, never one: the datasets are ~1.05 pp apart and cannot share an axis.')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
