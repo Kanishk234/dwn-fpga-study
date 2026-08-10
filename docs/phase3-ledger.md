@@ -21,8 +21,8 @@ it says so rather than editing it away.
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
 | 3L-e | Phase 3 report — literature section | ⬜ |
-| 3M-a | conifer (GBDT) — *hands-on machine* | 🟡 flow proven end to end, first row measured |
-| 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⬜ |
+| 3M-a | conifer (GBDT) — *hands-on machine* | ✅ done 2026-08-10 — **14 configs, `docs/results-cc/`** |
+| 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⚠️ **scoped out** — see the entry below |
 
 **Both halves now have entries in this ledger.** The literature half (3L-\*) runs on the machine
 that wrote this file; the hands-on half (3M-\*) runs on the machine that holds the Phase 1/2
@@ -33,6 +33,106 @@ so it is directly comparable to the 54 DWN results.
 ---
 
 ## Log
+
+### 2026-08-10 — ⚠️ 3M-b: hls4ml is SCOPED OUT, with the limitation stated
+
+Not "incomplete" — a decision, recorded so the writeup states it rather than omitting the row.
+
+**What running it would have added, and it is one thing only:** what accuracy hls4ml retains when
+*shrunk to fit* an XC7A35T. Nobody has published that, and it is the actual content of plan §2.2.
+
+**What is already established without running it**, from the primary-source row verified in the
+literature half — same OpenML split as ours:
+
+| | hls4ml JSC MLP | ours (`1x2400 z=50`) |
+|---|---|---|
+| accuracy | 76.0% | **76.18%** |
+| LUTs | **63,251** | **12,751** |
+| DSPs | **38** | **0** |
+| part | `xcvu9p` | `xc7a35t-1` |
+
+63,251 against a 20,800-LUT device is **3× over** — arithmetic, not something that needs
+measuring. The DSP contrast is two published numbers. Plan §4.2 already sanctions the cross-part
+LUT comparison ("LUT counts roughly transfer; Fmax and ns do not").
+
+**Wording for the report**, so the boundary is explicit:
+
+> *hls4ml was not re-synthesized on our part. Its published JSC design (76.0%, 63,251 LUTs, 38
+> DSPs on xcvu9p) exceeds the XC7A35T by 3× on LUTs alone, so the comparison is made from
+> published numbers with the part difference stated. What we do not measure is what accuracy
+> hls4ml retains when shrunk to fit this device.*
+
+**The cheap version, if time reappears:** one config, not a sweep. Because the control is *our*
+synthesis flow, hls4ml's version and OS never enter the comparison — generate Verilog anywhere
+(WSL, another machine, an older Vitis that still ships `vitis_hls`) and synthesize it here at
+2025.2. That is an afternoon; the shrink sequence is the part that costs a day.
+
+⚠️ **One thing this weakens, and it should be said plainly.** The 0 BRAM / 0 DSP column is the
+central claim against hls4ml, and conifer also measures 0/0 across all 14 configs — trees do not
+spend DSPs either. So on our own silicon the DSP argument is currently **unexercised**: it rests
+entirely on the published hls4ml numbers.
+
+### 2026-08-10 — 3M-a COMPLETE: 14 conifer configs, and a GBDT does not reach DWN on this part
+
+*(hands-on machine)* Full sweep through `cc/conifer/run_conifer.py --sweep`. Snapshot committed
+to `docs/results-cc/` — `build/` is gitignored and these are most of a day of HLS + place-and-route.
+
+**10 of 14 fit; 4 exceed the device.** All post-route, `xc7a35tcpg236-1`, 10 ns, out-of-context.
+
+| config | trees | acc % | LUT | dev % | cyc | II | Fmax |
+|---|---|---|---|---|---|---|---|
+| `gbdt_d4_n5` | 25 | 73.63 | 4,019 | 19.3% | 2 | 1 | 477.3 |
+| `gbdt_d3_n10` | 50 | 73.64 | 3,774 | 18.1% | 3 | 1 | 477.3 |
+| `gbdt_d4_n10` | 50 | 74.19 | 8,005 | 38.5% | 3 | 1 | 477.3 |
+| `gbdt_d3_n20` | 100 | 74.24 | 7,602 | 36.6% | 5 | 1 | 477.3 |
+| `gbdt_d5_n5` | 25 | 74.36 | 7,836 | 37.7% | 5 | 1 | 477.3 |
+| `gbdt_d6_n3` | 15 | 74.50 | 9,376 | 45.1% | 8 | 1 | 477.3 |
+| `gbdt_d4_n20` | 100 | 74.75 | 16,052 | 77.2% | 5 | 1 | 477.3 |
+| `gbdt_d5_n10` | 50 | 74.77 | 15,605 | 75.0% | 6 | 1 | 477.3 |
+| `gbdt_d6_n5` | 25 | 74.80 | 15,898 | 76.4% | 8 | 1 | 477.3 |
+| **`gbdt_d3_n40`** | 200 | **74.88** | 15,363 | 73.9% | 7 | 1 | 477.3 |
+| `gbdt_d6_n10` ❌ | 50 | 75.09 | — | over | 9 | 1 | — |
+| `gbdt_d5_n20` ❌ | 100 | 75.26 | — | over | 9 | 1 | — |
+| `gbdt_d4_n40` ❌ | 200 | 75.41 | — | over | 7 | 1 | — |
+| `gbdt_d3_n80` ❌ | 400 | 75.50 | — | over | 8 | 1 | — |
+
+**Every config: 0 BRAM, 0 DSP**, matching all 52 DWN configs.
+
+#### The result: a GBDT does not reach DWN's accuracy on this part
+
+- Best that **fits**: **74.88%** at 73.9% of device
+- Best over-device: 75.50% — still **0.68 pp short** of DWN, while already exceeding a part DWN
+  fits inside at **61.3%**
+- **`1x2400 z=50`: 76.18% at 61.3%, 4 cycles** — more accurate, smaller, *and* lower latency
+
+**The ceiling is sharply defined.** Four configs at 15.4–16.1k LUTs, spanning depths 3–6 and
+25–200 trees, all land in **74.75–74.88%** — a 0.13 pp spread. Four structurally different models,
+same accuracy, same area. That is an architectural wall, not undersampling.
+
+**A clean iso-area pair worth quoting:** `gbdt_d4_n10` at **8,005** LUTs against `1x360` at
+**8,006** — one LUT apart, same part, same flow. 74.19% vs 75.85%, **+1.67 pp to DWN**.
+
+#### Latency: cycles is the only meaningful metric here, exactly as brief §6 says
+
+Every conifer row reports **Fmax 477.3 MHz**, identical. That is not a bug and not a fast design:
+HLS *chooses* pipeline depth to meet the 10 ns target, so it always lands near the same critical
+path and Fmax carries no information. Latency in **cycles** does vary — **2 to 9, always II=1** —
+and it comes from HLS's `<top>_csynth.rpt`, not from any Vivado report, which is why it was
+missed on the first pass.
+
+Against DWN's 4 cycles / II=1: conifer's *small* configs are faster (2–3 cycles) but 1.5–2 pp less
+accurate; every config that gets near its accuracy ceiling costs **5–9 cycles**. So DWN wins the
+latency comparison in the region that matters.
+
+#### ⚠️ This measures conifer, not trees
+
+**TreeLUT reports 76.0% at 2,234 LUTs** on the same OpenML split — roughly **7× denser** than
+conifer's best fitting config, at 1.1 pp *better* accuracy. So the defensible claim is
+**"DWN beats conifer's HLS implementation of GBDTs on this part"**, not "DWN beats GBDTs". The
+tree-architecture comparison lives in the literature table, where TreeLUT already sits.
+
+Also worth a column rather than a footnote: **FF count varies 3.9k–11.8k at essentially fixed
+LUT area** (15.4–16.1k). Depth drives registers hard; area alone hides it.
 
 ### 2026-08-10 — 3M-a: the conifer flow runs end to end at 2025.2, and the first GBDT row
 
