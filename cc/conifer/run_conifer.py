@@ -46,6 +46,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -227,6 +228,37 @@ def run_hls(prj_dir):
     return ok
 
 
+def parse_hls_latency(prj_dir, top):
+    """Latency in CYCLES and initiation interval, from HLS's own synthesis report.
+
+    Brief §6 requires latency in cycles as well as nanoseconds, because the paper's clock
+    speeds do not transfer to a -1 Artix-7 -- and cycles are what survives the part difference.
+
+    This does NOT come from the Vivado reports, which is why it was missed at first. Vivado
+    reports Fmax; the pipeline depth HLS chose is only in `<top>_csynth.rpt`:
+
+        |  Latency (cycles) |   Latency (absolute)  |  Interval | Pipeline|
+        |   min   |   max   |    min    |    max    | min | max |   Type  |
+        |        3|        3|  30.000 ns|  30.000 ns|    1|    1|      yes|
+
+    It varies with the model (measured 3 to 8 cycles across the sweep) and is always II=1, so
+    it is directly comparable to DWN's 4 cycles at II=1.
+    """
+    rpt = os.path.join(prj_dir, top, 'solution1', 'syn', 'report', f'{top}_csynth.rpt')
+    if not os.path.exists(rpt):
+        return None
+    text = open(rpt, errors='replace').read()
+    # The FIRST such row after "+ Latency:" is the top-level summary; the per-instance detail
+    # tables below it have the same shape, so anchoring on the section header matters.
+    head = text.split('+ Latency:', 1)[-1]
+    m = re.search(r'\|\s*(\d+)\|\s*(\d+)\|\s*([\d.]+) ns\|\s*[\d.]+ ns\|\s*(\d+)\|\s*(\d+)\|\s*(\w+)\|',
+                  head)
+    if not m:
+        return None
+    return {'latency_cycles': int(m.group(2)), 'latency_hls_ns': float(m.group(3)),
+            'ii': int(m.group(5)), 'pipelined': m.group(6).strip().lower() == 'yes'}
+
+
 def stage_rtl(prj_dir, name, top):
     """Concatenate HLS's Verilog into ONE file, and return its repo-relative path.
 
@@ -335,8 +367,9 @@ def run_config(depth, trees, X_train, y_train, X_test, y_test, do_synth=True):
         row['status'] = 'synth-failed'
         return row
 
+    lat = parse_hls_latency(prj, top) or {}
     row.update(status='ok', **{k: res.get(k) for k in ('luts', 'ff', 'bram', 'dsp')},
-               wns=res['wns'], fmax_mhz=res['fmax_mhz'],
+               wns=res['wns'], fmax_mhz=res['fmax_mhz'], **lat,
                device_pct=round(100 * res['luts'] / DEVICE_LUTS, 2) if res.get('luts') else None)
     print(f"  post-route         : {res.get('luts')} LUT  {res.get('ff')} FF  "
           f"{res.get('bram')} BRAM  {res.get('dsp')} DSP  "
@@ -357,14 +390,51 @@ def save(rows):
     print(f'\nresults -> {os.path.relpath(RESULTS, REPO)}  ({len(existing)} rows)')
 
 
+SNAPSHOT_DIR = os.path.join(REPO, 'docs', 'results-cc')
+SNAPSHOT_COLS = ['name', 'depth', 'trees', 'status', 'accuracy_pct', 'accuracy_xgboost_pct',
+                 'convert_mismatches', 'luts', 'ff', 'bram', 'dsp', 'device_pct',
+                 'latency_cycles', 'ii', 'wns', 'fmax_mhz', 'latency_ns',
+                 'precision', 'part', 'clock_ns']
+
+
+def snapshot():
+    """Commit the measurements, the way `dse/report.py --snapshot` does for the DWN sweep.
+
+    `build/cc/conifer/results.json` is gitignored with the rest of `build/`, on the rule that
+    everything there is regenerable. These are not regenerable in any useful sense -- 14 configs
+    of HLS plus place-and-route is most of a day of wall clock -- and they are the evidence that
+    a competitor design was actually built and measured on our part, not cited from a paper.
+    `docs/phase3-handoff.md` §2.6 names this destination.
+    """
+    import csv as _csv
+    rows = json.load(open(RESULTS))
+    rows.sort(key=lambda r: (r['depth'], r['trees']))
+    os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    with open(os.path.join(SNAPSHOT_DIR, 'conifer-results.json'), 'w') as fh:
+        json.dump(rows, fh, indent=2)
+    with open(os.path.join(SNAPSHOT_DIR, 'conifer-results.csv'), 'w', newline='') as fh:
+        w = _csv.DictWriter(fh, fieldnames=SNAPSHOT_COLS, extrasaction='ignore')
+        w.writeheader()
+        w.writerows(rows)
+    ok = sum(1 for r in rows if r.get('status') == 'ok')
+    print(f'snapshot -> {os.path.relpath(SNAPSHOT_DIR, REPO)}  '
+          f'({len(rows)} rows, {ok} fit, {len(rows)-ok} over-device)')
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description='conifer GBDT through our synthesis flow.')
+    ap.add_argument('--snapshot', action='store_true',
+                    help='copy results into docs/results-cc/ for committing')
     ap.add_argument('--depth', type=int, default=4)
     ap.add_argument('--trees', type=int, default=20)
     ap.add_argument('--sweep', action='store_true', help='the full depth x n_estimators curve')
     ap.add_argument('--no-synth', action='store_true', help='train + convert + validate only')
     ap.add_argument('--force', action='store_true', help='re-run configs already in results.json')
     args = ap.parse_args()
+
+    if args.snapshot:
+        return snapshot()
 
     X_train, X_test, y_train, y_test = load_data()
     print(f'JSC: train {X_train.shape}  test {X_test.shape}  '
