@@ -55,7 +55,7 @@ this machine and say so in the writeup. Do not mix them in one table.
 | | why | check |
 |---|---|---|
 | **Vivado 2025.2** | must match the DWN measurements | `verify_phase1.py` |
-| **Vitis HLS** | hls4ml compiles to HLS C++ first — Vivado alone is not enough | confirm **before** starting §2.2 of the plan; it is a large separate install and a bad thing to discover late. ⚠️ **Check which command exists**: hls4ml and conifer invoke `vitis_hls`, and no such binary was found in this machine's `2025.2` install (AMD removed Vitis HLS Classic in 2025.1+; HLS is driven through `v++ --mode hls` / `vitis-run` instead). This flow **has been run successfully on this setup before**, so treat it as a thing to verify at setup, not a known blocker — see `docs/phase3-ledger.md`, 2026-08-10. |
+| **Vitis HLS** | hls4ml compiles to HLS C++ first — Vivado alone is not enough | ✅ **Present and working at 2025.2 — verified 2026-08-10 by synthesizing a design.** No second Vivado install is needed. **Drive it as `vitis-run --mode hls --tcl <script>`** — `--mode hls` alone errors, and the positional form the `--help` advertises does not satisfy it. AMD did remove HLS *Classic* in 2025.1+, so the plain `vitis_hls` command that hls4ml and conifer expect is not on `PATH`; the `vitis_hls.exe` under `Vitis/bin/unwrapped/win64.o/` is not usable as a CLI. Driving HLS ourselves is the method anyway (§2.1 forbids the vendor project flow), so conifer's own `build()` not working here costs nothing. See `docs/phase3-ledger.md`, 2026-08-10. |
 | **conifer** | `pip install conifer` | build a trivial 2-tree model and synthesize it before touching JSC |
 | **hls4ml** | `pip install hls4ml` | same — smallest possible model through the flow first |
 

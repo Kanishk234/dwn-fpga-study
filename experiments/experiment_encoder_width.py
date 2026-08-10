@@ -44,6 +44,7 @@ def reference_bits(x, thr, used):
 
 INT_BITS = WORD_BITS - 1 - FRAC_BITS     # 3, the integer bits Q3.12 spends on range
 NOISE_PP = 0.15                          # measured run-to-run floor, Phase 2
+CHUNK = 8192                             # samples per forward pass; see classify()
 
 
 def bits_in_place(x, thr, used, frac, int_bits=INT_BITS):
@@ -92,8 +93,14 @@ def classify(bits_used, layers, num_classes):
     inputs but structurally plausible (docs/checkpoint-format.md 2). `layers` must already carry
     wiring remapped onto the `used` subset -- see remap_layers.
     """
-    idx, _ = forward(bits_used, layers, num_classes)
-    return idx
+    # Chunked over samples: extract.lut_forward materializes an (N, nodes, n) int64 array, which
+    # at 2400 nodes and 166k samples is ~19 GB. Chunking bounds it to a few hundred MB and does
+    # not change a single result -- samples are independent.
+    out = np.empty(bits_used.shape[0], dtype=np.int64)
+    for lo in range(0, bits_used.shape[0], CHUNK):
+        idx, _ = forward(bits_used[lo:lo + CHUNK], layers, num_classes)
+        out[lo:lo + CHUNK] = idx
+    return out
 
 
 def remap_layers(sd, n, used):
@@ -196,15 +203,21 @@ def main(argv=None):
     layers = remap_layers(sd, n, used)
     num_classes = ck['config']['num_classes']
     y = np.asarray(npz['y']).astype(np.int64)
-    pred = np.asarray(npz['pred']).astype(np.int64) if 'pred' in npz else None
 
     exact = (x[:, :, None] > thr[None, :, :]).reshape(x.shape[0], -1)[:, used]
     acc_float = float((classify(exact, layers, num_classes) == y).mean())
     acc_ref = float((classify(ref, layers, num_classes) == y).mean())
     print(f'float encoder (no quantization) : {acc_float * 100:.4f}%')
     print(f'Q3.12 16-bit, what ships today  : {acc_ref * 100:.4f}%')
-    if pred is not None:
-        print(f'software model on this set      : {float((pred == y).mean()) * 100:.4f}%')
+    # The checkpoint's OWN recorded accuracy, not the npz's `pred` column: a full test set can be
+    # shared between checkpoints (the scaler and split are identical across the sweep), but its
+    # `pred` belongs to whichever model dumped it. Agreement here validates that the vectors,
+    # the wiring and the thresholds all belong together.
+    recorded = ck.get('results', {}).get('final_acc')
+    if recorded is not None:
+        delta = (acc_float - recorded) * 100
+        flag = 'OK' if abs(delta) < 0.01 else '<-- MISMATCH, wrong vectors for this checkpoint?'
+        print(f'checkpoint records              : {recorded * 100:.4f}%  ({delta:+.4f} pp) {flag}')
     print()
 
     hdr = (f"{'scheme':<9} {'word':>5} {'accuracy':>10} {'vs today':>10} "

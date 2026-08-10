@@ -72,11 +72,13 @@ one simulator invocation, and reviewers reading one language.
 
 - **hls4ml / Vitis HLS** — emits Verilog by default. Keep it that way; do not switch to VHDL.
 - **conifer's `xilinxhls` backend** — same, it goes through HLS.
-- ⚠️ **conifer's direct-to-RTL backend is VHDL by construction** — that is what it is called and
-  what it emits, and there is no Verilog equivalent. If we use it, that one design is the
-  exception: Vivado synthesizes mixed-language projects fine, but `build.tcl` reads `.v` only,
-  so it needs a `read_vhdl` branch. **Say so in the results table** rather than leaving a reader
-  to wonder why one row is a different language.
+- ~~⚠️ conifer's direct-to-RTL backend is VHDL by construction, so it needs a `read_vhdl` branch
+  in `build.tcl`.~~ **Moot — resolved 2026-08-10 by running it.** conifer's VHDL backend cannot
+  execute on Windows at all: `FixedPointConverter` shells out to a hard-coded POSIX `g++ … -fPIC
+  … -o X.so` through `os.system`, and it fails earlier still on `np.random.randint(0, 2**32)`,
+  which overflows Windows' 32-bit default int. **So `build.tcl` needs no `read_vhdl` branch and
+  the Verilog convention holds for every row**, with no exception. See `docs/phase3-ledger.md`,
+  2026-08-10.
 
 ### 2.5 Compare at iso-accuracy and iso-area
 

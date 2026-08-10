@@ -2,10 +2,11 @@
 
 Running log for Phase 3. Plan: `docs/phase3-plan.md`. Handoff: `docs/phase3-handoff.md`.
 
-**Split:** the *hands-on half* (conifer, hls4ml — plan §2) is being run by the other person on the
-other machine. **This ledger currently covers the literature half only** (plan §3–§4), which needs
-no board, no Vivado and no synthesis. When the two halves merge, say so here explicitly and note
-which machine produced which rows.
+**Split:** the *hands-on half* (conifer, hls4ml — plan §2) runs on the machine with the Phase 1/2
+toolchain; the *literature half* (plan §3–§4) needs no board, no Vivado and no synthesis and runs
+on the other. **Both halves are now logged here** — see the note under the status table for which
+machine produced which rows. Where an entry corrects an earlier one written from the other side,
+it says so rather than editing it away.
 
 ---
 
@@ -18,7 +19,7 @@ which machine produced which rows.
 | 3L-c | Pull per-paper JSC numbers into a machine-readable table | ✅ done 2026-08-10 — `cc/literature/` |
 | 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ⬜ next — **one plot per dataset**, see below |
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
-| 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ⬜ |
+| 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
 | 3L-e | Phase 3 report — literature section | ⬜ |
 | 3M-a | conifer (GBDT) — *hands-on machine* | 🟡 flow proven end to end, first row measured |
 | 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⬜ |
@@ -372,9 +373,10 @@ That is the strongest confirmation of it we have.
 
 **What does change:**
 
-1. **Every design gets much smaller.** Headline `1x2400 z=50` projects from 12,751 to ~7,800
-   LUTs -- **~38% of the device, from 61.3%**. The claim "the paper's `lg` fits on a $150 board"
-   holds; the number supporting it improves a lot. ⚠️ Projection, not measured -- that is 3X-b.
+1. **Every design gets much smaller.** Headline `1x2400 z=50` projects from 12,751 to **~7,990**
+   LUTs -- **~38.4% of the device, from 61.3%** -- using the *measured* 11-bit encoder of 992 LUTs
+   (3X-b, done). The claim "the paper's `lg` fits on a $150 board" holds and its supporting number
+   improves a lot. ⚠️ Still a projection: `dwn_top` itself was never rebuilt at 11 bits.
 2. **The `z` exchange rate moves a lot.** Phase 2 chose `z=50` over `z=200` because the encoder
    dominated. Scaling all encoders by ~1/5.9 shrinks that penalty: at `1x360`, `z=200` costs
    3,181 more LUTs than `z=50` today for +0.24 pp, but only ~540 more at 10 bits. The conclusion
@@ -405,6 +407,68 @@ Cost per wired comparator at 16-bit, across configs:
 The per-comparator cost is a property of the comparator, not of design size, and it is flat.
 Still **measure before quoting** (3X-b): at `z=50` the thresholds are further apart, so fewer
 collapse at narrow widths -- likely *better* accuracy retention and slightly *more* area.
+
+### 2026-08-10 — 3X-b: confirmed at `1x2400 z=50`, but the safe width moved and the cliff is elsewhere
+
+Re-run of both halves on the headline config. Control passes again: the emitted encoder at 16 bits
+measures **5,753 LUTs**, exactly the Phase 2 figure, and the float encoder reproduces the
+checkpoint's recorded **76.1837%** to four decimals.
+
+**The accuracy limit is one bit worse here, not better.** This was predicted the wrong way round:
+
+| scheme | `1x50` | `1x2400 z=50` |
+|---|---|---|
+| in-place | 10 bits | **11 bits** (-0.142 pp) |
+| renorm | 8 bits | **9 bits** (-0.120 pp) |
+
+**Mechanism: fan-out.** Here 746 comparators feed 2400x6 = 14,400 node slots, ~19 slots per
+comparator; at `1x50` it is 202 feeding 300, ~1.5 each. One wrong encoder bit propagates into ~19
+nodes instead of ~1.5, so quantization error amplifies far more in a wide network. Expect the
+usable width to keep creeping up with layer width -- **do not assume 11 bits transfers to a bigger
+model either.**
+
+**And the cliff is between 12 and 11, not 12 and 10.** `1x50` only sampled 12 and 10, which
+located it too coarsely:
+
+| word | distinct | LUTs | per comparator | vs 16-bit |
+|---|---|---|---|---|
+| 16 | 745/746 | 5,753 | 7.71 | 1.00x |
+| 13 | 739 | 4,916 | 6.59 | 1.17x |
+| 12 | 734 | 4,157 | 5.57 | 1.38x |
+| **11** | 731 | **992** | 1.33 | **5.80x** |
+| 10 | 720 | 891 | 1.19 | 6.46x |
+| 9 | 687 | 794 | 1.06 | 7.25x |
+| 8 | 596 | 655 | 0.88 | 8.78x |
+
+The accuracy-safe width lands on the **cheap** side of the cliff by one bit. That is luck, not
+design: had the cliff sat between 11 and 10, the usable saving would have been 1.38x instead of
+5.80x. Any future config needs both halves re-measured, because the two limits are adjacent and
+neither is predictable.
+
+**Headline result: `in-place` at 11 bits, 5,753 -> 992 LUTs (5.80x), -0.142 pp, no retraining.**
+
+⚠️ **-0.142 pp is 95% of the 0.15 pp bar.** "Within noise" is technically true and practically
+marginal, and the conservative fallback is bad: 12 bits costs -0.111 pp and saves only 1.38x. The
+whole win rides on one bit.
+
+**The better operating point is `renorm` at 11 bits: -0.022 pp**, seven times inside the noise
+floor, at the same comparator width and therefore approximately the same area. It also needs no
+retraining. ⚠️ Its area is **not** directly measured -- renorm keeps more distinct constants (746
+vs 731), so expect slightly more than 992. Measuring it needs `emit_encoder` to accept per-feature
+affine constants, which it does not.
+
+#### Corrected projection for the headline design
+
+| | measured today | projected at 11-bit encoder |
+|---|---|---|
+| encoder | 5,753 | **992** |
+| core | 6,850 | 6,850 (unchanged) |
+| top | **12,751** | **~7,990** |
+| device | **61.3%** | **~38.4%** |
+
+Still a projection -- only the encoder was synthesized standalone; `dwn_top` was not rebuilt, and
+top has historically run ~148 LUTs above core+encoder. **Accuracy is unchanged and the design is
+not faster**, so this buys area on a design whose binding constraint is timing.
 
 ### 2026-08-10 — ~~⚠️ OPEN~~ ✅ CLOSED: our encoder is ~7.6× more expensive than theirs on the same workload
 
@@ -509,7 +573,7 @@ plot until resolved.
 | Question | Status |
 |---|---|
 | ~~Why is our encoder 7.6× theirs at the same `z`?~~ | ✅ **Closed 2026-08-10. Entirely comparator width.** At 8 bits ours is 182 LUTs against their 201. The hypothesis was right in mechanism and wrong about needing training: `in-place` at 10 bits gives **5.91×** with no retraining at all. |
-| Does the width result hold at `1x2400 z=50`? | ⚠️ **Open — measure before quoting (3X-b).** Per-comparator cost is flat across configs (7.5 vs ≥7.2), so it should, but the cliff between 12 and 10 bits means nothing here is safe to interpolate. |
+| ~~Does the width result hold at `1x2400 z=50`?~~ | ✅ **Closed 2026-08-10, with two corrections.** The saving holds (**5.80×**) but the accuracy-safe width moved from 10 to **11 bits** (fan-out amplifies encoder error ~19x more), and the cliff is between **12 and 11**, not 12 and 10. Both limits are adjacent and neither extrapolates — re-measure per config. |
 | Is `q16.12` worth sweeping? | ✅ **Answered: yes, it was the largest unswept axis.** 6 of 16 bits were doing nothing. See the entry above and the Phase 2 impact note. |
 | Do the non-DWN rows include an input encoder? | ⚠️ **Open.** Settled for DWN only. LogicNets/PolyLUT/NeuraLUT take quantised inputs directly, so the question may not apply in the same form — but that itself has to be stated per row, not assumed. |
 | ~~Which JSC split does each paper use?~~ | ✅ **Closed 2026-08-10, and it was the right thing to ask.** Two datasets, ~1.05 pp apart, and the standard tables conflate them. We are on OpenML with DWN, TreeLUT and hls4ml; the PolyLUT/NeuraLUT/LogicNets lineage is on CERNBox. Enforced in code by `cc/literature/table.py`. |
