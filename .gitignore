@@ -49,3 +49,11 @@ hs_err_pid*.log
 *.runs/
 *.sim/
 *.xpr
+
+# conifer scratch. conifer's FixedPointConverter writes a pybind11 helper into
+# `./.fp_converter_<type>_<timestamp+random>/` relative to the CURRENT WORKING DIRECTORY, so it
+# lands in the repo root rather than under build/. The suffix is regenerated per construction,
+# so these accumulate rather than being reused. Only the VHDL backend builds one -- and that
+# backend does not work on Windows anyway (it shells out to `g++ ... -o X.so`) -- but the
+# directory is left behind even when the compile fails, which is how the first one appeared.
+.fp_converter_*/
