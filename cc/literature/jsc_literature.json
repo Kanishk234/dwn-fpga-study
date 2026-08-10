@@ -1,0 +1,86 @@
+{
+  "_about": {
+    "what": "Published JSC results for the LUT-DNN family, for the Phase 3 controlled comparison (docs/phase3-plan.md sec 3-4). Citation only - nothing here was resynthesized by us.",
+    "generated": "2026-08-10",
+    "warning": "JSC IS TWO DIFFERENT DATASETS. Rows are only comparable within the same 'dataset' value. See docs/phase3-ledger.md, 2026-08-10.",
+    "fields": {
+      "dataset": "openml = hls4ml_lhc_jets_hlf, OpenML 42468, ~830k instances. cernbox = CERNBox LHC Jets, ~986.8k instances. unknown = not stated by the source and not inferable.",
+      "encoder_included": "true = the LUT count includes the input encoder. false = core only. n/a = the design takes quantized inputs directly and has no separate encoder stage. unknown = not stated.",
+      "confidence": "verified = read from the cited paper's own table. reported = taken from a secondary source that quotes it. unverified = we have not yet seen the primary source."
+    },
+    "our_dataset": "openml - upstream DWN's tutorial uses openml.datasets.get_dataset(42468) and our training notebooks use fetch_openml('hls4ml_lhc_jets_hlf'). Our 166k test set is 20% of ~830k."
+  },
+
+  "datasets": {
+    "openml": {
+      "name": "hls4ml_lhc_jets_hlf (OpenML 42468)",
+      "instances": 830000,
+      "features": 16,
+      "classes": 5,
+      "users": ["DWN", "TreeLUT", "NeuraLUT-Assemble (OpenML rows)", "FPGN (OpenML rows)", "hls4ml", "this project"]
+    },
+    "cernbox": {
+      "name": "CERNBox LHC Jets Dataset",
+      "instances": 986806,
+      "features": 16,
+      "classes": 5,
+      "users": ["LogicNets", "PolyLUT", "PolyLUT-Add", "NeuraLUT", "AmigoLUT", "ReducedLUT", "SparseLUT", "NeuraLUT-Assemble (CERNBox rows)", "FPGN (CERNBox rows)"],
+      "note": "NeuraLUT-Assemble: 'For the JSC dataset from CERNBox, we focused on comparisons with other LUT-based approaches, as they are the only prior works utilizing this data source.'"
+    },
+    "offset_pp": {
+      "value": 1.05,
+      "how": "Measured WITHIN method, twice, in arXiv:2607.08427 Table V: NeuraLUT-Assemble 76.0 (openml) vs 75.0 (cernbox); FPGN 76.0 (openml) vs 74.9 (cernbox). OpenML is the easier of the two.",
+      "why_it_matters": "Larger than our 0.15 pp noise floor and larger than most differences our Pareto frontier argues about."
+    }
+  },
+
+  "results": [
+    {"method": "DWN", "model": "sm-10", "variant": "TEN", "dataset": "openml", "accuracy_pct": 71.1, "lut": 20, "ff": 22, "fmax_mhz": 3030, "latency_ns": 0.6, "part": "xcvu9p-2", "encoder_included": false, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "Reproduces the original DWN paper's number."},
+    {"method": "DWN", "model": "sm-50", "variant": "TEN", "dataset": "openml", "accuracy_pct": 74.0, "lut": 110, "ff": 72, "fmax_mhz": 1094, "latency_ns": 1.5, "part": "xcvu9p-2", "encoder_included": false, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "Our 1x50 is the same config; our core is 108 LUTs."},
+    {"method": "DWN", "model": "md-360", "variant": "TEN", "dataset": "openml", "accuracy_pct": 75.6, "lut": 720, "ff": 457, "fmax_mhz": 827, "latency_ns": 3.6, "part": "xcvu9p-2", "encoder_included": false, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": null},
+    {"method": "DWN", "model": "lg-2400", "variant": "TEN", "dataset": "openml", "accuracy_pct": 76.3, "lut": 4972, "ff": 3305, "fmax_mhz": 827, "latency_ns": 7.3, "part": "xcvu9p-2", "encoder_included": false, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "THE number usually quoted as 'DWN on JSC'. Core only."},
+
+    {"method": "DWN", "model": "sm-10", "variant": "PEN+FT 6-bit", "dataset": "openml", "accuracy_pct": 71.2, "lut": 64, "ff": 18, "fmax_mhz": 1251, "latency_ns": 1.6, "part": "xcvu9p-2", "encoder_included": true, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "Table II of the same paper lists Fmax 1307 for this row - a 4% internal inconsistency. Table I used here."},
+    {"method": "DWN", "model": "sm-50", "variant": "PEN+FT 8-bit", "dataset": "openml", "accuracy_pct": 74.0, "lut": 311, "ff": 52, "fmax_mhz": 1011, "latency_ns": 2.0, "part": "xcvu9p-2", "encoder_included": true, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "Directly comparable to our 1x50 total of 1619 LUTs. Encoder = 311-110 = 201 vs our 1519."},
+    {"method": "DWN", "model": "md-360", "variant": "PEN+FT 9-bit", "dataset": "openml", "accuracy_pct": 75.6, "lut": 1697, "ff": 198, "fmax_mhz": 696, "latency_ns": 2.6, "part": "xcvu9p-2", "encoder_included": true, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": null},
+    {"method": "DWN", "model": "lg-2400", "variant": "PEN+FT 9-bit", "dataset": "openml", "accuracy_pct": 76.3, "lut": 7011, "ff": 961, "fmax_mhz": 947, "latency_ns": 2.1, "part": "xcvu9p-2", "encoder_included": true, "source": "arXiv:2512.15251 Table I", "confidence": "verified", "notes": "THE row to compare our 12751-LUT headline against - same convention, same dataset."},
+
+    {"method": "DWN", "model": "lg (re-impl by FPGN)", "variant": "as re-implemented", "dataset": "openml", "accuracy_pct": 76.3, "lut": 6302, "ff": 4128, "fmax_mhz": 695, "latency_ns": 14.4, "part": "vu9p", "encoder_included": "unknown", "source": "arXiv:2607.08427 Table V", "confidence": "verified", "notes": "A THIRD number for DWN lg: 4972 (paper/TEN), 7011 (with encoder), 6302 (FPGN's re-impl). Convention unstated. Do not mix."},
+
+    {"method": "TreeLUT", "model": "I", "variant": null, "dataset": "openml", "accuracy_pct": 76.0, "lut": 2234, "ff": 347, "fmax_mhz": 735, "latency_ns": 2.7, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2501.01511 Table 5, via arXiv:2512.15251 Table II", "confidence": "verified", "notes": "GBDT. Dataset assignment from TreeLUT sec 4: 'the same JSC dataset as used by (Alsharari 2024; Fahim 2021; Summers 2020)' - the hls4ml papers, NOT the PolyLUT lineage. The closest published analogue to the partner's conifer track."},
+    {"method": "TreeLUT", "model": "II", "variant": null, "dataset": "openml", "accuracy_pct": 75.0, "lut": 796, "ff": 74, "fmax_mhz": 887, "latency_ns": 1.1, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2501.01511 Table 5, via arXiv:2512.15251 Table II", "confidence": "verified", "notes": "No BRAM, no DSP - same 0/0 claim we make."},
+
+    {"method": "NeuraLUT-Assemble", "model": "openml", "variant": null, "dataset": "openml", "accuracy_pct": 76.0, "lut": 1780, "ff": 540, "fmax_mhz": 941, "latency_ns": 2.1, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2504.00592, via arXiv:2512.15251 Table II", "confidence": "verified", "notes": "Best published LUT count at >=76% on our dataset. The number to beat."},
+    {"method": "NeuraLUT-Assemble", "model": "cernbox", "variant": null, "dataset": "cernbox", "accuracy_pct": 75.0, "lut": 8539, "ff": 1332, "fmax_mhz": 352, "latency_ns": 5.7, "part": "vu9p", "encoder_included": "n/a", "source": "arXiv:2607.08427 Table V", "confidence": "verified", "notes": "Same method as the row above, 4.8x the LUTs on the other dataset. This pair is the cleanest proof the datasets are not interchangeable."},
+
+    {"method": "FPGN", "model": "MLP 1000/1000/500", "variant": null, "dataset": "openml", "accuracy_pct": 76.0, "lut": 3345, "ff": 1703, "fmax_mhz": 730, "latency_ns": 5.5, "part": "vu9p", "encoder_included": "unknown", "source": "arXiv:2607.08427 Table V", "confidence": "verified", "notes": "Jul 2026. Compares directly against DWN and claims fewer LUTs at equal accuracy."},
+    {"method": "FPGN", "model": "MLP 4000/3000/2000", "variant": null, "dataset": "cernbox", "accuracy_pct": 74.9, "lut": 12358, "ff": 4839, "fmax_mhz": 669, "latency_ns": 6.0, "part": "vu9p", "encoder_included": "unknown", "source": "arXiv:2607.08427 Table V", "confidence": "verified", "notes": null},
+
+    {"method": "hls4ml", "model": "JSC MLP", "variant": null, "dataset": "openml", "accuracy_pct": 76.2, "lut": 63251, "ff": null, "fmax_mhz": null, "latency_ns": 45.0, "part": "xcvu9p", "encoder_included": "n/a", "source": "docs/project-brief.md sec 8", "confidence": "unverified", "notes": "NOT YET traced to a primary source. This is the headline comparison in our README (5x fewer LUTs at equal accuracy) and it MUST be verified before publication."},
+
+    {"method": "PolyLUT", "model": "JSC-XL", "variant": null, "dataset": "cernbox", "accuracy_pct": 75.0, "lut": 236541, "ff": 2775, "fmax_mhz": 235, "latency_ns": 21, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": "FPGN Table V gives FF as 12384 for this row and accuracy 75.1. FF disagreement unresolved."},
+    {"method": "PolyLUT", "model": "JSC-M Lite", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.0, "lut": 12436, "ff": 773, "fmax_mhz": 646, "latency_ns": 5, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "PolyLUT-Add", "model": "JSC-XL-Add2", "variant": null, "dataset": "cernbox", "accuracy_pct": 75.0, "lut": 36484, "ff": 1209, "fmax_mhz": 315, "latency_ns": 16, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "PolyLUT-Add", "model": "JSC-M Lite-Add2", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.0, "lut": 895, "ff": 189, "fmax_mhz": 750, "latency_ns": 4, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "NeuraLUT", "model": "JSC-5L", "variant": null, "dataset": "cernbox", "accuracy_pct": 75.0, "lut": 92357, "ff": 4885, "fmax_mhz": 368, "latency_ns": 14, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "NeuraLUT", "model": "JSC-2L", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.0, "lut": 4684, "ff": 341, "fmax_mhz": 727, "latency_ns": 3, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "LogicNets", "model": "JSC-XL (updated)", "variant": null, "dataset": "cernbox", "accuracy_pct": 73.1, "lut": 36415, "ff": 2790, "fmax_mhz": 390, "latency_ns": 6, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": "Updated numbers from github.com/Xilinx/logicnets, not the FPL 2020 paper."},
+    {"method": "LogicNets", "model": "JSC-M (updated)", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.1, "lut": 15526, "ff": 881, "fmax_mhz": 577, "latency_ns": 5, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "AmigoLUT-NeuraLUT-S", "model": "32 models", "variant": null, "dataset": "cernbox", "accuracy_pct": 74.4, "lut": 42742, "ff": 4717, "fmax_mhz": 520, "latency_ns": 9.6, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "AmigoLUT-NeuraLUT-XS", "model": "16 models", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.9, "lut": 1243, "ff": 1240, "fmax_mhz": 1008, "latency_ns": 5.0, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "AmigoLUT-NeuraLUT-XS", "model": "4 models", "variant": null, "dataset": "cernbox", "accuracy_pct": 71.1, "lut": 320, "ff": 482, "fmax_mhz": 1445, "latency_ns": 3.5, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+    {"method": "ReducedLUT", "model": "JSC-5L", "variant": null, "dataset": "cernbox", "accuracy_pct": 74.9, "lut": 58409, "ff": 0, "fmax_mhz": 303, "latency_ns": 17, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": "FF reported as 0; the survey leaves it blank."},
+    {"method": "ReducedLUT", "model": "JSC-2L", "variant": null, "dataset": "cernbox", "accuracy_pct": 72.5, "lut": 2786, "ff": 0, "fmax_mhz": 409, "latency_ns": 4.9, "part": "xcvu9p-2", "encoder_included": "n/a", "source": "arXiv:2512.15251 Table II", "confidence": "verified", "notes": null},
+
+    {"method": "LLNN", "model": "high", "variant": null, "dataset": "unknown", "accuracy_pct": 75.0, "lut": 13926, "ff": 0, "fmax_mhz": 153, "latency_ns": 6.5, "part": "xcvu9p-2", "encoder_included": "unknown", "source": "arXiv:2512.15251 Table II", "confidence": "reported", "notes": "IEEE TCAS-I 2025, paywalled - dataset not yet confirmed. Do not place on either plot until resolved."},
+    {"method": "LLNN", "model": "low", "variant": null, "dataset": "unknown", "accuracy_pct": 72.0, "lut": 6431, "ff": 0, "fmax_mhz": 449, "latency_ns": 2.2, "part": "xcvu9p-2", "encoder_included": "unknown", "source": "arXiv:2512.15251 Table II", "confidence": "reported", "notes": null}
+  ],
+
+  "pending": [
+    {"method": "SparseLUT", "source": "arXiv:2601.09773", "why": "Jan 2026, TCAD. Labels its data 'jsc-cernbox'. +0.94 pp over PolyLUT/NeuraLUT. Numbers not yet extracted."},
+    {"method": "BitLogic", "source": "arXiv:2602.07400", "why": "Feb 2026. Downloaded, unread."},
+    {"method": "WARP", "source": "arXiv:2602.03527", "why": "Feb 2026. Training method, no JSC hardware numbers found. Cite as related work only."},
+    {"method": "KANELE", "source": "FPGA 2026, doi 10.1145/3748173.3779202", "why": "Kolmogorov-Arnold networks for LUT evaluation. Surfaced during search, not yet checked for JSC numbers."},
+    {"method": "hls4ml", "source": "primary source for 76.2% / 63251", "why": "Our headline comparison depends on it and it is currently sourced only to our own brief."}
+  ]
+}
