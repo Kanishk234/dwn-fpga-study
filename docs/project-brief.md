@@ -338,8 +338,12 @@ current set for your own comparison table rather than treating this as final:
 | DWN (sm-50) | 74.0% | 311 | 2.0 |
 | DWN (sm-10) | 71.2% | 64 | 1.6 |
 
-*(DWN numbers here include a fine-tuned thermometer encoder, per the related work below — slightly
-larger than the encoder-excluded numbers in §5.)*
+⚠️ ***Corrected 2026-08-10 — this table mixes two conventions.** `DWN (lg)` at 4,972 is the
+original paper's **encoder-excluded** number (Mecik & Kumm's `DWN-TEN`); `DWN (sm-50)` at 311 and
+`DWN (sm-10)` at 64 are the **encoder-included** ones (`DWN-PEN+FT`). Quoting them in one column is
+wrong — `lg` with its encoder is 7,011. Use the corrected table in `docs/phase3-ledger.md`, not
+this one. Note also that the three "if time allows" entries above are now standard rows in the
+literature and are no longer optional.*
 
 ### Related work you need to know about and cite
 
