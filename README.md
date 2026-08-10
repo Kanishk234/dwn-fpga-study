@@ -85,9 +85,9 @@ configurations, and the six things that broke along the way.
 
 ### Phase 3 — how it compares
 
-Two halves: a **gradient-boosted decision tree** put through conifer and synthesized on the *same
-part, same flow, same clock* as every DWN config; and the published LUT-DNN literature, 32 rows
-across 11 methods.
+Two halves: two competing toolchains — a **gradient-boosted decision tree** through conifer and a
+**quantized neural network** through hls4ml — both synthesized on the *same part, same flow, same
+clock* as every DWN config; and the published LUT-DNN literature, 32 rows across 11 methods.
 
 ![accuracy vs area on our dataset](./docs/results-cc/jsc-openml.png)
 
@@ -100,6 +100,23 @@ across 11 methods.
 | Can a GBDT catch up? | **No.** It tops out at 74.88% using 74% of the chip; DWN reaches that at 3,381 LUTs |
 | Where the GBDT wins | **Speed, clearly** — 477 MHz against our 101, and 4–17 ns against our 27–40 |
 | Both | 0 DSPs, 0 block RAM, every configuration |
+
+**Against hls4ml on identical silicon** — 6 configurations, only 1 of which fits. The published
+network needs **259,492 LUTs** on a 20,800-LUT chip, and is *still* 2.2× too big after 16× internal
+time-sharing. Making it fit takes quarter-width layers, 12-bit numbers and 4× time-sharing:
+
+| at ~8,700 LUTs | hls4ml | DWN |
+|---|---|---|
+| accuracy | 75.67%\* | **76.05%** |
+| DSPs | **53** (of 90 on the chip) | **0** |
+| block RAM | 2 | **0** |
+| latency | 34 cycles | **4 cycles** |
+| throughput | one result every 4 cycles | **one every cycle** |
+
+Smaller, more accurate, no DSPs, and **8.5× lower latency at 4× the throughput**.
+
+\**hls4ml's accuracy here is its full-precision figure — we could not measure the quantized one
+without a C++ compiler, so the real number is lower and the comparison already favours it.*
 
 **But the more useful finding is about the literature itself.** Setting up a fair comparison
 turned out to be the hard part, because the standard comparison table in this field — the one

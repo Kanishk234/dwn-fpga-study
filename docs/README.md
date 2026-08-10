@@ -9,7 +9,9 @@ wrong turns, and the **brief** if you want the plan the whole thing follows.
 |---|---|
 | [`phase1-report.md`](./phase1-report.md) | Getting one model onto a Basys 3: what was built, the five things that cost time, and copy-pasteable steps to reproduce every number on another machine. |
 | [`phase2-report.md`](./phase2-report.md) | The design-space exploration: 52 measured configurations, the full results table, the Pareto frontier, and the six things that broke. |
-| [`results/`](./results/) | The committed evidence — all 54 records (52 measured, 2 unbuildable), both figures, and the grid as trained. 308 KB. |
+| [`phase3-report.md`](./phase3-report.md) | The controlled comparison: DWN against conifer and hls4ml on identical silicon, plus two defects in how this field compares results. |
+| [`results/`](./results/) | Phase 2 evidence — all 54 records (52 measured, 2 unbuildable), both figures, and the grid as trained. 308 KB. |
+| [`results-cc/`](./results-cc/) | Phase 3 evidence — 14 conifer and 6 hls4ml configurations measured through the same flow, plus both comparison figures. |
 
 ## Ledgers — the dated working logs
 
@@ -21,7 +23,7 @@ still readable.
 |---|---|
 | [`phase1-ledger.md`](./phase1-ledger.md) | Phase 1, day by day |
 | [`phase2-ledger.md`](./phase2-ledger.md) | Phase 2, day by day |
-| [`phase3-ledger.md`](./phase3-ledger.md) | Phase 3, day by day. **Live** — currently the literature half; the hls4ml/conifer half runs on the other machine |
+| [`phase3-ledger.md`](./phase3-ledger.md) | Phase 3, day by day — both halves, with the machine that produced each row noted |
 
 ## Plans and specifications
 
