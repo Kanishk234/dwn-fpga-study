@@ -188,8 +188,15 @@ configuration.
 
 Fifty-four configurations were trained and put through synthesis and place-and-route on the target
 part at a 10 ns clock, out of context (that is, without surrounding system logic, so measurements
-reflect the design alone). Fifty-two produced measurements; two were unbuildable for a reason
-given in Section 8. Forty-one both fit the device and met the 100 MHz board clock.
+reflect the design alone).
+
+The counts are easy to conflate, so precisely: **54** configurations attempted, **52** built (two
+were unbuildable for a reason given in Section 8), **51** fit within the device, and **42** of
+those also reach the board's 100 MHz clock. A forty-first-versus-forty-second distinction is worth
+one sentence: 41 met the exact timing target they were synthesized against, while one further
+configuration was deliberately built at a more aggressive 125 MHz target, missed it by 0.02 ns, and
+still runs well above 100 MHz. Area and accuracy figures below are drawn from the 52 built
+configurations; usability on the board refers to the 42.
 
 Axes swept: number of neurons (50 to 3,000); thresholds per feature (8 to 800); inputs per neuron
 (2, 4, 6); encoding scheme; layer count; and pipeline depth.
@@ -204,7 +211,7 @@ wherever it matters.
 published results on the same dataset. Marker fill distinguishes designs whose area includes the
 input encoder from those reporting the network alone; the two are not interchangeable (Section 5.2).
 
-![Accuracy against area, OpenML dataset](./results-cc/jsc-openml.png)
+![Accuracy against area, OpenML dataset](./docs/results-cc/jsc-openml.png)
 
 
 | | |

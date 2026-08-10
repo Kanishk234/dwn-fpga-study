@@ -132,13 +132,13 @@ literature defects, and what we chose not to measure.
 
 ## Documentation
 
-**Start here:** [`docs/technical-report.md`](./docs/technical-report.md) — the full write-up as a
-standalone document. Background, method, results, comparison, limitations, appendices and a
-glossary; readable without any other file in this repository.
+**Start here:** [**`REPORT.md`**](./REPORT.md) — the full write-up as a standalone document.
+Background, method, results, comparison, limitations, appendices and a glossary; readable without
+any other file in this repository.
 
 | | |
 |---|---|
-| [`docs/technical-report.md`](./docs/technical-report.md) | **the complete report** — standalone, with appendices and glossary |
+| [**`REPORT.md`**](./REPORT.md) | **the complete report** — standalone, with appendices and glossary |
 | [`docs/phase1-report.md`](./docs/phase1-report.md) | what was built, what broke, how to reproduce it |
 | [`docs/phase2-report.md`](./docs/phase2-report.md) | the design-space exploration and its results |
 | [`docs/phase3-report.md`](./docs/phase3-report.md) | the controlled comparison, and two defects in the literature's own tables |
