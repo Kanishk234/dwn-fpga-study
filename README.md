@@ -2,7 +2,7 @@
 
 **What if a neural network had zero multiplication, zero addition — nothing but memory lookups?**
 
-That's a **Differentiable Weightless Neural Network (DWN)**, a 2024 ICML paper. Instead of the usual
+That's a **Differentiable Weightless Neural Network (DWN)** ([Bacellar et al., ICML 2024](https://arxiv.org/abs/2410.11112)). Instead of the usual
 weights-and-arithmetic every neural net uses, a DWN is built entirely out of tiny lookup tables. And
 here's the part that makes it worth building in hardware: a lookup table is *also* the basic building
 block an FPGA chip is made of. On this design, a "neuron" isn't just similar to a hardware lookup
@@ -105,6 +105,27 @@ configurations, and the six things that broke along the way.
 | `dse/` | the sweep: grid, runner, area model, report, plots |
 | `scripts/` | Gate 1, synthesis, bitstream, board host |
 | `experiments/` | analyses outside the shipped flow |
+
+## Built on
+
+This project implements an architecture we did not invent. The DWN model, the training method,
+and the idea that one weightless neuron maps to one FPGA lookup table are all from:
+
+> **Differentiable Weightless Neural Networks**
+> Bacellar et al., ICML 2024 — [arXiv:2410.11112](https://arxiv.org/abs/2410.11112) ·
+> [PMLR v235](https://proceedings.mlr.press/v235/bacellar24a.html)
+
+Training uses the authors' own implementation, [`alanbacellar/DWN`](https://github.com/alanbacellar/DWN),
+vendored as a submodule pinned at `9f887a0`. Our exporter reads whatever checkpoint format that
+commit produces — see [`docs/checkpoint-format.md`](./docs/checkpoint-format.md).
+
+**What is ours:** the RTL and its generator, the golden-model testbench and bit-exactness harness,
+the board design, the design-space exploration, and every measurement reported here. The upstream
+repository ships PyTorch training only — no RTL, no HLS, no FPGA flow — which is the gap this
+project exists to fill.
+
+The benchmark is **jet substructure classification (JSC)**, the standard low-latency FPGA-ML task,
+via the `hls4ml_lhc_jets_hlf` dataset.
 
 ## Team
 
