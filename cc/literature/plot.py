@@ -30,15 +30,32 @@ OUT = os.path.join(REPO, 'build', 'cc', 'literature')
 SNAP = os.path.join(REPO, 'docs', 'results-cc')
 DEVICE_LUTS = 20800
 
-# Okabe-Ito: distinguishable under the common CVD types and in greyscale.
+# Okabe-Ito plus four extensions, assigned in a FIXED order so a method keeps its colour
+# across both figures. Colour is a secondary cue only -- every point is also directly
+# labelled, so identity never rests on hue alone.
 C = {
+    # our silicon
     'this project': '#0072B2',
     'conifer (GBDT)': '#D55E00',
+    # the DWN family
     'DWN': '#009E73',
+    # published, OpenML
     'TreeLUT': '#CC79A7',
     'NeuraLUT-Assemble': '#E69F00',
     'FPGN': '#56B4E9',
     'hls4ml (Fahim et al.)': '#8B4513',
+    'hls4ml (Duarte et al.)': '#7F7F7F',
+    # published, CERNBox -- these were all falling through to grey, which made a nine-method
+    # figure unreadable
+    'PolyLUT': '#B22222',
+    'PolyLUT-Add': '#FF7F0E',
+    'NeuraLUT': '#1B9E77',
+    'LogicNets': '#6A3D9A',
+    'AmigoLUT-NeuraLUT-S': '#17BECF',
+    'AmigoLUT-NeuraLUT-XS': '#005F73',
+    'ReducedLUT': '#A6761D',
+    'SparseLUT': '#E7298A',
+    'LLNN': '#444444',
 }
 DEFAULT = '#666666'
 _LBL = [0]        # rotates label offsets across series
@@ -142,12 +159,27 @@ def main(argv=None):
 
         sub = ('our silicon (xc7a35t-1) vs published (xcvu9p) — LUTs transfer, ns does not'
                if ours else
-               'published only — NOT comparable to our results, different dataset')
+               'published work only — this project has NO results here, by design')
         fig.suptitle(f'JSC accuracy vs area — {sub}', fontsize=9.5, y=.965,
                      x=.125, ha='left', color='#444')
         h, l = ax.get_legend_handles_labels()
         ax.legend(h, l, loc='lower center', fontsize=8, frameon=False, ncol=3,
                   bbox_to_anchor=(.5, -.005), columnspacing=1.4, handletextpad=.4)
+        if not ours:
+            # Make headroom rather than hunt for a gap: with 9 methods and a direct label on
+            # every point there is no reliable empty patch inside the data, and a caption that
+            # overlaps the points it is explaining defeats its own purpose.
+            lo, hi = ax.get_ylim()
+            ax.set_ylim(lo, hi + (hi - lo) * .24)
+            ax.text(.5, .985,
+                    'This project does not appear on this figure — by design. '
+                    'We train on JSC-OpenML;\n'
+                    'every method here is on JSC-CERNBox, which runs ~1.05 pp harder, so '
+                    'plotting ours\n'
+                    'alongside them would overstate us by about a percentage point.',
+                    transform=ax.transAxes, ha='center', va='top', fontsize=9,
+                    color='#B00020', linespacing=1.5,
+                    bbox=dict(fc='#FFF4F4', ec='#B00020', lw=1.2, alpha=.97, pad=7))
         fig.text(.125, .012,
                  'filled = LUT count includes input encoder   ·   hollow = core only, encoder '
                  'excluded   ·   square = no separate encoder stage',

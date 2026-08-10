@@ -20,7 +20,7 @@ it says so rather than editing it away.
 | 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ✅ done 2026-08-11 — `cc/literature/plot.py`, figures in `docs/results-cc/` |
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
-| 3L-e | Phase 3 report — literature section | ⬜ |
+| 3L-e | Phase 3 report | ✅ done 2026-08-11 — `docs/phase3-report.md`, covers both halves |
 | 3M-a | conifer (GBDT) — *hands-on machine* | ✅ done 2026-08-10 — **14 configs, `docs/results-cc/`** |
 | 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ⚠️ **scoped out** — see the entry below |
 
