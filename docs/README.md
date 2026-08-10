@@ -29,6 +29,7 @@ still readable.
 | [`project-brief.md`](./project-brief.md) | The full technical plan: resource budgets (§6), the two studies (§10), phase breakdown (§11), risks (§12) |
 | [`dse-plan.md`](./dse-plan.md) | What Phase 2 sweeps and why. **Partly superseded** — §5's encoder assumption and §7's open questions are marked where measurement overtook them |
 | [`phase2-handoff.md`](./phase2-handoff.md) | Moving to a new machine, and the restructure Phase 2 carried out |
+| [`phase3-plan.md`](./phase3-plan.md) | The controlled comparison: what to build, what to measure, and the two comparability traps |
 
 ## Reference — facts established once, relied on everywhere
 
