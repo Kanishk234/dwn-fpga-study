@@ -1,0 +1,43 @@
+# Phase 3 controlled-comparison dependencies. SEPARATE FROM requirements.txt ON PURPOSE.
+#
+# `requirements.txt` is the environment `scripts/verify_phase1.py` validates -- the one that
+# proves this machine reproduces every Phase 1 and Phase 2 number. hls4ml and conifer are heavy
+# and version-fragile, and putting them there would risk breaking the reproducibility check for
+# everyone (docs/phase3-handoff.md §1.2).
+#
+# Install:
+#     .venv\Scripts\python.exe -m pip install -r cc\requirements-cc.txt
+#
+# Verified installed into the Phase 1/2 venv WITHOUT disturbing its pins:
+# numpy 2.3.4, torch 2.13.0 and pyserial 3.5 were unchanged afterwards.
+
+conifer==1.9
+
+# The GBDT itself. Two model classes work, and one that looks like it does, does NOT:
+#
+#   sklearn GradientBoostingClassifier      converts    (but the pre-histogram implementation,
+#                                                        slow on JSC's 830k samples)
+#   xgboost XGBClassifier                   converts    (fast -- the practical choice)
+#   sklearn HistGradientBoostingClassifier  DOES NOT CONVERT
+#
+# ⚠️ HistGradientBoosting is the trap, and docs/phase3-plan.md §2.1 suggests it by name.
+# conifer dispatches on `'GradientBoosting' in bdt.__class__.__name__`, which HistGradient-
+# BoostingClassifier matches -- so it is accepted and then dies on `n_estimators`, because it
+# stores `_predictors`/`TreePredictor` rather than `estimators_`/`tree_`. Measured, not assumed.
+scikit-learn==1.9.0
+
+# ⚠️ PINNED, AND DO NOT UPGRADE BLINDLY. conifer prints on import:
+#     "Some prediction disagreements are observed for xgboost versions >= 2.0.0.
+#      You have xgboost 3.4.0. Extra validation is advised."
+# That is conifer saying its converted model may not match the Python model's predictions --
+# the same class of silent wrongness Gate 1 exists to catch on the DWN side. Any conifer design
+# built from xgboost must have its predictions checked against the trained model BEFORE its
+# accuracy goes in a comparison table. Pinning xgboost <2.0.0 is the alternative if that
+# validation ever fails.
+xgboost==3.4.0
+
+# Required twice over: conifer's xgboost converter imports it (without pandas the converter is
+# silently skipped and only prints "Could not import conifer xgboost converter" at import time),
+# and `fetch_openml(..., as_frame=True)` needs it to pull the JSC dataset the same way the DWN
+# training notebooks do.
+pandas==3.0.5
