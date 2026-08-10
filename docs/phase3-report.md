@@ -35,9 +35,15 @@ Everything in the "measured" column below went through `scripts/build.tcl`, out-
 
 | source | rows | status |
 |---|---|---|
-| DWN (this project) | 41 fitting configs | measured, Phase 2 |
+| DWN (this project) | **51 fitting of 54** — 42 of those also close 100 MHz | measured, Phase 2 |
 | conifer (GBDT) | 10 fitting of 14 | measured, Phase 3 |
 | published LUT-DNN family | 32 rows, 11 methods | cited, `cc/literature/jsc_literature.json` |
+
+The three DWN counts are all used somewhere and are easy to conflate, so: **54** records in
+`docs/results/sweep-results.csv`, **52** built (2 are `gate1-failed` — the linear-encoding configs
+of Phase 2 §5.3), **51** fit the device (`1x2000` builds but measures 102.80%), and **42** both fit
+and meet the board's 100 MHz. §1's "all 52 DWN configs" for DSP/BRAM is the *built* count, since
+`1x2000` was measured at 0/0 too.
 
 Figures: `docs/results-cc/jsc-openml.png`, `docs/results-cc/jsc-cernbox.png`.
 Regenerate with `.venv\Scripts\python.exe cc\literature\plot.py --snapshot`.
