@@ -8,8 +8,8 @@ wrong turns, and the **brief** if you want the plan the whole thing follows.
 | | |
 |---|---|
 | [`phase1-report.md`](./phase1-report.md) | Getting one model onto a Basys 3: what was built, the five things that cost time, and copy-pasteable steps to reproduce every number on another machine. |
-| [`phase2-report.md`](./phase2-report.md) | The design-space exploration: 46 configurations, the full results table, the Pareto frontier, and the six things that broke. |
-| [`results/`](./results/) | The committed evidence — every measurement, both figures, and the grid as trained. 232 KB. |
+| [`phase2-report.md`](./phase2-report.md) | The design-space exploration: 52 measured configurations, the full results table, the Pareto frontier, and the six things that broke. |
+| [`results/`](./results/) | The committed evidence — all 54 records (52 measured, 2 unbuildable), both figures, and the grid as trained. 308 KB. |
 
 ## Ledgers — the dated working logs
 
@@ -21,6 +21,7 @@ still readable.
 |---|---|
 | [`phase1-ledger.md`](./phase1-ledger.md) | Phase 1, day by day |
 | [`phase2-ledger.md`](./phase2-ledger.md) | Phase 2, day by day |
+| [`phase3-ledger.md`](./phase3-ledger.md) | Phase 3, day by day. **Live** — currently the literature half; the hls4ml/conifer half runs on the other machine |
 
 ## Plans and specifications
 
@@ -36,6 +37,7 @@ still readable.
 
 | | |
 |---|---|
+| [`datapath.md`](./datapath.md) | What each stage of the design actually does — encoder, LUT layer, popcount, argmax — what each costs, and how much of it generalizes beyond JSC |
 | [`checkpoint-format.md`](./checkpoint-format.md) | What the exporter reads, verified against the pinned upstream commit. Includes the traps — address bit order, and a dummy mapping that looks exactly like a real one |
 | [`paper-configs.md`](./paper-configs.md) | The paper's JSC configurations (Table 14 / Table 2) and what they corrected |
 | [`probe-results.md`](./probe-results.md) | Phase 1a: does `TABLE[addr]` map to a single LUT6? The evidence the whole area model rests on |
