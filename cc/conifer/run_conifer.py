@@ -75,9 +75,23 @@ VITIS_RUN_CANDIDATES = [
     r'C:\Xilinx\Vitis\2025.2\bin\vitis-run.bat',
 ]
 
-# The plan wants a curve. Depth is the axis that moves LUTs fastest; n_estimators moves
-# accuracy. Kept small enough that the whole sweep is a couple of hours of Vivado.
-SWEEP = [(d, n) for d in (3, 4, 5, 6) for n in (10, 20, 40, 80)]
+# The plan wants a CURVE -- iso-accuracy and iso-area both need one from each side.
+#
+# Bounded by the first measurement rather than guessed: `gbdt_d4_n10` (50 trees) came to 8,005
+# LUTs, i.e. ~160 LUTs per depth-4 tree, on a 20,800-LUT part. Leaves roughly double per level,
+# so the ceiling is around 26 rounds at depth 4, ~14 at depth 5 and ~7 at depth 6. A rectangular
+# grid up to 80 rounds would put most of its points several times over the device and spend
+# place-and-route reaching a foregone conclusion.
+#
+# So the grid brackets the useful region and deliberately steps just past the edge at each depth:
+# a config that does not fit is a data point (brief §12 risk #2), it just should not be most of
+# them. Ordered cheapest-first by total tree count, so an interrupted run banks the most points.
+SWEEP = sorted(
+    [(3, n) for n in (10, 20, 40, 80)] +
+    [(4, n) for n in (5, 10, 20, 40)] +
+    [(5, n) for n in (5, 10, 20)] +
+    [(6, n) for n in (3, 5, 10)],
+    key=lambda dn: dn[1] * (2 ** dn[0]))
 
 
 def find_vitis_run():
@@ -349,6 +363,7 @@ def main():
     ap.add_argument('--trees', type=int, default=20)
     ap.add_argument('--sweep', action='store_true', help='the full depth x n_estimators curve')
     ap.add_argument('--no-synth', action='store_true', help='train + convert + validate only')
+    ap.add_argument('--force', action='store_true', help='re-run configs already in results.json')
     args = ap.parse_args()
 
     X_train, X_test, y_train, y_test = load_data()
@@ -357,12 +372,25 @@ def main():
     print()
 
     configs = SWEEP if args.sweep else [(args.depth, args.trees)]
+
+    # Resumable: a full sweep is hours of serial Vivado, and an interruption at point 10 must
+    # not cost points 1-9. Same rule as dse/run.py.
+    done = set()
+    if os.path.exists(RESULTS) and not args.force:
+        done = {r['name'] for r in json.load(open(RESULTS)) if r.get('status') == 'ok'}
+    todo = [(d, n) for d, n in configs if f'gbdt_d{d}_n{n}' not in done]
+    if done:
+        print(f'{len(done)} already measured, {len(todo)} to go (--force to redo)')
+        print()
+
     rows = []
-    for d, n in configs:
+    for i, (d, n) in enumerate(todo, 1):
+        print(f'[{i}/{len(todo)}]', end=' ')
         rows.append(run_config(d, n, X_train, y_train, X_test, y_test,
                                do_synth=not args.no_synth))
+        save(rows)          # write after EVERY config, not at the end
+        rows = []
         print()
-    save(rows)
     return 0
 
 
