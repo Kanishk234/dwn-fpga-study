@@ -293,6 +293,85 @@ all and relies on the default — so keeping both spellings would have been dead
 
 `rtlgen/config.py`'s self-test still passes, so the pipeline constants have not drifted.
 
+### 2026-08-10 — RETRACTION: the reduction is 35% of the headline design, not 3.6%
+
+**The 2026-08-07 conclusion that Learnable Reduction is not worth building was generalised from
+one config, and it does not hold.** It is the same small-model artifact as the 14x encoder
+ratio -- which we caught, and this one we did not.
+
+Reduction cost, taken as `core LUTs - node count` (one node is exactly one LUT6, measured):
+
+| config | nodes | core | reduction | encoder | top | reduction as % of design |
+|---|---|---|---|---|---|---|
+| `1x50` | 50 | 108 | 58 | 1,519 | 1,619 | **3.6%** |
+| `1x360` | 360 | 868 | 508 | 7,138 | 8,006 | 6.3% |
+| `1x600` | 600 | 1,312 | 712 | 9,367 | 10,631 | 6.7% |
+| `1x1600` | 1600 | 4,124 | 2,524 | 14,316 | 18,777 | 13.4% |
+| `1x1200 z=50` | 1200 | 2,875 | 1,675 | 5,384 | 8,444 | 19.8% |
+| **`1x2400 z=50`** | 2400 | 6,850 | **4,450** | 5,753 | 12,751 | **34.9%** |
+
+At the headline config the split is **encoder 45%, reduction 35%, actual neurons 19%.**
+
+**Why it grows from both directions.** The popcount is an adder tree over the final layer, and
+cost per bit rises with group width (`~1.0 + 0.13·log2(group/10)`, fitted in 2b). At 2400 nodes
+and 5 classes each group is 480 bits. Meanwhile cutting `z` shrank the encoder, so the
+reduction's *share* rose as well as its absolute size.
+
+`dse-plan` §3 set the bar as *"if it's 40% of area, obviously worth it; if it's 3%, this was
+never an interesting axis."* At 3.6% it failed that test. At **34.9%** it essentially meets it.
+
+#### What Learnable Reduction would actually do -- it is NOT a drop-in replacement
+
+`GroupSum.forward` returns `x.sum(dim=-1) / tau` -- **continuous scores**, which is what
+cross-entropy trains against. A LUT layer returns **bits**. So a pyramid cannot replace popcount
+and argmax outright; ending at 5 outputs would give one bit per class and no gradient
+resolution.
+
+What it does is **shrink what the popcount operates on**:
+
+```
+now:       2400 bits ─────────────────► GroupSum(5), groups of 480 bits
+pyramid:   2400 → 500 → 100 bits ─────► GroupSum(5), groups of 20 bits
+```
+
+Projected with the measured cost model:
+
+| | LUTs |
+|---|---|
+| reduction today at `1x2400 z=50` | **4,450** (measured) |
+| funnel layers (500 + 100 nodes, ~1 LUT each) | ~600 |
+| popcount over 20-bit groups | ~110 |
+| **projected total** | **~710** |
+
+**~3,700 LUTs, or 29% of the headline design.** Plus two extra `pipe_reg` stages -- which is
+precisely what `1x2400 z=100` and `1x3000 z=50` lacked when they missed 100 MHz with area to
+spare.
+
+⚠️ **Projection, not measurement.** The funnel is lossy (2400 bits into 100) and its accuracy
+cost is unknown. The area figures use the 2b cost model, which carries ~10-18% error at this
+size.
+
+#### Cost to build it
+
+**The RTL half is nearly free** -- a pyramid is more LUT layers, and `rtlgen/emit_core.py`
+already loops over layers with a `pipe_reg` each. Multi-layer is verified: four configs in the
+sweep plus Gate 1 on a `[300,100]` model.
+
+**The training half is new code.** Upstream ships no Learnable Reduction (verified: the whole
+repo is 7 files and 10 classes, none of them a reduction beyond `GroupSum`), so it would be
+implemented from the paper's description with no reference to check against.
+
+**Status: reopened, not scheduled.** Phase 3 is the deliverable and this is a training-code
+project. But it is now a genuine architectural axis rather than a closed non-issue, and it is
+the strongest candidate on the `dwn2rtl` roadmap -- a contribution rather than packaging.
+
+#### Also verified while checking this
+
+**Spectral regularization is not in upstream either.** `dse-plan` §3 lists spectral λ as a
+Group A knob; the repo has no such thing, so it could never have been swept. That makes three
+things the paper describes and the released code omits: the FPGA flow, Learnable Reduction, and
+spectral regularization.
+
 ### 2026-08-10 — THE CORNER RESULT: the paper's `lg` fits, and the wall is timing
 
 Six width×z configs measured. **Every predicted accuracy landed within 0.10 pp** -- the method
@@ -1473,7 +1552,7 @@ multiplexer cost entirely. The measured ceiling is −5%.
 
 | | |
 |---|---|
-| ~~Is the reduction really ~54% of the core?~~ | ✅ **Closed 2026-08-07. Yes, exactly: 50 + 58 = 108.** And one node is exactly one LUT6, measured. **But the ratio that matters is 3.6% of the whole design**, not 54% of the core — dse-plan §3's 40% bar predates the 14× encoder finding. Learnable Reduction stays deferred; see the log entry. |
+| **Is Learnable Reduction worth building?** ⚠️ **REOPENED 2026-08-10** | Closed on 2026-08-07 as "3.6% of the design, not worth it" — measured at `sm` and generalised. **At `1x2400 z=50` the reduction is 4,450 LUTs, 34.9% of the design**, second only to the encoder. A LUT pyramid shrinking 2400 bits to ~100 before the popcount projects to ~710 LUTs, saving ~29% of the design, plus two pipeline stages the timing-limited configs needed. RTL is nearly free (`emit_core` already loops over layers); the training code is new. See the 2026-08-10 entry. |
 | **Does `md` actually fit?** | The bound says ~80% of the part, which is tight enough that routing (not LUT count) may decide it. A failure to route is a data point, not a mistake (brief §12 risk #2). |
 | **How many thresholds does a bigger model really select?** | `sm` chose 202 of 300 slots (67% unique). If that ratio holds, `md`/`lg` encoder estimates drop. Only training says. |
 | **Per-feature comparator narrowing** | Measured −17.1% at `sm` and not adopted — 260 LUTs did not justify a spec change. **At `md`/`lg` it may decide whether a config fits at all.** Revisit when a config is marginal. Now the *largest* remaining RTL-side lever, since sharing is dead (below). |

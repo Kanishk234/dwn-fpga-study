@@ -248,7 +248,11 @@ configs that would have been discarded for free.
   `dse/grid.py`'s `SIZE_LADDER` = 50, 100, 200, 360, 500, 600, 800, 1200 — chosen to *bracket*
   the predicted wall (fit boundary near W≈550, encoder saturation near W≈800), not to stop short
   of it. The top rungs are expected to fail; that is what locates the frontier's edge.
-- ~~**Whether to build Learnable Reduction**~~ **RESOLVED 2026-08-07: no, stay deferred.**
+- **Whether to build Learnable Reduction** — ⚠️ **REOPENED 2026-08-10.** The resolution below
+  was measured at `sm` alone and does not survive scale: at `1x2400 z=50` the reduction is 4,450
+  LUTs, **34.9% of the design**. The 40% bar this document set is essentially met. Superseded
+  reasoning kept below.
+- ~~**Whether to build Learnable Reduction**~~ ~~**RESOLVED 2026-08-07: no, stay deferred.**~~
   Measured standalone (`scripts/experiment_reduction.py`): reduction **58 LUTs**, LUT layer
   **50** — summing to exactly the 108 `dwn_core` measures. So it *is* 54% of the core, as the
   bar above asked. **But that bar measures the wrong ratio.** It was written before the encoder

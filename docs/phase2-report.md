@@ -498,9 +498,11 @@ belonging to a different model.
 - **No pipeline depths above 4.** `pipe_reg.ENABLE` is 0/1 and a single-layer model has exactly
   four register sites. If a config ever misses timing at 4 stages, the current RTL cannot rescue
   it — though a multi-layer model of similar size could, since each layer adds a stage.
-- **Learnable Reduction not built.** Measured standalone at 58 LUTs — 54% of the `sm` core, but
-  **3.6% of the whole design**. `dse-plan` §3's 40% bar was set before the encoder was known to
-  dominate; against the real denominator it fails the same document's 3% test.
+- **Learnable Reduction not built.** ⚠️ **The reason recorded here was wrong.** It was declined
+  on measuring 58 LUTs at `sm` — 3.6% of that design. But the reduction grows with layer width:
+  at `1x2400 z=50` it is **4,450 LUTs, 34.9% of the design**, second only to the encoder. A LUT
+  pyramid feeding a much narrower popcount projects to ~710 LUTs. The axis is reopened; see
+  `docs/phase2-ledger.md`, 2026-08-10.
 - **Configurable precision not implemented**, which is why the linear configs are unbuilt (§5.3).
 
 ---
