@@ -182,6 +182,9 @@ synthesize it here.
 
 JSC-OpenML only. DWN rows shown in both conventions.
 
+⚠️ `PENDING-AUTHOR-REPLY` — the DWN rows assume the paper's numbers are **JSC-OpenML**. See §8;
+`grep -rn PENDING-AUTHOR-REPLY docs/ cc/` finds every claim that moves if that is wrong.
+
 | Method | Acc | LUT | Encoder | Part |
 |---|---|---|---|---|
 | **this project** `1x1600` | **76.35%** | 18,777 | incl | `xc7a35t-1` |
@@ -245,7 +248,7 @@ full numbers.
 ## 8. Limitations
 
 - **hls4ml not measured on our part** (§5). The DSP claim is unexercised on our silicon.
-- **⚠️ Which JSC dataset the DWN paper used is unresolved.** The paper says *"as in the NeuraLUT
+- **⚠️ `PENDING-AUTHOR-REPLY` — which JSC dataset the DWN paper used is unresolved.** The paper says *"as in the NeuraLUT
   paper"* (CERNBox); its released code, FPGN's classification, our own reproduction within 0.12 pp,
   and its accuracy level all say OpenML. Four lines of evidence against one sentence. **Our
   headline comparison against DWN `lg` is only valid if OpenML.** The authors have been asked; no

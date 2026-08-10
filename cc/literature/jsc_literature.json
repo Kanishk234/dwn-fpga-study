@@ -10,7 +10,7 @@
     },
     "our_dataset": "openml - upstream DWN's tutorial uses openml.datasets.get_dataset(42468) and our training notebooks use fetch_openml('hls4ml_lhc_jets_hlf'). Our 166k test set is 20% of ~830k.",
     "weightless_lineage": "WiSARD (1981) -> BTHOWeN (arXiv:2203.01479) -> ULEEN (arXiv:2304.10618) -> DWN. CHECKED 2026-08-10: none of them report JSC - they use the BTHOWeN suite (MNIST plus small UCI sets). They are the lineage to cite in brief sec 8, not rows in this table. DWN reports a 63x energy-delay improvement over ULEEN, the prior WNN state of the art.",
-    "dwn_dataset_caveat": "UNRESOLVED. The DWN paper (v5, sec 4.1) says its JSC is 'as in the NeuraLUT paper', and NeuraLUT is cernbox. But the released code uses OpenML 42468, FPGN files DWN under openml, our own reproduction on openml matched their lg within 0.12 pp, and DWN's accuracies exceed every published cernbox result. Four lines of evidence for openml against one sentence. Our headline comparison against DWN lg is only valid if openml. Top question for the authors.",
+    "dwn_dataset_caveat": "PENDING-AUTHOR-REPLY. UNRESOLVED. The DWN paper (v5, sec 4.1) says its JSC is 'as in the NeuraLUT paper', and NeuraLUT is cernbox. But the released code uses OpenML 42468, FPGN files DWN under openml, our own reproduction on openml matched their lg within 0.12 pp, and DWN's accuracies exceed every published cernbox result. Four lines of evidence for openml against one sentence. Our headline comparison against DWN lg is only valid if openml. Top question for the authors.",
     "cite_version": "DWN arXiv v5, NOT v1. v1 reports JSC sm=134 / md=2144 LUTs; v5 reports 110 / 720, which is what Mecik & Kumm reproduced and what docs/paper-configs.md records."
   },
 
