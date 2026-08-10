@@ -36,8 +36,8 @@ student FPGA board, far smaller and cheaper than the chips the original paper us
 |---|---|---|
 | 1 — Core | Get the model running on the board | ✅ **complete** |
 | 2 — Design Space Exploration | Map how big/accurate/fast it can go | ✅ **complete** |
-| 3 — Controlled Comparison | Compare against standard tools + published results | next |
-| Stretch — second dataset | Repeat 2 & 3 on a different problem | optional |
+| 3 — Controlled Comparison | Compare against standard tools + published results | ✅ **complete** |
+| Stretch — second dataset (MNIST) | Repeat 2 & 3 on a different problem | next |
 
 ### Phase 1 — it works on silicon
 
@@ -83,15 +83,64 @@ and nothing between them:
 **Read this next:** [`docs/phase2-report.md`](./docs/phase2-report.md) — the full sweep, all 46
 configurations, and the six things that broke along the way.
 
+### Phase 3 — how it compares
+
+Two halves: a **gradient-boosted decision tree** put through conifer and synthesized on the *same
+part, same flow, same clock* as every DWN config; and the published LUT-DNN literature, 32 rows
+across 11 methods.
+
+![accuracy vs area on our dataset](./docs/results-cc/jsc-openml.png)
+
+**Against a GBDT on identical silicon** — 14 conifer configurations, 10 of which fit:
+
+| | |
+|---|---|
+| At any area budget | DWN is **+1.5 to +1.7 points** more accurate |
+| At matched accuracy | DWN uses **2.3–6.0× fewer LUTs** |
+| Can a GBDT catch up? | **No.** It tops out at 74.88% using 74% of the chip; DWN reaches that at 3,381 LUTs |
+| Where the GBDT wins | **Speed, clearly** — 477 MHz against our 101, and 4–17 ns against our 27–40 |
+| Both | 0 DSPs, 0 block RAM, every configuration |
+
+**But the more useful finding is about the literature itself.** Setting up a fair comparison
+turned out to be the hard part, because the standard comparison table in this field — the one
+reproduced in the DWN paper, in the follow-up work, and in a 2025 survey — is broken in two ways:
+
+1. **"JSC" is two different datasets.** An OpenML version (~830k samples) and a CERNBox version
+   (~987k). They are routinely listed in one table, and the same method scores **~1.05 points
+   higher** on OpenML — seven times our measurement noise. Half the numbers everyone compares
+   against are on the other dataset.
+2. **LUT counts mix conventions.** The DWN paper reports its largest model at 4,972 LUTs — the
+   network only, no input encoder. With the encoder it is 7,011. Ours are always complete
+   designs. Three different published numbers exist for that one model.
+
+Both defects start in the primary sources and spread by copying. Our comparison scripts refuse
+to plot two datasets on one axis, or to draw a frontier across two conventions — enforced in
+code, not in a footnote.
+
+*One caveat we are still chasing: we have asked the DWN authors which of the two JSC datasets
+their published numbers use. Their paper says one thing and their released code says another. It
+does not affect the conifer comparison above, but it does affect how our accuracy lines up with
+theirs.*
+
+**Where that leaves us, stated plainly:** on our own dataset the best published design reaches
+76.0% in **1,780 LUTs** against our 12,751. We are not competitive on raw area with the
+specialised LUT-DNN compilers. What is different about ours is that it includes the encoder, and
+runs on a **$150 board** rather than a data-centre FPGA.
+
+**Read this next:** [`docs/phase3-report.md`](./docs/phase3-report.md) — the comparison, both
+literature defects, and what we chose not to measure.
+
 ## Documentation
 
 | | |
 |---|---|
 | [`docs/phase1-report.md`](./docs/phase1-report.md) | what was built, what broke, how to reproduce it |
 | [`docs/phase2-report.md`](./docs/phase2-report.md) | the design-space exploration and its results |
+| [`docs/phase3-report.md`](./docs/phase3-report.md) | the controlled comparison, and two defects in the literature's own tables |
 | [`docs/results/`](./docs/results/) | every measurement, both figures, the trained grid |
+| [`docs/results-cc/`](./docs/results-cc/) | the conifer measurements and the comparison figures |
 | [`docs/project-brief.md`](./docs/project-brief.md) | the full technical plan |
-| [`docs/phase1-ledger.md`](./docs/phase1-ledger.md) · [`phase2-ledger.md`](./docs/phase2-ledger.md) | dated working logs |
+| [`docs/phase1-ledger.md`](./docs/phase1-ledger.md) · [`phase2-ledger.md`](./docs/phase2-ledger.md) · [`phase3-ledger.md`](./docs/phase3-ledger.md) | dated working logs |
 
 ## Repository
 
