@@ -1,0 +1,251 @@
+[
+  {
+    "name": "mlp_64x32x32_r1_16_6",
+    "layers": [
+      64,
+      32,
+      32
+    ],
+    "reuse": 1,
+    "precision": "ap_fixed<16,6>",
+    "accuracy_float_pct": 76.6867,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "synth-failed",
+    "drc_overuse": {
+      "CARRY4": {
+        "required": 83998,
+        "available": 8150,
+        "over_by": 10.3
+      },
+      "FDRE": {
+        "required": 91820,
+        "available": 65518,
+        "over_by": 1.4
+      },
+      "LUT as Logic": {
+        "required": 259492,
+        "available": 20800,
+        "over_by": 12.5
+      },
+      "LUT2": {
+        "required": 121512,
+        "available": 65200,
+        "over_by": 1.9
+      },
+      "LUT3": {
+        "required": 65384,
+        "available": 65200,
+        "over_by": 1.0
+      },
+      "Register as Flip Flop": {
+        "required": 91820,
+        "available": 41600,
+        "over_by": 2.2
+      },
+      "Slice Registers": {
+        "required": 91820,
+        "available": 41600,
+        "over_by": 2.2
+      },
+      "DSP": {
+        "required": 3214,
+        "available": 90,
+        "over_by": 35.7
+      }
+    },
+    "latency_cycles": 30,
+    "latency_cycles_min": 30,
+    "latency_hls_ns": 300.0,
+    "ii": 1,
+    "pipeline_type": "yes",
+    "pipelined": true
+  },
+  {
+    "name": "mlp_64x32x32_r4_16_6",
+    "layers": [
+      64,
+      32,
+      32
+    ],
+    "reuse": 4,
+    "precision": "ap_fixed<16,6>",
+    "accuracy_float_pct": 76.6867,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "synth-failed",
+    "drc_overuse": {
+      "CARRY4": {
+        "required": 43802,
+        "available": 8150,
+        "over_by": 5.4
+      },
+      "LUT as Logic": {
+        "required": 189608,
+        "available": 20800,
+        "over_by": 9.1
+      },
+      "LUT6": {
+        "required": 77541,
+        "available": 32600,
+        "over_by": 2.4
+      },
+      "Register as Flip Flop": {
+        "required": 43022,
+        "available": 41600,
+        "over_by": 1.0
+      },
+      "Slice Registers": {
+        "required": 43022,
+        "available": 41600,
+        "over_by": 1.0
+      },
+      "DSP": {
+        "required": 1064,
+        "available": 90,
+        "over_by": 11.8
+      }
+    },
+    "latency_cycles": 38,
+    "latency_cycles_min": 34,
+    "latency_hls_ns": 380.0,
+    "ii": 4,
+    "pipeline_type": "dataflow",
+    "pipelined": true
+  },
+  {
+    "name": "mlp_32x16x16_r4_16_6",
+    "layers": [
+      32,
+      16,
+      16
+    ],
+    "reuse": 4,
+    "precision": "ap_fixed<16,6>",
+    "accuracy_float_pct": 76.3313,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "synth-failed",
+    "drc_overuse": {
+      "CARRY4": {
+        "required": 11351,
+        "available": 8150,
+        "over_by": 1.4
+      },
+      "LUT as Logic": {
+        "required": 52927,
+        "available": 20800,
+        "over_by": 2.5
+      },
+      "DSP": {
+        "required": 340,
+        "available": 90,
+        "over_by": 3.8
+      }
+    },
+    "latency_cycles": 35,
+    "latency_cycles_min": 31,
+    "latency_hls_ns": 350.0,
+    "ii": 4,
+    "pipeline_type": "dataflow",
+    "pipelined": true
+  },
+  {
+    "name": "mlp_64x32x32_r16_16_6",
+    "layers": [
+      64,
+      32,
+      32
+    ],
+    "reuse": 16,
+    "precision": "ap_fixed<16,6>",
+    "accuracy_float_pct": 76.6867,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "synth-failed",
+    "drc_overuse": {
+      "LUT as Logic": {
+        "required": 45844,
+        "available": 20800,
+        "over_by": 2.2
+      },
+      "DSP": {
+        "required": 266,
+        "available": 90,
+        "over_by": 3.0
+      }
+    },
+    "latency_cycles": 82,
+    "latency_cycles_min": 78,
+    "latency_hls_ns": 820.0,
+    "ii": 16,
+    "pipeline_type": "dataflow",
+    "pipelined": true
+  },
+  {
+    "name": "mlp_32x16x16_r4_12_6",
+    "layers": [
+      32,
+      16,
+      16
+    ],
+    "reuse": 4,
+    "precision": "ap_fixed<12,6>",
+    "accuracy_float_pct": 76.3313,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "synth-failed",
+    "drc_overuse": {
+      "LUT as Logic": {
+        "required": 26883,
+        "available": 20800,
+        "over_by": 1.3
+      },
+      "DSP": {
+        "required": 340,
+        "available": 90,
+        "over_by": 3.8
+      }
+    },
+    "latency_cycles": 35,
+    "latency_cycles_min": 31,
+    "latency_hls_ns": 350.0,
+    "ii": 4,
+    "pipeline_type": "dataflow",
+    "pipelined": true
+  },
+  {
+    "name": "mlp_16x8x8_r4_12_6",
+    "layers": [
+      16,
+      8,
+      8
+    ],
+    "reuse": 4,
+    "precision": "ap_fixed<12,6>",
+    "accuracy_float_pct": 75.6723,
+    "accuracy_is_float_upper_bound": true,
+    "part": "xc7a35tcpg236-1",
+    "clock_ns": 10.0,
+    "status": "ok",
+    "luts": 8749,
+    "ff": 5905,
+    "bram": 2,
+    "dsp": 53,
+    "wns": 5.384,
+    "fmax_mhz": 216.6,
+    "device_pct": 42.06,
+    "latency_cycles": 34,
+    "latency_cycles_min": 30,
+    "latency_hls_ns": 340.0,
+    "ii": 4,
+    "pipeline_type": "dataflow",
+    "pipelined": true,
+    "latency_ns": 156.97
+  }
+]
