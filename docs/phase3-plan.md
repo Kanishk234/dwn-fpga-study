@@ -11,8 +11,8 @@ Read first: `docs/phase2-report.md` (what we are comparing), brief §8 (the lite
 brief §10 Study 2, brief §12 risk #6.
 
 **Running this on a different machine?** `docs/phase3-handoff.md` first — the acceptance test,
-the toolchain (Vivado 2025.2 **and Vitis HLS**), and the rules that keep the comparison
-controlled. Phase 3 is portable: everything it needs is committed, including the Phase 1
+the toolchain (Vivado 2025.2 **and an HLS-capable install** — see the ledger note on which
+`vitis_hls`/`v++` command the tools expect), and the rules that keep the comparison controlled. Phase 3 is portable: everything it needs is committed, including the Phase 1
 checkpoint and all 54 DWN results. No sweep checkpoints, no 166k test set, no board.
 
 ---
@@ -44,6 +44,7 @@ model class for tabular JSC classification, and it keeps the comparison apples-t
 1. Train a GBDT on JSC (xgboost or sklearn's `HistGradientBoosting`). CPU, minutes, local.
 2. Sweep depth × n_estimators to get a **curve**, not one point — matching how we report DWN.
 3. Emit HDL via conifer, synthesize through **our** `build.tcl` at `xc7a35tcpg236-1`, 10 ns.
+   **Emit Verilog wherever the backend allows it** — see the convention note in §2.4.
 4. Record the same columns we do, including BRAM/DSP.
 
 Conifer goes first because it is the more likely of the two to synthesize cleanly at this scale
@@ -62,7 +63,22 @@ Expect this to be the harder of the two (brief §12 risk #6). Budget accordingly
 accuracy · LUT / FF / BRAM / DSP · Fmax · latency (cycles **and** ns) · throughput · Vivado
 power estimate (**flag it as an estimate**).
 
-### 2.4 Compare at iso-accuracy and iso-area
+### 2.4 Emit Verilog, not VHDL
+
+**Project convention: every generated HDL in this repo is Verilog.** All of `rtl/`, everything
+`rtlgen/` emits, and the whole Gate 1 testbench are Verilog, and `scripts/build.tcl` reads
+`.v` sources. Keeping the comparison designs in the same language means one `read_verilog` path,
+one simulator invocation, and reviewers reading one language.
+
+- **hls4ml / Vitis HLS** — emits Verilog by default. Keep it that way; do not switch to VHDL.
+- **conifer's `xilinxhls` backend** — same, it goes through HLS.
+- ⚠️ **conifer's direct-to-RTL backend is VHDL by construction** — that is what it is called and
+  what it emits, and there is no Verilog equivalent. If we use it, that one design is the
+  exception: Vivado synthesizes mixed-language projects fine, but `build.tcl` reads `.v` only,
+  so it needs a `read_vhdl` branch. **Say so in the results table** rather than leaving a reader
+  to wonder why one row is a different language.
+
+### 2.5 Compare at iso-accuracy and iso-area
 
 Not "our one model vs their one model." Two questions:
 
