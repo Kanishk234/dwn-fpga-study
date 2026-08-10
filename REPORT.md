@@ -207,11 +207,11 @@ wherever it matters.
 
 ### 4.2 Results
 
-**Figure 1.** Accuracy against area for every configuration measured on our device, alongside
-published results on the same dataset. Marker fill distinguishes designs whose area includes the
-input encoder from those reporting the network alone; the two are not interchangeable (Section 5.2).
+![Accuracy against area across the sweep](./docs/results/frontier.png)
 
-![Accuracy against area, OpenML dataset](./docs/results-cc/jsc-openml.png)
+**Figure 1.** Accuracy against area for the configurations measured on our device. Each point is a
+complete design, placed and routed, including the input encoder. The frontier is the set of
+configurations not beaten on both accuracy and size at once.
 
 
 | | |
@@ -236,6 +236,12 @@ measured.
 **The encoder dominates small models and stops dominating large ones.** The encoder-to-network
 ratio falls from 14.1× at 50 neurons to 2.8× at 2,400. Conclusions drawn at one model size do not
 transfer, which is a pattern we hit repeatedly (Section 8).
+
+![Encoder against network area across model sizes](./docs/results/area_split.png)
+
+**Figure 2.** Where the area goes. At 50 neurons the input encoder costs fourteen times the network
+it feeds; by 2,000 neurons the ratio has fallen to 2.8×. Any statement about the encoder being a
+large or small share of a weightless design is meaningless without the model size attached.
 
 **What runs out is the clock, not the chip.** Every configuration too large for the board still had
 a third of its area unused — it simply could not be clocked at 100 MHz. The binding constraint is
@@ -273,6 +279,13 @@ That is **seven times our measurement noise**, and larger than almost every diff
 argue about. Yet the standard comparison table lists both kinds of row together. It does so in the
 original DWN paper, in the follow-up encoder analysis, and in a 2025 survey of the field [6], which
 divides the benchmark by accuracy band and never mentions that two data sources exist.
+
+![Published results on the CERNBox distribution](./docs/results-cc/jsc-cernbox.png)
+
+**Figure 3.** Published results on the CERNBox distribution. None of our measurements appear here,
+and that is deliberate: we train on the OpenML distribution, and placing our points on this axis
+would credit us with roughly a percentage point we did not earn. Most of the methods usually
+compared against DWN live on this figure, not the next one.
 
 **Consequence.** The comparison most often quoted — DWN against LogicNets, PolyLUT and NeuraLUT —
 is across datasets. Those are CERNBox results. On the OpenML data the honest peer group is smaller
@@ -381,6 +394,13 @@ conventions exist.
 | FPGN [5] | 76.0% | 3,345 | unstated | VU9P |
 | Boosted tree (this work) | 74.88% | 15,363 | n/a | XC7A35T |
 
+![Accuracy against area, OpenML distribution](./docs/results-cc/jsc-openml.png)
+
+**Figure 4.** Everything measured on our device against everything published on the same
+distribution. Marker fill separates designs whose area includes the input encoder from those
+reporting the network alone — the two are not interchangeable, and the same model appears in both
+forms. The dashed line is our device's capacity.
+
 **Read honestly: we are not competitive on raw area with the specialised compilers.** The best
 published design reaches 76.0% in 1,780 lookup tables; ours needs 12,751.
 
@@ -432,6 +452,12 @@ evaluated on all 166,000 test samples, not a subset.
 | **11 bits** | **992** | **5.80×** | **−0.142 pp** | **yes** |
 | 10 bits | 891 | 6.46× | −0.219 pp | no |
 | 8 bits | 655 | 8.78× | −1.092 pp | no |
+
+![Encoder area and accuracy against input word width](./docs/results/encoder-width.png)
+
+**Figure 5.** Area and accuracy as the input word narrows, measured separately and plotted on a
+shared horizontal axis rather than against two vertical scales. The point of the figure is where
+the two limits sit relative to one another, not their heights.
 
 **There is a cliff between 12 and 11 bits** — a 4.7× area drop for one bit — where the comparator
 stops needing a carry chain and collapses into plain lookup-table logic. The narrowest width that
