@@ -30,6 +30,7 @@ still readable.
 | [`dse-plan.md`](./dse-plan.md) | What Phase 2 sweeps and why. **Partly superseded** — §5's encoder assumption and §7's open questions are marked where measurement overtook them |
 | [`phase2-handoff.md`](./phase2-handoff.md) | Moving to a new machine, and the restructure Phase 2 carried out |
 | [`phase3-plan.md`](./phase3-plan.md) | The controlled comparison: what to build, what to measure, and the two comparability traps |
+| [`phase3-handoff.md`](./phase3-handoff.md) | Running Phase 3 on another machine: acceptance test, toolchain, and the rules that keep the comparison controlled |
 
 ## Reference — facts established once, relied on everywhere
 

@@ -10,6 +10,11 @@ actually answers the question for a reader who knows the space.
 Read first: `docs/phase2-report.md` (what we are comparing), brief §8 (the literature tier),
 brief §10 Study 2, brief §12 risk #6.
 
+**Running this on a different machine?** `docs/phase3-handoff.md` first — the acceptance test,
+the toolchain (Vivado 2025.2 **and Vitis HLS**), and the rules that keep the comparison
+controlled. Phase 3 is portable: everything it needs is committed, including the Phase 1
+checkpoint and all 54 DWN results. No sweep checkpoints, no 166k test set, no board.
+
 ---
 
 ## 1. What Phase 2 hands over
@@ -76,6 +81,12 @@ One combined table and plot placing our numbers alongside the published LUT-DNN 
 LogicNets · PolyLUT · PolyLUT-Add · NeuraLUT · NeuraLUT-Assemble · TreeLUT · Mecik & Kumm's
 thermometer-encoding DWN numbers. Include AmigoLUT / LLNN / ReducedLUT if time allows.
 
+⚠️ **Brief §8's list is not current.** It was written early in the project. A search in August
+2026 already surfaced *WARP Logic Neural Networks* (arXiv 2602.03527) and a bit-flip resilience
+study of logic/LUT-based networks (arXiv 2603.22770) that are not in it. Refresh the list before
+building the table — this is a fast-moving corner of the literature and a stale comparison is
+the one thing a reader in this space will notice immediately.
+
 ---
 
 ## 4. ⚠️ Two comparability traps — settle these before building any table
@@ -127,4 +138,5 @@ literature ──► pull published JSC numbers ──► combined table + plot 
 
 conifer and hls4ml are deliberately **serial** — different setups, different failure modes
 (brief §10). The literature half is independent of both and can start any time our own numbers
-are final, which they now are.
+are final, which they now are — **and it needs no machine, no toolchain and no synthesis**,
+which makes it the sensible thing to start with.
