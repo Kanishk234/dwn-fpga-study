@@ -97,6 +97,7 @@ configurations, and the six things that broke along the way.
 
 | | |
 |---|---|
+| [`rtl/example-model-1x50/`](./rtl/example-model-1x50/) | **a real DWN in Verilog, committed to be read** — the config that ran on the board |
 | `exporter/` | trained checkpoint → lookup tables, wiring, thresholds |
 | `rtlgen/` | that export → Verilog |
 | `rtl/` `tb/` | hand-written primitives · golden-model testbench |
