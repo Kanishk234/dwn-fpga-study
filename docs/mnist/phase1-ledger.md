@@ -30,7 +30,7 @@ point.
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ **next** — `1x300`, **z=3**, n=6, min-max (T3) |
 | M1d | Export and pass Gate 1 bit-exact | 🟡 **mechanically proven 2026-08-11** on a synthetic 784/10 checkpoint; needs a real one |
 | M1e | Synthesize; measure core / encoder / top separately | 🟡 **synthetic measured**: 3,233 LUTs (15.5%), **fails timing at 91.5 MHz** |
-| M1f | Harness record format and vector-store capacity | ⬜ **in scope 2026-08-11** — MNIST goes on the board |
+| M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — ⚠️ **simulation-verified only**, not yet on silicon |
 | M1g | Gate 1b on the board, full MNIST test set | ⬜ **in scope 2026-08-11** |
 
 **Scope, 2026-08-11 — two questions, and only one is answered.**
@@ -81,6 +81,71 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — M1f: the harness derives its dimensions, and a third silent-cap bug
+
+**JSC unchanged: 12/12, areas 108 / 1,519 / 1,619**, and all four harness testbenches pass —
+`uart`, `benchmark`, `loader`, `top` — including the end-to-end board-integration simulation.
+
+#### ⚠️ `uart_loader.v` looked parameterised and was not
+
+`VEC_BYTES = DATA_W / 8` is derived, not hardcoded, so the module reads as general. Two lines
+below it:
+
+```verilog
+reg [5:0] byte_idx;                       // caps at 63
+if (byte_idx < VEC_BYTES[5:0]) begin      // truncates
+```
+
+A fixed-width counter silently overriding the parameters around it. For MNIST, `VEC_BYTES` is
+1,568 and `[5:0]` truncates it to **32** — the loader would have accepted JSC-sized records
+forever and written garbage into the vector store, with nothing anywhere reporting an error.
+
+`IDX_W` is now `$clog2(REC_BYTES + 1)` and every literal `6'd0` follows it.
+
+**This is the third instance of one pattern**, and it is worth naming: `emit_core.py`'s
+`16 * thermometer_bits`, `Dataset.record_bytes()`'s `word_bits // 8`, and now this. In each case a
+*parameter existed*, and something narrower downstream quietly capped it. None of the three would
+have raised an error. The common tell is a **fixed-width thing sitting next to a derived one** —
+worth grepping for deliberately rather than waiting to trip over the next one.
+
+#### `scripts/host.py` had the byte-alignment version of the same bug
+
+`pack_record` used `word_bits // 8`, giving **one byte for a 9-bit word** and truncating every
+feature. Both packers now use ceiling division, and `pack_batch` derives its numpy dtype rather
+than hardcoding `'<i2'` — which happened to be right for 16-bit and 9-bit alike, and would have
+been wrong the moment anything else was tried.
+
+#### Dimensions now come from the model
+
+`scripts/build_bitstream.py` reads the checkpoint and passes `DATA_W / LABEL_W / DEPTH / ADDR_W`
+as Vivado generics. The generics path already existed end to end and was only being used for
+`BAUD`.
+
+| | features | record | DATA_W | LABEL_W | DEPTH | BRAM |
+|---|---|---|---|---|---|---|
+| **JSC** | 16 | 33 B | **256** | **3** | **1024** | 14% |
+| MNIST (9-bit) | 784 | 1,569 B | 12,544 | 4 | 16 | 11% |
+
+**JSC's row is the validation**: those are exactly the values that were hand-written into
+`dwn_basys3_top.v`, now derived rather than typed. If the derivation were wrong, that row would
+have moved.
+
+**MNIST gets `DEPTH=16` at the default 15% block-RAM budget** — a vector is 48x wider, so far
+fewer fit. A 10,000-vector test set then needs ~625 load-and-run batches. `--bram-budget 0.5`
+raises it to 64 and ~157 batches. That is throughput, not correctness, and it is the cost that was
+accepted when MNIST went on the board.
+
+#### ⚠️ What is NOT verified
+
+**None of this has run on hardware.** `verify_phase1.py` at 12/12 covers simulation and
+synthesis; the board half needs `--with-board` and a Basys 3, and it has not been run since the
+loader changed. The four testbenches exercise the same RTL a bitstream would, so the risk is low —
+but "passes in simulation" is not the standard this project uses for the board, and Gate 1b exists
+precisely because simulation missed things before.
+
+**Run `scripts/verify_phase1.py --with-board` on the machine with the board before trusting any of
+this.** Expected: 22/22, and JSC's 166,000/166,000 unchanged.
 
 ### 2026-08-11 — the generator works at MNIST's shape, measured, before any training
 
@@ -428,6 +493,25 @@ even. `1x200` also works; `256` does not, because the final layer must divide by
 
 
 ---
+
+## To record once the board work lands
+
+Placeholders, so the questions are asked rather than reconstructed afterwards. Every one needs
+hardware and cannot be filled in from here.
+
+| | What to capture | Why it matters |
+|---|---|---|
+| **JSC regression on silicon** | `verify_phase1.py --with-board` → 22/22, 166,000/166,000 | The loader changed. Simulation says it is fine; silicon has disagreed with simulation before |
+| **MNIST `DEPTH` actually used** | the `--bram-budget` finally chosen, and the block-RAM figure | 16 at the default is probably impractical; the honest number is whatever was used |
+| **Batches for a full pass** | count, and wall-clock for 10,000 vectors | Projected ~23 min at 115,200 baud with `DEPTH=64`. Projected, not measured |
+| **Baud actually achieved** | the highest working rate at a 1,569-byte record | JSC found a UART ceiling; a 48x longer record may find a different one |
+| **Bitstream area at MNIST dimensions** | LUT/FF/BRAM for `dwn_basys3_top`, and the harness share | The harness was ~439 LUTs for JSC and does not scale with the model — worth confirming that still holds at DATA_W=12,544 |
+| **Gate 1b result** | mismatches out of the full MNIST test set | The actual deliverable of M1g |
+| **Timing with the harness attached** | Fmax, and whether 100 MHz still closes | The synthetic core already missed it at 91.5 MHz *without* the harness |
+
+⚠️ **The synthetic run already suggests timing will be the problem, not area.** If the real model
+misses 100 MHz, pipeline depth is the lever and it needs no retraining — but it changes the
+latency figure that goes in the report, so measure before quoting.
 
 ## Open questions
 
