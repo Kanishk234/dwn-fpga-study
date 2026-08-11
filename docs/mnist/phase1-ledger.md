@@ -27,9 +27,9 @@ point.
 |---|---|---|
 | M1a | Derive the feature count; add `datasets/` descriptors | ✅ done 2026-08-11 — JSC identical |
 | M1b | Thread configurable precision through the flow | ✅ done 2026-08-11 — JSC identical, Gate 1 passes at 11-bit |
-| M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ **next** — `1x300`, **z=3**, n=6, min-max (T3) |
-| M1d | Export and pass Gate 1 bit-exact | 🟡 **mechanically proven 2026-08-11** on a synthetic 784/10 checkpoint; needs a real one |
-| M1e | Synthesize; measure core / encoder / top separately | 🟡 **synthetic measured**: 3,233 LUTs (15.5%), **fails timing at 91.5 MHz** |
+| M1c | Train a small MNIST model (Kaggle, off-machine) | ✅ done 2026-08-11 — **96.14%** (best 96.28%) |
+| M1d | Export and pass Gate 1 bit-exact | ✅ done 2026-08-11 — **PASS on the trained model**, and Q0.8 is lossless |
+| M1e | Synthesize; measure core / encoder / top separately | ✅ done 2026-08-11 — **1,557 LUTs (7.5%)**, ⚠️ **misses 100 MHz at 87.5** |
 | M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — ⚠️ **simulation-verified only**, not yet on silicon |
 | M1g | Gate 1b on the board, full MNIST test set | ⬜ **in scope 2026-08-11** |
 
@@ -81,6 +81,84 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — M1d + M1e: MNIST runs, 96.14% in 1,557 LUTs, and it misses the clock
+
+The first real MNIST model through the whole flow. `1x300`, z=3, n=6, Q0.8 nine-bit words.
+
+#### Gate 1 PASSES on a trained model
+
+```
+golden model vs PyTorch on the real vectors: 1000/1000
+Q0.8 vs float32 on those same vectors: 0 encoder bit differences, 0 class changes
+dwn_core : 1,504 vectors, 0 mismatches, PASS
+dwn_top  : 1,865 vectors, 0 mismatches, PASS
+```
+
+**The quantisation is lossless**, which is the prediction the descriptor was built on and the
+first time it has been confirmed. JSC's Q3.12 produced 10 encoder bit differences against float32;
+MNIST at nine bits produces **zero**, because min-max scaled 8-bit pixels take only 256 distinct
+values and Q0.8 represents every one of them exactly. Narrowing cost JSC accuracy because it
+truncated *continuous* features; there is nothing to truncate here.
+
+#### Area, post-place-and-route, `xc7a35tcpg236-1` at 10 ns
+
+| module | LUTs | % device | FF | BRAM | DSP | Fmax |
+|---|---|---|---|---|---|---|
+| `dwn_core` | 640 | 3.08% | 354 | 0 | 0 | 92.2 MHz |
+| `thermometer_encoder` | 918 | 4.41% | 0 | 0 | 0 | 289.4 MHz |
+| **`dwn_top`** | **1,557** | **7.49%** | 906 | **0** | **0** | **87.5 MHz** |
+
+**Encoder/core is 1.43x** — against 14.1x for JSC's smallest model. `z=3` is why: 2,352
+thermometer bits against JSC's 3,200 for a *tenth* as many features. The encoder stops dominating
+when the thresholds per feature are few, whatever the feature count.
+
+#### Against the published MNIST numbers
+
+| | accuracy | LUTs | part |
+|---|---|---|---|
+| PolyLUT (brief §8) | 96% | 70,673 | `xcvu9p` |
+| NeuraLUT (brief §8) | 96% | 54,798 | `xcvu9p` |
+| **this work** | **96.14%** | **1,557** | `xc7a35t-1` |
+
+**Same accuracy, 35–45x fewer lookup tables.** That is a far stronger position than JSC, where we
+were not competitive on area at all.
+
+⚠️ **Before anyone quotes it**, four things have to be checked, and none is done:
+- **The published rows come from brief §8, which was stale for JSC** and needed a full refresh.
+  These MNIST numbers have had no such audit.
+- **The encoder convention** was the trap on JSC. It must be established per row for MNIST too.
+- **MNIST may not have JSC's two-dataset problem**, but that must be verified rather than assumed.
+- **Our design does not meet the board clock** (below), so it is not yet a deployable result.
+
+#### ⚠️ It misses 100 MHz
+
+**87.5 MHz, failing by 1.425 ns.** The core alone is 92.2 MHz; the encoder is fine at 289. So the
+critical path is the popcount and argmax over 300 nodes in 10 groups, exactly as it was for JSC —
+**timing, not area, is the binding constraint here too.**
+
+Pipelining is the lever and it needs no retraining: JSC's Group B moved 84.2 to 161.0 MHz on
+flip-flops alone, with the LUT count unchanged. **M1g cannot proceed until this closes.**
+
+#### The area model is fine — the synthetic run was the outlier
+
+| | projected | measured | error |
+|---|---|---|---|
+| comparators | 785 | 720 | +9.0% |
+| encoder | 832 | 918 | −9.4% |
+| core | 684 | 640 | +6.9% |
+| **design** | **1,516** | **1,557** | **−2.6%** |
+
+**This retracts the alarm in the synthetic entry above.** That run showed the projection 26% low
+overall and 82% low on the encoder, and I attributed it to the 49x feature-count extrapolation. On
+a *real* checkpoint the same model is within 2.6%. The error was the synthetic data: uniformly
+random pixels produce threshold spreads nothing like real MNIST, where most pixels are zero and
+quantile thresholds cluster hard.
+
+**The lesson is about synthetic checkpoints, not about the model.** They are excellent for testing
+the *emitter* — that is what they were built for, and Gate 1 at 784 features passed on one before
+any training existed. They are worthless for predicting *area*, because area depends on the data
+distribution the thresholds were fitted to.
 
 ### 2026-08-11 — M1f: the harness derives its dimensions, and a third silent-cap bug
 
