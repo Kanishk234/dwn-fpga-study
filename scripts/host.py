@@ -350,14 +350,15 @@ def selftest(checkpoint):
         rec = pack_record(q[i], int(exp_lines[i], 16))
         # x_quant.hex is one 256-bit word per line, LSB-last. Reassembling the record's
         # feature bytes little-endian must reproduce it exactly.
-        got = int.from_bytes(rec[:WORD_BITS * 16 // 8], 'little')
+        got = int.from_bytes(rec[:-1], 'little')      # every byte but the trailing label
         want = int(hex_lines[i], 16)
         if got != want:
             if errors < 3:
                 print(f'  MISMATCH record {i}\n    got  {got:064x}\n    want {want:064x}')
             errors += 1
-        if len(rec) != 33:
-            print(f'  MISMATCH record {i}: {len(rec)} bytes, expected 33')
+        expect_len = len(q[i]) * (WORD_BITS // 8) + 1     # features, then one label byte
+        if len(rec) != expect_len:
+            print(f'  MISMATCH record {i}: {len(rec)} bytes, expected {expect_len}')
             errors += 1
 
     # Status reply parsing, against a frame built the way the RTL builds it.

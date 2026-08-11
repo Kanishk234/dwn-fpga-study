@@ -94,7 +94,12 @@ def emit(ck, out_path, pipe_lut=PIPE_LUT, pipe_pop=PIPE_POP, pipe_out=PIPE_OUT):
     for i in layer_indices(sd):
         layers.append((extract_tables(sd, i), *extract_wiring(sd, i, n)))
 
-    input_bits = 16 * cfg['thermometer_bits']
+    # The encoder's output width, read from the thresholds themselves -- (features, z), so
+    # .size is features x z. This used to be `16 * cfg['thermometer_bits']`, with JSC's feature
+    # count written in. That was wrong for any other dataset and would not have failed loudly:
+    # it emits a core whose input port is the wrong width, which elaborates and then disagrees
+    # with the encoder. rtlgen/emit_encoder.py already derived it this way; this matches it.
+    input_bits = ck['thermometer']['thresholds'].numpy().size
     final_width = layers[-1][0].shape[0]
     group = final_width // num_classes
     score_w = int(np.ceil(np.log2(group + 1)))
