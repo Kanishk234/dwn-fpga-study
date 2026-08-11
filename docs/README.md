@@ -3,6 +3,13 @@
 Start with a **report** if you want results, a **ledger** if you want the reasoning and the
 wrong turns, and the **brief** if you want the plan the whole thing follows.
 
+**Files at this level are the JSC study** — the original dataset, and everything `REPORT.md`
+describes. Work on a second dataset lives in its own directory: [`mnist/`](./mnist/). The
+asymmetry is deliberate rather than tidy: `REPORT.md`, the root `README.md` and the
+`jsc-complete` tag all reference these paths, and breaking a published artifact to gain symmetry
+is a bad trade. Dimensions and per-dataset settings live in `datasets/`, never in the shared
+code.
+
 ## Reports — what happened, written up
 
 | | |

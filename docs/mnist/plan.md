@@ -5,9 +5,19 @@
 "our generator is parameterised" into "our generator has been shown to work on a second problem
 with different dimensions" — which is the difference between an assertion and a result.
 
-**The generalised tool is the real deliverable here, not the MNIST accuracy number.** MNIST is how
-we find the JSC assumptions we cannot see. If the port fails to fit the board, that is still a
-successful outcome as long as the generator came out general.
+**Two deliverables, and both count.**
+
+1. **MNIST results.** A second dataset's worth of accuracy/area/latency numbers, and they are
+   directly comparable to published work: the brief already carries PolyLUT at 96% / 70,673 LUTs
+   and NeuraLUT at 96% / 54,798 on MNIST. More importantly, **MNIST is the benchmark the weightless
+   lineage actually uses** — ULEEN and BTHOWeN report MNIST and report no JSC at all, so this is
+   the first comparison this project can make against its own architectural ancestors. The JSC
+   study could not touch them.
+2. **A generalised tool**, as a byproduct. MNIST is how we find the JSC assumptions we cannot see
+   by inspection.
+
+If the port fails to fit the board, that is a result worth reporting rather than a failure — but
+it is not the goal. The goal is MNIST numbers on a generalised flow.
 
 Work happens on the `mnist` branch. `main` holds the JSC study, tagged `jsc-complete`.
 
@@ -73,18 +83,80 @@ MNIST is **additive**: new directories alongside, never a reorganisation of what
 layout is not worth breaking the published artifact, and a reorganisation is a separate change to
 make deliberately, on its own, if it is ever wanted.
 
-### 1.5 Layout for new material
+### 1.5 Layout, and the contract for adding a dataset
+
+**Prefixing filenames is not enough.** It was the first instinct and it does not survive: it
+produces `mnist-plan.md` next to `results-mnist/`, prefix in one place and suffix in the other,
+and it leaves fourteen flat JSC documents with no marker at all — so a reader cannot tell that
+`phase2-report.md` is JSC-only without opening it. That gets worse with every file.
+
+**One directory per dataset, for everything specific to it.**
+
+```
+docs/mnist/          plan, ledgers, reports, results for MNIST
+docs/<dataset>/      the same shape for anything added later
+docs/*.md            the JSC study, at the top level, where it already is
+datasets/            one descriptor per dataset -- the only place dimensions live
+training/artifacts/  checkpoints, already dataset-tagged by filename
+```
+
+JSC stays flat because §1.4 says so: `REPORT.md`, `README.md` and the `jsc-complete` tag point at
+those paths. `docs/README.md` carries one line explaining the asymmetry. Making it symmetric means
+moving JSC into `docs/jsc/` and updating every reference — a legitimate change, but a **separate
+and deliberate** one, made on its own after this branch merges, if it is wanted at all.
+
+#### The contract — this is what actually keeps it clean
+
+The directory names are cosmetic. What keeps the repo honest is that **dataset-specific facts live
+in exactly one place and shared code reads them from there.** A dataset descriptor in `datasets/`
+must supply everything the flow needs to know:
 
 | | |
 |---|---|
-| `datasets/` | one descriptor per dataset: dimensions, record layout, defaults. **New, shared.** |
-| `docs/results-mnist/` | MNIST measurements, mirroring `docs/results/` |
-| `docs/mnist-*.md` | MNIST plan, ledger, report |
-| `training/artifacts/` | checkpoints, already dataset-tagged by filename |
+| `features`, `classes` | input dimension and output count |
+| `word_bits`, `frac_bits` | the fixed-point input format |
+| input scaling | how raw values reach the model, and its inverse for the host |
+| record layout | bytes per board record, derived from `features` and `word_bits`, never a constant |
+| checkpoint naming | how a trained model is found on disk |
+| test-set loader | how vectors are read for Gate 1 and Gate 1b |
+| sweep grid | widths, thresholds and pipeline options, as data |
 
-Nothing else new at the repo root.
+**The test that this is working: adding a third dataset should mean adding a descriptor and a
+`docs/<name>/` directory, and editing no file under `exporter/`, `rtlgen/`, `rtl/`, `tb/`,
+`scripts/` or `harness/`.** If a third dataset would require touching an emitter, the boundary has
+leaked and the fix belongs in `datasets/`, not in a new branch of an `if`.
 
-### 1.6 What "clean at merge time" means
+This is also why `dse/grid.py` cannot simply be copied for MNIST. The size ladder and threshold
+values are data; the code that walks them is not. The grid becomes a generic builder reading the
+descriptor, and JSC's current grid becomes JSC's descriptor entry — which is a generalisation
+commit under §1.1, gated on the JSC sweep grid coming out identical.
+
+### 1.6 Splitting the work between two people
+
+Mapped against the actual file sets, not guessed. **One coupling limits this more than it looks.**
+
+`scripts/host.py` sits in two tracks at once: it imports `FRAC_BITS`/`WORD_BITS` (the precision
+work) *and* owns the 33-byte record packing (the harness work). Line 353 is both at once —
+`rec[:WORD_BITS * 16 // 8]`, the hardcoded feature count multiplied by the word width. And the
+record format is a **wire protocol**: host packing and the Verilog loader must change together, or
+the board silently misreads every vector.
+
+So the harness work is *not* parallel with the precision work. They meet in the middle.
+
+| Who | What | Why it splits this way |
+|---|---|---|
+| **Both, first** | decide thresholds per pixel, and whether pixels are min-max or standard-scaled | ~1 hour, and it blocks training |
+| **Off-machine** | M1c — train a small MNIST model on Kaggle | touches only `training/`, zero code overlap, and it is the long pole because GPU session time is not ours to schedule |
+| **On the dev machine** | M1a → M1b → M1f, in order, including `host.py` | one owner for the whole host↔RTL protocol |
+| **Converges** | M1d needs both tracks | |
+
+**Two tracks, not three.** Splitting M1a/M1b/M1f between two people means coordinating `host.py`
+and the record protocol across machines, which costs more than it saves.
+
+⚠️ **M1g needs a board.** If only one machine has a Basys 3, that step cannot move regardless of
+how the rest is divided.
+
+### 1.7 What "clean at merge time" means
 
 When this branch merges, someone reading `main` should not be able to tell it was ever two
 branches. Concretely:
@@ -195,7 +267,7 @@ the only genuinely bad outcome, which is why Gate 1 comes before any area number
 
 ## 5. Pointers
 
-- `docs/mnist-phase1-ledger.md` — the dated log for this work
-- `REPORT.md` — the JSC study this is being generalised away from
-- `docs/checkpoint-format.md` — what the exporter reads, verified against JSC only
-- `docs/phase1-ledger.md` — how the JSC bring-up actually went, including what broke
+- `docs/mnist/phase1-ledger.md` — the dated log for this work
+- `../../REPORT.md` — the JSC study this is being generalised away from
+- `../checkpoint-format.md` — what the exporter reads, verified against JSC only
+- `../phase1-ledger.md` — how the JSC bring-up actually went, including what broke
