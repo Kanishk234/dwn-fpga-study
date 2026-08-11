@@ -25,8 +25,8 @@ point.
 
 | Step | What | Status |
 |---|---|---|
-| M1a | Derive the feature count; add `datasets/` descriptors | ⬜ next |
-| M1b | Thread configurable precision through the flow | ⬜ **blocker** — nothing fits at 16-bit |
+| M1a | Derive the feature count; add `datasets/` descriptors | ✅ done 2026-08-11 — JSC identical |
+| M1b | Thread configurable precision through the flow | ⬜ **next, and a blocker** — nothing fits at 16-bit |
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ |
 | M1d | Export and pass Gate 1 bit-exact | ⬜ |
 | M1e | Synthesize; measure core / encoder / top separately | ⬜ |
@@ -69,6 +69,64 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — M1a: the feature count is derived, and `datasets/` exists
+
+Two generalisation changes, both gated. **JSC is unchanged: 12/12 with areas 108 / 1,519 / 1,619,
+and the two-layer `300-100` checkpoint still passes Gate 1 bit-exact on 1,519 vectors.**
+
+#### The defect
+
+`rtlgen/emit_core.py` computed the core's input port width as `16 * cfg['thermometer_bits']` —
+JSC's feature count written into the emitter. Now derived from the thresholds themselves
+(`thresholds.size`, which is features × z), matching what `rtlgen/emit_encoder.py` already did.
+
+**This was wrong on `main` today**, not merely wrong for MNIST. It is the dangerous kind: a wrong
+port width elaborates and synthesizes, then disagrees with the encoder feeding it. Nothing errors.
+
+`scripts/host.py`'s self-test had the same constant twice — `rec[:WORD_BITS * 16 // 8]` and a
+literal `!= 33`. Both now derive from the record. `pack_record` itself was already general.
+
+**A fast check worth reusing:** `rtl/example-model-1x50/` is the committed emitted RTL for the
+Phase 1 config. Regenerating it and diffing gives a byte-exact answer in seconds, covering table
+contents, wiring indices and port widths, long before Vivado has an opinion. All five files came
+back identical.
+
+#### `datasets/` — the contract, and it caught a bug immediately
+
+One frozen `Dataset` descriptor per dataset: dimensions, scaling, fixed-point format, record
+layout, sweep axes. `check_checkpoint()` raises if a descriptor disagrees with a trained model,
+because a silently wrong descriptor produces an export that elaborates and is wrong.
+
+| | features | classes | format | record |
+|---|---|---|---|---|
+| `jsc` | 16 | 5 | Q3.12 | **33 B** |
+| `mnist` | 784 | 10 | Q0.8 | 1,569 B |
+
+JSC's 33 bytes is **derived and matches the constant the UART loader was written around**, which
+is the check that the derivation is correct rather than merely plausible.
+
+⚠️ **The contract found a real bug within the hour.** `record_bytes()` first used
+`word_bits // 8`, which returns **one byte for an 11-bit word** and silently truncates every
+feature. Fixed with ceiling division. **`scripts/host.py`'s `pack_record` still makes the same
+assumption** — deliberately left, because it shares a wire format with `harness/uart_loader.v` and
+the two must change together, which is M1f.
+
+#### That bug forced a better decision on MNIST precision
+
+The descriptor initially carried 11 bits, taken from the JSC measurement. Wrong reasoning: MNIST
+pixels are 8-bit integers and min-max scaled, so **only 256 distinct input values exist** and
+**Q0.8 — nine bits, one sign and eight fractional — represents them exactly.** JSC's 0.4 pp loss at
+nine bits came from truncating *continuous* features; there is nothing to truncate in data that
+arrives already quantised. Nine bits also sits on the cheap side of the measured area cliff.
+
+Still provisional. On JSC the accuracy-safe width moved between two configurations of the *same*
+dataset, so it cannot be assumed to transfer to a different one.
+
+#### Not done here, deliberately
+
+`dse/area_model.py` still has `JSC_FEATURES = 16`. It is outside the directories §1.3 covers, and
+it belongs to the R1 recalibration, but it should read from the descriptor when that happens.
 
 ### 2026-08-11 — threshold analysis: `z` is not the constraint for MNIST, word width is
 
