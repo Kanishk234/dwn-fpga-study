@@ -16,16 +16,24 @@ Usage:
 """
 
 import argparse
+import math
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_gate1 import REPO, find_vivado_bin  # noqa: E402
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exporter'))
+from run_gate1 import DEFAULT_CHECKPOINT, REPO, find_vivado_bin  # noqa: E402
+from extract import WORD_BITS, load_checkpoint  # noqa: E402
 from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
                        parse_utilization, parse_wns, run_one)
 
 TOP = 'dwn_basys3_top'
+
+# XC7A35T: 50 x 36 Kbit block RAMs. The vector store is the only thing that uses them, so this
+# is the whole budget it competes for.
+DEVICE_BRAM_BITS = 50 * 36 * 1024
 XDC = 'constraints/basys3.xdc'
 
 _PRIM = ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v']
@@ -58,6 +66,17 @@ def main():
     # 100 MHz divides exactly at 1M(100), 2M(50), 4M(25), 5M(20), 10M(10).
     ap.add_argument('--baud', type=int, default=None,
                     help='override the BAUD parameter (default: whatever the RTL says)')
+    # Harness dimensions are DERIVED from the checkpoint, not typed in. They were defaults in
+    # dwn_basys3_top.v sized for JSC (DATA_W=256, LABEL_W=3, DEPTH=1024), which would have been
+    # silently wrong for any other dataset -- the loader would still have accepted 33-byte
+    # records and written garbage.
+    ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT,
+                    help='sets DATA_W / LABEL_W from the model (default: the Phase 1 config)')
+    ap.add_argument('--word-bits', type=int, default=WORD_BITS,
+                    help='input word width; must match what emit_encoder was given')
+    ap.add_argument('--bram-budget', type=float, default=0.15,
+                    help='fraction of block RAM the vector store may use (default %(default)s, '
+                         'which is what JSC used at DEPTH=1024)')
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
@@ -77,7 +96,32 @@ def main():
     print(f'clock  : {BOARD_PERIOD_NS:.1f} ns ({1000/BOARD_PERIOD_NS:.0f} MHz)')
     print()
 
-    generics = [f'BAUD={args.baud}'] if args.baud else None
+    # ---- harness dimensions, derived from the model ----
+    ck = load_checkpoint(args.checkpoint)
+    n_features = ck['thermometer']['thresholds'].numpy().shape[0]
+    n_classes = ck['config']['num_classes']
+    per_feat = -(-args.word_bits // 8)          # ceiling: a 9-bit word travels as 2 bytes
+    data_w = n_features * per_feat * 8
+    label_w = max(1, math.ceil(math.log2(n_classes)))
+    bits_per_vec = data_w + label_w
+    depth = 1 << int(math.floor(math.log2(max(
+        1, DEVICE_BRAM_BITS * args.bram_budget / bits_per_vec))))
+    addr_w = max(1, int(math.log2(depth)))
+
+    print(f'model  : {n_features} features x {args.word_bits}-bit, {n_classes} classes')
+    print(f'record : {n_features * per_feat + 1} bytes ({per_feat} B/feature + 1 label)')
+    print(f'store  : DATA_W={data_w} LABEL_W={label_w} DEPTH={depth} ADDR_W={addr_w}  '
+          f'({depth * bits_per_vec / 1024:.0f} Kbit, '
+          f'{depth * bits_per_vec / DEVICE_BRAM_BITS:.0%} of block RAM)')
+    if depth < 256:
+        print(f'         NOTE only {depth} vectors fit on-chip, so a full test set needs many '
+              f'load/run batches. That is throughput, not correctness.')
+    print()
+
+    generics = [f'DATA_W={data_w}', f'LABEL_W={label_w}',
+                f'DEPTH={depth}', f'ADDR_W={addr_w}']
+    if args.baud:
+        generics.append(f'BAUD={args.baud}')
     if args.baud:
         div = 100_000_000 / args.baud
         print(f'baud   : {args.baud:,} (override) -- {div:g} clocks/bit'

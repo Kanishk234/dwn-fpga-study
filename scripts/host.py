@@ -55,8 +55,19 @@ DEVICE_DEPTH = 1024
 # encoding
 # ---------------------------------------------------------------------------
 
+def bytes_per_feature(word_bits=WORD_BITS):
+    """Wire width of one feature, in whole bytes. CEILING, not floor.
+
+    A word that is not a byte multiple pads on the wire: 9 bits travels as 2 bytes. Using
+    `// 8` gives 1 byte for a 9-bit word and silently truncates every feature. The Verilog
+    loader derives the same quantity as DATA_W/8, so DATA_W must be set to
+    n_features * 8 * bytes_per_feature(), not n_features * word_bits.
+    """
+    return -(-word_bits // 8)
+
+
 def pack_record(features_q, label, word_bits=WORD_BITS):
-    """Quantized features + label -> the 33 bytes the loader expects.
+    """Quantized features + label -> the record bytes the loader expects.
 
     Little-endian per feature and in feature order, so byte k lands at x_flat[k*8 +: 8]. Any
     other order silently transposes the input; --selftest is what catches that.
@@ -64,9 +75,12 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
     Kept for the self-test, which checks one record at a time. Bulk transfers use pack_batch.
     """
     out = bytearray()
+    nbytes = bytes_per_feature(word_bits)
     mask = (1 << word_bits) - 1
     for f in features_q:
-        out += int(f & mask).to_bytes(word_bits // 8, 'little')
+        # Two's complement in `word_bits`, then zero-padded up to whole bytes. The padding is
+        # harmless because the encoder sign-extends from bit word_bits-1 on the FPGA side.
+        out += int(f & mask).to_bytes(nbytes, 'little')
     out.append(int(label) & 0xFF)
     return bytes(out)
 
@@ -82,8 +96,14 @@ def pack_batch(features_q, labels):
     '<i2' forces little-endian 16-bit regardless of host byte order, so the wire format does
     not silently depend on what machine the host runs on.
     """
-    words = np.ascontiguousarray(features_q).astype('<i2')     # (n, 16) LE int16
-    feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, 32)
+    nbytes = bytes_per_feature()
+    dtype = {1: '<i1', 2: '<i2', 4: '<i4'}.get(nbytes)
+    if dtype is None:
+        raise SystemExit(f'no little-endian integer type is {nbytes} bytes wide; a word of '
+                         f'{WORD_BITS} bits needs explicit padding in both this function and '
+                         f'the Verilog loader before it can be sent')
+    words = np.ascontiguousarray(features_q).astype(dtype)     # (n, features) LE
+    feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, features * nbytes)
     lab = np.asarray(labels, dtype=np.uint8).reshape(-1, 1)    # (n, 1)
     return np.hstack([feat_bytes, lab]).tobytes()              # row-major = record after record
 

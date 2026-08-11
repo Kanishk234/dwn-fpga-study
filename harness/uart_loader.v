@@ -7,11 +7,13 @@
 // and see 0xA5 come back separates "the link is dead" from "the design is wrong" in seconds.
 //
 //   'P'                                  ping -> replies 0xA5
-//   'L' n_lo n_hi  then n x 33 bytes      load n vectors from address 0
+//   'L' n_lo n_hi  then n x REC_BYTES     load n vectors from address 0
 //   'R' n_lo n_hi                        run a benchmark batch over n vectors
 //   'S'                                  status -> 9 bytes back
 //
-// Each loaded vector is 33 bytes: 32 bytes of features then 1 byte of label. Feature bytes are
+// Each loaded vector is REC_BYTES = DATA_W/8 + 1: the feature bytes then one label byte. For
+// JSC that is 33 (16 features x 16 bits, + 1); for MNIST at 784 features it is far larger.
+// Feature bytes are
 // LITTLE-ENDIAN and in order, so byte k lands at x_flat[k*8 +: 8]; feature f therefore occupies
 // bytes 2f (low) and 2f+1 (high). This matches how tb/gen_vectors.py packs x_quant.hex, and
 // getting it backwards would silently transpose every feature.
@@ -61,8 +63,15 @@ module uart_loader #(
     input  wire [ADDR_W:0]     correct_count
 );
 
-    localparam integer VEC_BYTES = DATA_W / 8;      // 32 feature bytes
+    localparam integer VEC_BYTES = DATA_W / 8;      // feature bytes, derived from DATA_W
     localparam integer REC_BYTES = VEC_BYTES + 1;   // + 1 label byte
+
+    // Width of the within-record byte counter, DERIVED. It was a fixed reg [5:0], which caps at
+    // 63: fine while DATA_W was 256 (32 bytes), silently wrong for anything wider. A 784-feature
+    // record is 1,568 feature bytes, and `VEC_BYTES[5:0]` truncates that to 32 -- the loader
+    // would have accepted JSC-sized records forever and written garbage, with no error anywhere.
+    // The parameters existed; this counter quietly overrode them.
+    localparam integer IDX_W = $clog2(REC_BYTES + 1);
 
     localparam [7:0] CMD_PING = "P",
                      CMD_LOAD = "L",
@@ -78,7 +87,7 @@ module uart_loader #(
     reg        n_hi_next;                 // which half of the 16-bit count is next
     reg [15:0] n_expect;                  // vectors to load / run
     reg [15:0] n_seen;                    // vectors loaded so far
-    reg [5:0]  byte_idx;                  // 0..REC_BYTES-1 within a record
+    reg [IDX_W-1:0] byte_idx;             // 0..REC_BYTES-1 within a record
 
     // Reply buffer. 9 bytes is the largest response (status).
     reg [7:0]  tx_buf [0:8];
@@ -102,7 +111,7 @@ module uart_loader #(
             n_hi_next  <= 1'b0;
             n_expect   <= 16'd0;
             n_seen     <= 16'd0;
-            byte_idx   <= 6'd0;
+            byte_idx   <= {IDX_W{1'b0}};
             wr_en      <= 1'b0;
             wr_addr    <= {ADDR_W{1'b0}};
             wr_data    <= {DATA_W{1'b0}};
@@ -176,22 +185,22 @@ module uart_loader #(
                         end else begin
                             n_expect[15:8] <= rx_data;
                             n_seen         <= 16'd0;
-                            byte_idx       <= 6'd0;
+                            byte_idx       <= {IDX_W{1'b0}};
                             wr_addr        <= {ADDR_W{1'b0}};
                             state          <= S_LOAD_D;
                         end
                     end
 
                     S_LOAD_D: begin
-                        if (byte_idx < VEC_BYTES[5:0]) begin
+                        if (byte_idx < VEC_BYTES[IDX_W-1:0]) begin
                             // Direct indexed placement, not a shift: byte k -> [k*8 +: 8].
                             wr_data[byte_idx*8 +: 8] <= rx_data;
-                            byte_idx                 <= byte_idx + 6'd1;
+                            byte_idx                 <= byte_idx + 1'b1;
                         end else begin
                             // Final byte of the record is the label.
                             wr_label <= rx_data[LABEL_W-1:0];
                             wr_en    <= 1'b1;
-                            byte_idx <= 6'd0;
+                            byte_idx <= {IDX_W{1'b0}};
                             n_seen   <= n_seen + 16'd1;
                             if (n_seen + 16'd1 >= n_expect)
                                 state <= S_CMD;
