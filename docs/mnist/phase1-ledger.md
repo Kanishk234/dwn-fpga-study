@@ -30,13 +30,20 @@ point.
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ |
 | M1d | Export and pass Gate 1 bit-exact | ⬜ |
 | M1e | Synthesize; measure core / encoder / top separately | ⬜ |
-| ~~M1f~~ | ~~Harness record format and vector-store capacity~~ | ❌ **out of scope 2026-08-11** — the tool is generator-only |
-| ~~M1g~~ | ~~Gate 1b on the board, full MNIST test set~~ | ❌ **out of scope 2026-08-11** — same |
+| M1f | Harness record format and vector-store capacity | 🟡 **decision pending** — only if MNIST goes on the board |
+| M1g | Gate 1b on the board, full MNIST test set | 🟡 **decision pending** — same |
 
-**Scope, decided 2026-08-11:** the tool is **generator-only** — synthesizable Verilog for the
-network, no harness. So this phase ends at **M1e** (Gate 1 plus a measured area), and the record
-format and vector store are not touched. The JSC board path on `main` is untouched and stays as
-evidence: 166,000 of 166,000 exact on silicon is the strongest correctness claim the generator has.
+**Scope, 2026-08-11 — two questions, and only one is answered.**
+
+**The tool ships generator-only:** synthesizable Verilog for the network, no harness, because the
+harness changes with every application and dataset. That is a decision about a deliverable *after*
+a successful port.
+
+**Whether MNIST runs on our board here is still open**, and does not follow from it. M1a–M1e are
+unaffected either way; M1f and M1g exist only if the answer is yes. See `docs/mnist/plan.md` §3 for
+what they would cost — the short version is a 1,569-byte record against JSC's 33, a vector store
+about 48× wider per entry, and roughly 23 minutes to stream the test set at 115,200 baud. Real
+work, not prohibitive, and `LABEL_W` is already a parameter.
 
 **The gate, after every generalisation commit** — `scripts/verify_phase1.py` at **12/12 with areas
 108 / 1,519 / 1,619**, plus `run_gate1.py` on the two-layer `300-100` checkpoint. Identical, not
@@ -221,5 +228,6 @@ even. `1x200` also works; `256` does not, because the final layer must divide by
 | Does the upstream MNIST recipe binarise differently from JSC? | ⬜ Open. `docs/checkpoint-format.md` was verified against JSC checkpoints only |
 | How many MNIST vectors fit in the vector store? | ⬜ Open. Sets whether Gate 1b is one pass or many |
 | Does the paper's `1000, 500` fit at any precision? | ⬜ Open. A negative answer is a result, not a failure |
-| ~~Generator-only, or generator + board flow?~~ | ✅ **Closed 2026-08-11: generator-only.** The tool emits network Verilog; users bring their own harness, as hls4ml does. **M1f and M1g are out of scope** and this phase ends at M1e. The encoder still ships — it is intrinsic to a DWN and is most of the area, so omitting it would repeat the reporting failure `REPORT.md` §5.2 criticises |
-| ~~How many MNIST vectors fit in the vector store?~~ | ✅ **Moot 2026-08-11** — no board path for MNIST |
+| ~~Does the **tool** ship a harness?~~ | ✅ **Closed 2026-08-11: no, generator-only.** Users bring their own, as hls4ml does. The encoder still ships — intrinsic to a DWN and most of the area, so omitting it would repeat the reporting failure `REPORT.md` §5.2 criticises |
+| **Does MNIST run on our board in this repo?** | ⚠️ **Open, and separate from the question above** — an earlier entry wrongly treated it as settled by it. Decides whether M1f and M1g happen. Does not affect M1a–M1e. Decide before M1e finishes |
+| How many MNIST vectors fit in the vector store? | ⬜ Open, and only matters if the board answer is yes. ~48× wider per vector than JSC, so `DEPTH` falls to order 100 |

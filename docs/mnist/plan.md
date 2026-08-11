@@ -234,34 +234,46 @@ dimensions, so a failure means one thing.
 | **M1c** | Train a **small** MNIST model on Kaggle — one layer, few hundred nodes | checkpoint + vectors in `training/artifacts/` |
 | **M1d** | Export and run Gate 1 | **bit-exact on every vector** |
 | **M1e** | Synthesize out-of-context, report core / encoder / top | area known; whether it fits is a *result* either way |
-| ~~**M1f**~~ | ~~Harness: record format and vector-store capacity~~ | ❌ **Out of scope, 2026-08-11** |
-| ~~**M1g**~~ | ~~Bitstream, program, Gate 1b on the MNIST test set~~ | ❌ **Out of scope, 2026-08-11** |
+| **M1f** | Harness: record format and vector-store capacity | 🟡 **decision pending** — needed only if MNIST goes on the board |
+| **M1g** | Bitstream, program, Gate 1b on the full MNIST test set | 🟡 **decision pending** — same |
 
 **M1a and M1b are generalisation** and land as their own commits, gated on §1.2. **M1c onward is
 MNIST-specific.**
 
-✅ **Answered 2026-08-11: the tool is generator-only, so this phase ends at M1e.**
+⚠️ **Two different scope questions, and they must not be collapsed.** An earlier version of this
+section did exactly that.
 
-The tool emits synthesizable Verilog for the network and nothing around it. A user takes that and
-plugs in whatever harness their application needs — which is the point, because the harness changes
-with every application and every dataset. hls4ml ships an HLS project, not a board design, for the
-same reason.
+**Question one — what the tool ships. ANSWERED: generator-only.** It emits synthesizable Verilog
+for the network and nothing around it; users plug in whatever harness their application needs,
+because the harness changes with every application and dataset. hls4ml ships an HLS project rather
+than a board design for the same reason. This is a decision about a deliverable that comes *after*
+a successful MNIST port.
 
-**So MNIST needs no harness work.** The record format and the vector store were the two largest
-remaining items and they are gone: roughly one to two days of bring-up instead of a rework.
+**Question two — does MNIST run on our board in this repo? STILL OPEN.** It does not follow from
+question one. The tool not shipping a harness says nothing about whether this project demonstrates
+a second dataset on real silicon, and the brief's deliverable list has always included a working
+board demo.
 
-Two things this does *not* mean:
+M1f and M1g exist only if question two is answered yes. What they would cost:
 
-- **The encoder still ships.** Thermometer encoding is intrinsic to a DWN, not preprocessing a user
-  supplies, and it is where the area goes — fourteen times the network on the smallest JSC model.
-  A generator that emitted the network alone would repeat exactly the reporting failure `REPORT.md`
-  §5.2 criticises, and hand users a LUT count missing most of their design.
-- **The JSC board path stays on `main`**, untouched. It is not part of the tool, but *166,000 of
-  166,000 exact on real silicon* is the best evidence the generator's output is correct. It belongs
-  in the tool's README as evidence rather than as a feature.
+| | JSC (built) | MNIST |
+|---|---|---|
+| record | 33 bytes | **1,569 bytes** at 9-bit words padded to 2 |
+| vector store | `DATA_W=256`, `DEPTH=1024` | ~48× wider per vector, so `DEPTH` falls to order 100 |
+| full test set over UART | 166,000 × 33 = 5.5 MB | 10,000 × 1,569 = **15.7 MB**, roughly 23 min at 115,200 baud |
+| `LABEL_W` | 3 | 4 — **already a parameter**, not a rewrite |
 
-If an MNIST board demo is ever wanted for its own sake, M1f and M1g are still written up below —
-they are out of scope, not impossible.
+So it is a real chunk of work but not a prohibitive one, and the harness is already parameterised
+in the places that matter. **Decide before M1e finishes**, since that is when the answer starts to
+matter. It does not affect M1a–M1e either way.
+
+Two things question one does *not* mean, whatever question two decides:
+
+- **The encoder always ships with the tool.** Thermometer encoding is intrinsic to a DWN, not
+  preprocessing a user supplies, and it is where the area goes — fourteen times the network on the
+  smallest JSC model. A generator emitting the network alone would repeat exactly the reporting
+  failure `REPORT.md` §5.2 criticises, handing users a LUT count missing most of their design.
+- **The JSC board path stays on `main`**, untouched, either way.
 
 ### What would make this fail, and what each failure means
 

@@ -157,7 +157,7 @@ Free to answer, and each one narrows what the work above actually is.
 
 | # | Decision | Why it matters now |
 |---|---|---|
-| ~~**Q1**~~ | ✅ **RESOLVED 2026-08-11: generator-only.** The tool emits synthesizable Verilog for the network and nothing around it. Users bring their own harness, because the harness changes with every application and dataset — the same reason hls4ml ships an HLS project rather than a board design. **B2 and B3 therefore do not exist**, and MNIST Phase 1 ends at M1e |
+| ~~**Q1**~~ | ✅ **RESOLVED 2026-08-11: the TOOL is generator-only.** It emits synthesizable Verilog for the network and nothing around it; users bring their own harness, as hls4ml does. **B2 and B3 are therefore not tool work.** ⚠️ This does **not** decide whether MNIST runs on our own board in this repo — that is a separate question, still open, tracked in `docs/mnist/phase1-ledger.md`. If the answer is yes, B2 and B3 happen for the demo without becoming part of the tool |
 | ~~**Q2**~~ | ✅ **RESOLVED 2026-08-11: yes, Gate 1 ships.** A generator whose output nobody can check is worth much less, and this repo has the evidence — the emitter's own read-back check reported 20/20 correct while the design was wrong on 958 of 1,504 vectors |
 | **Q3** | **Which upstream DWN versions?** (P6) | One pinned commit is honest and cheap; a range needs a compatibility layer plus silent-drift detection |
 | **Q4** | **Name, and where it lives** | `mnist/plan.md` §1.6 forbids branch- or person-named files; the same discipline should apply to the fork |
@@ -209,7 +209,8 @@ BEFORE    B1  fix the hardcoded feature count          ← ✅ done 2026-08-11 (
           F1  configurable precision                   ← ⬅ NEXT; the fit enabler
                     ↓  JSC must reproduce exactly after each (mnist-plan §1.2)
 DURING    M1a-M1e, V4                                  ← MNIST finds what inspection cannot
-          B2, B3 -- DROPPED, Q1 answered generator-only
+          B2, B3 -- not TOOL work; still needed if the
+                    MNIST board demo goes ahead (open)
 AFTER     V2, V3   self-contained verification
           P1–P6    fork, package, licence, CI
           R1, R2   sweep tooling, if the tool offers sweeps at all
