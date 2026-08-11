@@ -26,8 +26,8 @@ point.
 | Step | What | Status |
 |---|---|---|
 | M1a | Derive the feature count; add `datasets/` descriptors | ✅ done 2026-08-11 — JSC identical |
-| M1b | Thread configurable precision through the flow | ⬜ **next, and a blocker** — nothing fits at 16-bit |
-| M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ |
+| M1b | Thread configurable precision through the flow | ✅ done 2026-08-11 — JSC identical, Gate 1 passes at 11-bit |
+| M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ **next** — `1x300`, z=25, n=6 |
 | M1d | Export and pass Gate 1 bit-exact | ⬜ |
 | M1e | Synthesize; measure core / encoder / top separately | ⬜ |
 | M1f | Harness record format and vector-store capacity | 🟡 **decision pending** — only if MNIST goes on the board |
@@ -81,6 +81,75 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — M1b: precision is a parameter, and the golden model moves with it
+
+The fixed-point format was a constant in `exporter/extract.py` (`FRAC_BITS = 12`,
+`WORD_BITS = 16`) that everything downstream read. Building the same checkpoint at another width
+meant editing source. **At 16 bits nothing MNIST-shaped fits this device** — the paper's
+configuration is 102.5% at its cheapest and 160% at z=50 — so this was a blocker, not a tidy-up.
+
+**JSC is unchanged:** 12/12 with areas 108 / 1,519 / 1,619, the emitted RTL byte-identical to
+`rtl/example-model-1x50/`, and the two-layer `300-100` checkpoint still bit-exact.
+
+| file | change |
+|---|---|
+| `exporter/extract.py` | `required_int_bits()` — derives the exact integer-bit floor from the thresholds |
+| `rtlgen/emit_encoder.py` | `--word-bits` / `--frac-bits`; refuses a word too narrow for the thresholds |
+| `tb/gen_vectors.py` | the same flags, so the golden model quantises identically |
+| `scripts/run_gate1.py` | takes both and passes **one shared list** to the encoder and the vector generator |
+| `rtlgen/config.py` | comment only |
+
+#### The one detail that matters
+
+`run_gate1` builds the precision flags **once** and hands the same list to both the encoder emitter
+and the golden-model generator. Give those two different widths and Gate 1 compares two *different
+designs* and still reports PASS — a green light on a comparison that means nothing. Constructing
+the list in one place makes that unrepresentable rather than merely unlikely.
+
+#### What is derivable, and what is not
+
+Following the V4 argument in `docs/tool-roadmap.md` §4, which is the right one:
+
+**Integer bits are derivable exactly.** `required_int_bits()` returns the floor below which a
+threshold cannot be represented at all, and the emitter refuses to build there:
+
+```
+ABORT: Q0.7 cannot represent this model. Its thresholds span +/-4.545 and need 3
+integer bits; a 8-bit word with 7 fractional bits has 0.
+```
+
+**Fractional bits are not.** Whether quantisation changes predictions depends on the data, not the
+checkpoint. `required_int_bits()`'s docstring says so and cites the scar: the encoder-narrowing
+result in `REPORT.md` §5.6 was fitted and validated on the same 1,000 samples, and 8 of 15 features
+came out too narrow. **The code reports a floor as a floor and never calls a width safe.**
+
+#### Verification
+
+| test | result |
+|---|---|
+| default vs the committed `1x50` reference | byte-identical, all files |
+| **11-bit (Q3.7), Gate 1** | **PASS — bit-exact on 1,518 vectors** |
+| two-layer `300-100`, Gate 1 | PASS |
+| word too narrow for the thresholds | refused, with the numbers |
+| `verify_phase1.py` | 12/12, areas identical |
+
+**The 11-bit pass is the substantive one.** Everything else confirms nothing regressed; that one
+shows the golden model and the RTL agree at a width neither was written for, which is the property
+MNIST depends on.
+
+#### A correction to `docs/tool-roadmap.md`
+
+F1 read `rtlgen/config.py:186-187` as asserting that the config equals the module constants, and
+therefore as an obstacle. It checks `HardwareConfig()` — the **default** instance — so it means
+"the default agrees with the module that owns it", which is a drift guard worth keeping. Nothing
+needed relaxing. A comment now says so, in case a later reader takes it for the blocker.
+
+#### Not done here, deliberately
+
+`scripts/host.py` still reads the module constants. It is the board path, which is decision-pending
+under M1f, and threading it halfway would leave the host and the Verilog loader disagreeing about a
+wire format. It moves as one piece or not at all.
 
 ### 2026-08-11 — M1a: the feature count is derived, and `datasets/` exists
 
