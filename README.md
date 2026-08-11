@@ -278,25 +278,6 @@ project exists to fill.
 The benchmark is **jet substructure classification (JSC)**, the standard low-latency FPGA-ML task,
 via the `hls4ml_lhc_jets_hlf` dataset.
 
-## Citing this
-
-If you use the measurements or the comparison tables, please cite the report and note which
-dataset the numbers are on — that distinction is load-bearing, and [`REPORT.md`](./REPORT.md) §5
-explains why.
-
-```
-Sama, K. and Sama, K. "A Weightless Neural Network on an Entry-Level FPGA, and Two Defects
-in How Its Field Compares Results." 2026. https://github.com/Kanishk234/dwn-fpga
-```
-
-The underlying architecture is not ours; cite [Bacellar et al.](https://arxiv.org/abs/2410.11112)
-for that.
-
-## License
-
-Not yet chosen. Until one is added, the default applies: all rights reserved, and the code is
-readable here but not licensed for reuse. The vendored submodule keeps its own upstream licence.
-
 ## Team
 
 Two undergrads, one shared repo.
