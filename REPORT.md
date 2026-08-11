@@ -17,15 +17,19 @@ in the original work.
 We built a hand-written Verilog implementation and a generator that compiles a trained checkpoint
 into synthesizable hardware, verified every configuration bit-exactly against a software reference,
 and deployed one to the board, where it classified all 166,000 test samples with zero mismatches.
-We then swept 54 configurations through place-and-route to map the accuracy/area/latency frontier,
-and compared the result against a gradient-boosted decision tree compiled to the same part through
-the same synthesis flow.
+We then put 54 configurations through synthesis and place-and-route to map the accuracy/area/latency
+frontier, and compared the result against both standard routes to FPGA inference — a
+gradient-boosted decision tree through conifer, and a quantised neural network through hls4ml —
+each compiled to the same part through the same synthesis flow.
 
 The largest model in the original paper fits comfortably: 76.18% accuracy in 12,751 lookup tables,
 61.3% of the device, using no DSP blocks and no block RAM. Against a boosted tree on identical
 silicon, the weightless network is 1.5 to 1.7 percentage points more accurate at every area
 budget, and needs 2.3 to 6.0 times fewer lookup tables at matched accuracy; the tree, however, runs
-roughly four times faster.
+roughly four times faster. The published hls4ml network does not fit the device at all — it needs
+twelve times its capacity, and remains twice too large after sixteenfold resource sharing. Shrunk
+until it fits, it is smaller than the weightless network on neither accuracy, latency nor
+multiplier usage.
 
 Our most transferable finding is not a hardware measurement. In assembling the comparison we found
 that the standard results table for this benchmark — reproduced in the original DWN paper, in
@@ -52,7 +56,8 @@ one learned neuron becomes one physical lookup table — the model and the hardw
 kind of object.
 
 Differentiable Weightless Neural Networks [1] made this practical by showing how to train such
-tables with gradient descent. The published results are strong, but they are demonstrated on a
+tables with gradient descent, building on a line of weightless architectures that runs through
+ULEEN [12]. The published results are strong, but they are demonstrated on a
 Xilinx Virtex UltraScale+ VU9P, a data-centre part with roughly 1.18 million lookup tables. The
 obvious question — whether the approach still works when the device is small — was open, and it is
 not a question that theory answers, because on a small device the cost of preparing the *input* can
@@ -70,18 +75,22 @@ This report answers it. Our contributions:
    part, mapping accuracy against area and latency — including the input encoder, which published
    figures routinely exclude.
 
-3. **A controlled comparison against a gradient-boosted decision tree** on identical silicon
-   through an identical synthesis flow, rather than across papers and parts.
+3. **A controlled comparison against both standard toolchains** — a gradient-boosted decision tree
+   through conifer and a quantised neural network through hls4ml — on identical silicon through an
+   identical synthesis flow, rather than across papers and parts.
 
 4. **Two defects in the field's standard comparison table**, with corrected results and tooling
    that prevents the errors mechanically rather than by convention.
 
 ### 1.1 What we did not do
 
-We did not measure a quantised multilayer perceptron compiled by hls4ml on our part. Its published
-design needs three times our device's capacity, so it cannot fit unshrunk; shrinking it until it
-fits is a separate experiment we did not run. Section 6.4 states the consequence, which is that our
-comparison rests on one measured baseline rather than two.
+We did not measure the accuracy of hls4ml's quantised hardware. We built and synthesized it, and
+Section 6.3 reports its area, latency and multiplier usage; but establishing what the twelve-bit
+design *scores* requires compiling and running the generated C++, which our machine cannot do. The
+accuracy we report for it is its full-precision figure, which is an upper bound. Section 6.3 says
+so at every point where the number appears.
+
+We also did not test on a second dataset, and Section 8 says what that leaves unproven.
 
 ---
 
@@ -191,12 +200,12 @@ part at a 10 ns clock, out of context (that is, without surrounding system logic
 reflect the design alone).
 
 The counts are easy to conflate, so precisely: **54** configurations attempted, **52** built (two
-were unbuildable for a reason given in Section 8), **51** fit within the device, and **42** of
-those also reach the board's 100 MHz clock. A forty-first-versus-forty-second distinction is worth
-one sentence: 41 met the exact timing target they were synthesized against, while one further
-configuration was deliberately built at a more aggressive 125 MHz target, missed it by 0.02 ns, and
-still runs well above 100 MHz. Area and accuracy figures below are drawn from the 52 built
-configurations; usability on the board refers to the 42.
+were unbuildable for a reason given in Section 8), **51** fit within the device, and **42** of those
+also reach the board's 100 MHz clock. Of that last group, 41 met the exact target they were
+synthesized against; the forty-second was deliberately built against a more demanding 125 MHz
+target, missed it by 0.02 ns, and still runs comfortably above 100 MHz — so it is usable on the
+board even though it failed its own constraint. Area and accuracy figures below are drawn from the
+52 built configurations; usability on the board refers to the 42.
 
 Axes swept: number of neurons (50 to 3,000); thresholds per feature (8 to 800); inputs per neuron
 (2, 4, 6); encoding scheme; layer count; and pipeline depth.
@@ -288,7 +297,7 @@ would credit us with roughly a percentage point we did not earn. Most of the met
 compared against DWN live on this figure, not the next one.
 
 **Consequence.** The comparison most often quoted — DWN against LogicNets, PolyLUT and NeuraLUT —
-is across datasets. Those are CERNBox results. On the OpenML data the honest peer group is smaller
+is across datasets. Those are CERNBox results [10, 11]. On the OpenML data the honest peer group is smaller
 and stronger: DWN, TreeLUT, NeuraLUT-Assemble, FPGN, and hls4ml.
 
 ### 5.2 Area figures mix two conventions
@@ -352,6 +361,10 @@ parts and different tool versions. Here only the model differs.
 | 74.5% | 2,541 | 15,363 | **6.0×** |
 | ≥74.9% | 3,381 | never reaches it | — |
 
+Both tables read off a finite set of measured configurations, so a row gives the smallest design
+that *clears* the target rather than one sitting exactly on it: the 2,541-table entry scores
+74.75%, and the 3,381-table entry 75.27%.
+
 **A boosted tree does not reach the weightless network's accuracy on this device at any size that
 fits.** The best fitting tree reaches 74.88% using 73.9% of the device. The weightless network
 reaches that accuracy in 3,381 lookup tables and continues to 76.35%.
@@ -377,22 +390,92 @@ perfectly plausible-looking hardware that synthesized without complaint.
 It was caught by evaluating the compiler's own emitted model description with an independent
 implementation: the same principle as our hardware verification, applied one level up.
 
-### 6.3 Against published work, on our dataset
+### 6.3 Against a quantised neural network, on identical silicon
+
+hls4ml is the standard route from a trained neural network to FPGA hardware in this field, and its
+jet-classification design is the one published comparisons cite. We rebuilt that architecture —
+three hidden layers of 64, 32 and 32 neurons — trained it on our data, compiled it with hls4ml, and
+put it through the same synthesis flow, the same part and the same clock target as everything else.
+
+hls4ml can trade area for time: a *reuse factor* of four makes one multiplier serve four
+multiplications. We swept that against layer width and numeric precision.
+
+| Layers | Reuse | Word | Accuracy | Lookup tables | Against 20,800 | DSP |
+|---|---|---|---|---|---|---|
+| 64/32/32 | 1 | 16-bit | 76.69% | 259,492 | 12.5× over | 3,214 |
+| 64/32/32 | 4 | 16-bit | 76.69% | 189,608 | 9.1× over | 1,064 |
+| 32/16/16 | 4 | 16-bit | 76.33% | 52,927 | 2.5× over | 340 |
+| 64/32/32 | 16 | 16-bit | 76.69% | 45,844 | 2.2× over | 266 |
+| 32/16/16 | 4 | 12-bit | 76.33% | 26,883 | 1.3× over | 340 |
+| **16/8/8** | 4 | 12-bit | **75.67%** | **8,749** | **42.1% — fits** | **53** |
+
+**The published architecture does not fit at any sharing factor we tried**, and is still twice too
+large when each multiplier performs sixteen multiplications. Fitting the device needs quarter-width
+layers, twelve-bit arithmetic and fourfold sharing together, and costs 1.02 percentage points.
+
+**Sharing buys more area than narrowing does.** One to four saved 1.4×; four to sixteen saved a
+further 4.1×. The full-width network at sixteenfold sharing is *smaller* than the half-width network
+at fourfold — 45,844 against 52,927 — while scoring 0.36 points better. Sharing costs latency rather
+than accuracy, which is what makes it the better lever, and the fitting design pays that bill below.
+
+**At matched area, against the weightless network:**
+
+| At about 8,700 lookup tables | hls4ml | Weightless |
+|---|---|---|
+| Accuracy | 75.67%\* | **76.05%** |
+| DSP blocks | **53** of 90 | **0** |
+| Block RAM | 2 | **0** |
+| Latency | 34 cycles | **4 cycles** |
+| Throughput | one result per 4 cycles | **one per cycle** |
+
+Smaller, more accurate, no DSP blocks, no block RAM, **8.5× lower latency at four times the
+throughput** — and the weightless network continues to 76.18% at 12,751 lookup tables, an accuracy
+hls4ml does not reach at any size that fits this device.
+
+\* **This is the full-precision figure, not the quantised design's.** Establishing what the
+twelve-bit hardware scores means compiling and running hls4ml's generated C++, which this machine
+cannot do. The real number is lower, so the comparison above already flatters hls4ml. The tree
+comparison has no equivalent gap, because conifer emits a declarative model description that could
+be evaluated independently.
+
+**This is where "no DSP blocks" stops being a slogan.** Fifty-three of the device's ninety
+multipliers, against zero for every weightless and every tree configuration measured here.
+
+#### Two silent failures, one of which nearly reached this report
+
+hls4ml stores weights differently depending on the sharing factor: below a threshold it embeds them
+as constants, above it it loads them from data files at elaboration, by a path relative to the
+working directory. We were assembling the generated Verilog in a different directory, so those files
+were never found, every weight read as zero, and the synthesizer discarded the resulting dead
+arithmetic. **A three-layer network reported 235 lookup tables and no DSP blocks — and reported it
+as a success.** Two configurations were recorded that way before the numbers were disbelieved.
+
+The second was a unit. Latency is reported in nanoseconds for one configuration style and
+microseconds for another; a pattern expecting nanoseconds matched nothing and stored zero cycles,
+concealing the fourfold initiation interval entirely.
+
+Both are the failure this report keeps returning to — a measurement that is plausible, precise and
+wrong. Our tooling now refuses to synthesize a design whose modules are not all defined or whose
+weight files are absent, and every tree configuration was re-checked against the corrected latency
+parser and found unchanged.
+
+### 6.4 Against published work, on our dataset
 
 Restricted to the OpenML data, so the rows are comparable. DWN appears twice because two
 conventions exist.
 
 | Method | Accuracy | Lookup tables | Encoder included | Part |
 |---|---|---|---|---|
-| **This work** (largest fitting) | **76.35%** | 18,777 | yes | XC7A35T |
+| **This work** (best accuracy) | **76.35%** | 13,729 | yes | XC7A35T |
 | DWN, as published | 76.3% | 4,972 | **no** | VU9P |
 | DWN, encoder included [3] | 76.3% | 7,011 | yes | VU9P |
 | **This work** (headline) | **76.18%** | **12,751** | yes | XC7A35T |
-| hls4ml [9] | 76.0% | 63,251 | n/a | VU9P |
+| hls4ml [9, 10] | 76.0% | 63,251 | n/a | VU9P |
 | TreeLUT [7] | 76.0% | 2,234 | n/a | VU9P |
 | NeuraLUT-Assemble [4] | 76.0% | **1,780** | n/a | VU9P |
 | FPGN [5] | 76.0% | 3,345 | unstated | VU9P |
 | Boosted tree (this work) | 74.88% | 15,363 | n/a | XC7A35T |
+| hls4ml shrunk to fit (this work) | 75.67%\* | 8,749 | n/a | XC7A35T |
 
 ![Accuracy against area, OpenML distribution](./docs/results-cc/jsc-openml.png)
 
@@ -414,18 +497,16 @@ they are quoted:
 - **The row that shares both our dataset and our convention is DWN at 7,011.** That is the honest
   point of comparison, and against it our 12,751 reflects a smaller, slower device.
 
-### 6.4 What is missing
+### 6.5 What is still missing
 
-We did not synthesize an hls4ml design on our part. Its published configuration needs 63,251
-lookup tables against our 20,800 — three times over, which is arithmetic rather than an experiment.
-What we therefore cannot report is **how much accuracy hls4ml retains when shrunk until it fits**,
-which is a genuine open question.
+Both baselines are measured, but each is a single tool rather than a category. conifer is not the
+strongest available tree compiler: TreeLUT reports 76.0% in 2,234 lookup tables where our best
+fitting conifer design needs 15,363 for 74.88% — roughly seven times denser at better accuracy.
+That gap belongs to the compiler, not to decision trees, and Section 6.1 should be read as a
+comparison against conifer specifically.
 
-This has a specific consequence. The "no DSP blocks" property is the sharpest distinction against
-hls4ml, whose quantised networks spend 38 of them. But the boosted tree also uses none — trees do
-not multiply either. **So on our own silicon that distinction is untested**; it rests on published
-figures alone. A measurement of one shrunk hls4ml configuration would close this, and is in
-progress at the time of writing.
+The open question on the hls4ml side is its quantised accuracy (Section 6.3). Everything else about
+that design — area, multiplier usage, latency, throughput — is measured.
 
 ---
 
@@ -438,9 +519,10 @@ largest single area result in the project.
 **The cause is comparator width, and nothing else.** That work normalises features to [−1, 1) and
 quantises them to 6–9 bits. We carried a 16-bit word whose three integer bits exist only because
 our features are standardised to roughly ±4.5, and whose twelve fractional bits are far finer than
-the spacing between adjacent thresholds. Rebuilt at 8 bits, our encoder measures **182** lookup
-tables against their 201. No structural technique was missing; the numbers were simply wider than
-they needed to be.
+the spacing between adjacent thresholds. Rebuilt at 8 bits, our encoder for that same 50-neuron
+model measures **182** lookup tables against their 201. No structural technique was missing; the
+numbers were simply wider than they needed to be. (The table below is for the largest fitting
+configuration, whose encoder is far bigger; the two should not be read against each other.)
 
 We then measured accuracy and area across widths on the largest fitting configuration. Accuracy was
 evaluated on all 166,000 test samples, not a subset.
@@ -486,8 +568,14 @@ worth destabilising a verified flow for at this stage.
 
 ## 8. Limitations and threats to validity
 
-**One measured baseline, not two.** With hls4ml unmeasured (Section 6.4), the controlled comparison
-rests on boosted trees alone.
+**Two baselines, each a single tool.** conifer and hls4ml are both measured here, but neither is
+the best available compiler for its model class — TreeLUT is roughly seven times denser than conifer
+at better accuracy (Section 6.5). The comparison is against these tools, not against decision trees
+or quantised networks in general.
+
+**hls4ml's accuracy is its full-precision figure.** Establishing what the quantised hardware scores
+needs a compiler we do not have (Section 6.3), so the real number is lower and every hls4ml
+comparison here already flatters it.
 
 **A dependency on an unanswered question.** The original DWN paper states that its jet-substructure
 data follows NeuraLUT's, which would make it the CERNBox distribution — but its released code loads
@@ -529,7 +617,10 @@ original work fits in 61.3% of a device costing about $150, reaches 76.18% accur
 blocks and no block RAM, and matches its software reference exactly on all 166,000 test samples.
 Against a boosted decision tree on identical silicon it is 1.5–1.7 percentage points more accurate
 at every area budget and 2.3–6.0× smaller at matched accuracy, while being roughly four times
-slower.
+slower. Against a quantised neural network through hls4ml the margin is wider and of a different
+kind: the published design needs twelve times the device, and the largest version that fits is
+beaten on accuracy, on latency, on throughput, and on the fifty-three multipliers it spends where
+the weightless network spends none.
 
 The parameter that decides whether the largest model fits is the number of thermometer thresholds,
 which the original work fixes without reporting its cost; reducing it saves 40% of the silicon for
@@ -647,7 +738,25 @@ machine-readable data.
 Four further configurations (75.09%–75.50%) exceeded the device and are excluded. All use zero DSP
 blocks and zero block RAM.
 
-### B.3 Encoder area against input word width
+### B.3 Quantised neural network, all configurations
+
+Layer widths are the three hidden layers; the input is 16 features and the output 5 classes.
+Accuracy is the full-precision model's, an upper bound on the quantised design's (Section 6.3).
+Configurations larger than the device are reported with the resources they would have required.
+
+| Layers | Reuse | Word | Accuracy | Lookup tables | DSP | Cycles | II |
+|---|---|---|---|---|---|---|---|
+| 64/32/32 | 1 | 16-bit | 76.69% | 259,492 | 3,214 | 30 | 1 |
+| 64/32/32 | 4 | 16-bit | 76.69% | 189,608 | 1,064 | 38 | 4 |
+| 32/16/16 | 4 | 16-bit | 76.33% | 52,927 | 340 | 35 | 4 |
+| 64/32/32 | 16 | 16-bit | 76.69% | 45,844 | 266 | 82 | 16 |
+| 32/16/16 | 4 | 12-bit | 76.33% | 26,883 | 340 | 35 | 4 |
+| **16/8/8** | 4 | 12-bit | **75.67%** | **8,749** | **53** | **34** | **4** |
+
+Only the last fits. It also uses 2 block RAMs; every weightless and every tree configuration uses
+none.
+
+### B.4 Encoder area against input word width
 
 Measured on `1x2400 z=50`, 746 wired comparators, encoder synthesized alone.
 
@@ -661,7 +770,7 @@ Measured on `1x2400 z=50`, 746 wired comparators, encoder synthesized alone.
 | 9 bits | 794 | 1.06 | 687 |
 | 8 bits | 655 | 0.88 | 596 |
 
-### B.4 Published results, OpenML dataset only
+### B.5 Published results, OpenML dataset only
 
 Sources and per-row conventions accompany this report as machine-readable data. Rows on the CERNBox
 distribution are deliberately excluded; see Section 5.1.
