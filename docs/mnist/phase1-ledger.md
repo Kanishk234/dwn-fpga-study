@@ -29,7 +29,7 @@ point.
 | M1b | Thread configurable precision through the flow | ✅ done 2026-08-11 — JSC identical, Gate 1 passes at 11-bit |
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ✅ done 2026-08-11 — **96.14%** (best 96.28%) |
 | M1d | Export and pass Gate 1 bit-exact | ✅ done 2026-08-11 — **PASS on the trained model**, and Q0.8 is lossless |
-| M1e | Synthesize; measure core / encoder / top separately | ✅ done 2026-08-11 — **1,557 LUTs (7.5%)**, ⚠️ **misses 100 MHz at 87.5** |
+| M1e | Synthesize; measure core / encoder / top separately | ✅ done 2026-08-11 — **1,548 LUTs (7.4%), 108.0 MHz** after the argmax fix |
 | M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — ⚠️ **simulation-verified only**, not yet on silicon |
 | M1g | Gate 1b on the board, full MNIST test set | ⬜ **in scope 2026-08-11** |
 
@@ -81,6 +81,141 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — ⚠️ the testbench was checking three of MNIST's four class-index bits
+
+Found by sweeping Gate 1 across class counts before trusting the argmax change — not by suspecting
+anything. K=2 and K=3 failed, and they failed at the `jsc-complete` argmax too, so it was never
+about argmax.
+
+```verilog
+tb/dwn_core_tb.v:39   wire [2:0] class_idx;          // JSC has five classes
+tb/dwn_top_tb.v:32    wire [2:0] class_idx;
+                      if (class_idx !== expected[j][2:0])
+```
+
+| classes | `idx_w` | what the testbench did |
+|---|---|---|
+| 2, 3 | 1, 2 | DUT drives fewer bits than the wire; the rest float. `rtl=Z`, always fails |
+| 5–8 | 3 | correct — the only range ever exercised |
+| **10, 16** | **4** | **truncates. Only three of four bits compared** |
+
+**So the MNIST Gate 1 pass reported earlier today was checking three of the four index bits.** A
+design that predicted class 9 where the golden model said class 1 — differing only in bit 3 —
+would have passed. Re-run with the fix, MNIST passes on all four bits, so the result was correct;
+but it was correct by luck rather than by verification, and it was reported with more confidence
+than it had earned.
+
+**This is the fourth instance of one pattern**, after `emit_core.py`'s `16 * thermometer_bits`,
+`Dataset.record_bytes()`'s `word_bits // 8`, and `uart_loader.v`'s `reg [5:0] byte_idx`. Every
+time: a fixed-width thing sitting beside a derived one, failing silently or for the wrong reason.
+
+**This one was in the testbench** — the component whose entire purpose is catching this class of
+error. Worth stating plainly: *the verification apparatus is not exempt from verification.* Gate 1
+proved the RTL matched the golden model on the bits it compared, and said nothing about the bit it
+did not.
+
+`tb/gen_vectors.py` now emits `` `IDX_W `` and both testbenches derive from it.
+
+#### Verified after the fix
+
+| | |
+|---|---|
+| Gate 1 at K = 2, 3, 5, 7, 10, 16 | all PASS |
+| JSC `1x50`, JSC `300-100`, MNIST `1x300` | all PASS |
+| `verify_phase1.py` | 12/12 at the re-measured 110 / 1,621 |
+| harness testbenches | uart, benchmark, loader, top — all pass |
+| MNIST timing | 108.0 MHz, meets the 100 MHz board clock |
+
+### 2026-08-11 — timing: the argmax was a linear chain, and fixing it hit the published-numbers wall
+
+MNIST missed the board clock at **87.5 MHz**. It now closes at **108.0 MHz** and is slightly
+smaller, 1,557 -> 1,548 LUTs. JSC is untouched: **12/12, areas 108 / 1,519 / 1,619.**
+
+#### It was not a pipelining problem
+
+The obvious move was a pipeline sweep, and there was nothing to sweep: `PIPE_LUT`, `PIPE_POP`,
+`PIPE_OUT` and `PIPE_ENC` were all already 1. Those knobs are binary, so JSC's Group B could only
+ever *remove* stages to trade Fmax for latency. Nothing was left to switch on.
+
+The timing report named the path instead of leaving it to guesswork:
+
+```
+Source:      u_core/u_pipe_pop/g_reg.r_reg[0]/C
+Destination: u_core/u_pipe_out/g_reg.r_reg[1]/D
+Data Path Delay: 11.373ns   Logic Levels: 17
+```
+
+Register-after-popcount to register-after-argmax — so the **argmax**, not the popcount.
+
+#### Why one loop became a chain and the other did not
+
+Both primitives are written as `for` loops in `always @*`. Only one of them synthesized badly:
+
+| | code | what synthesis does |
+|---|---|---|
+| `popcount.v` | `count = count + bits[i]` | addition is **associative**, so the tool rebalances it into an adder tree by itself |
+| `argmax.v` | `if (x > best) best = x` | a **data-dependent select chain**; each step needs the previous `best`, and the tool leaves it linear |
+
+So the argmax was K-1 dependent compare-selects. At JSC's K=5 that is 4 deep and never mattered.
+At MNIST's K=10 it is 9 deep, 17 logic levels, and it set the clock. **Writing a reduction as a
+loop is fine when the operator is associative and a latent depth bug when it is not.**
+
+#### The fix, and the wall it hit
+
+A balanced tree makes the depth `ceil(log2(K))`: 4 instead of 9. It closed timing immediately.
+
+**It also cost JSC +2 LUTs** — `dwn_core` 108 -> 110, `dwn_top` 1,619 -> 1,621 — and
+`verify_phase1.py` failed on exactly that, which is what it is for.
+
+Two LUTs sounds ignorable. It is not, and the reason is worth recording:
+
+- **108 and 1,619 are published**, in `README.md`, `REPORT.md` and three phase reports.
+- `verify_phase1.py`'s own message says re-measured areas must not share a table with old ones.
+- **All 54 JSC configs have K=5**, so all of them move together — but *not by a constant*. Argmax
+  cost depends on K **and** W, the score width, which is `ceil(log2(group+1))` and varies with
+  layer width. There is no offset to subtract; it needs re-measuring.
+- So adopting the tree everywhere means **re-running the whole 54-config sweep** to keep the
+  Phase 2 frontier self-consistent. Tens of hours of Vivado, to buy nothing at K=5, which already
+  closes 147 MHz.
+
+First attempt at avoiding the cost was to drop the power-of-two padding, on the theory that dummy
+leaves were paying for themselves. They were not: with padding removed JSC still measured 110. The
+tree muxes indices up its levels where the chain assigns a constant per stage, and that is
+inherent, not incidental.
+
+**First resolution, since withdrawn: a `K <= 5 ? chain : tree` switch**, to hold the published
+number still.
+
+**⚠️ That was the wrong call, and the argument against it is worth keeping.** A branch is
+legitimate when it encodes a discontinuity in the *target*: `MAX_N = 6` is real, because at n=7 a
+node stops being one LUT6. `CHAIN_MAX = 5` encoded a fact about **this project's git history** —
+nothing about the FPGA changes at five classes, and the chain is not better there, merely what was
+measured first. Branches like that do not compose: the next dataset arrives with some other K and
+there is no principled place to put it, only a growing table of historical accidents, each needing
+its own verification.
+
+The mechanism for holding a published result still is a **tag**, not frozen RTL. `jsc-complete`
+already exists; papers cite a commit for exactly this reason. Freezing code to protect a printed
+number inverts the relationship and taxes every future improvement.
+
+**Final: the tree is unconditional.** `EXPECTED` in `verify_phase1.py` moves to 110 / 1,621, with
+the pre-change values reproducible at `jsc-complete`, and `REPORT.md` and `README.md` now say the
+JSC figures are measured there. The shift is **0.12% at `1x50` and 0.02% at the headline config** —
+no frontier point, knee or conclusion moves. `docs/results/sweep-results.json` still holds
+chain-era areas, so the two must not share a table without saying so.
+
+#### For the tool: tree unconditionally
+
+`docs/tool-roadmap.md` should carry this. The constraint above is specific to this repository —
+the tool has no frozen baseline to protect, and a user may arrive with 100 classes, where a
+depth-99 chain is pathological. Two LUTs at K=5 costs nothing when nothing downstream is pinned to
+it.
+
+The general lesson for the generator is larger than argmax: **any reduction it emits should be
+explicitly balanced rather than left to synthesis**, because whether the tool rescues a loop
+depends on whether the operator is associative — and that is not a property the emitter should be
+relying on silently.
 
 ### 2026-08-11 — M1d + M1e: MNIST runs, 96.14% in 1,557 LUTs, and it misses the clock
 

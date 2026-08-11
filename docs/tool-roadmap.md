@@ -143,13 +143,37 @@ reason: maintaining a fork while the emitters move means merging every change tw
 | # | Item | Notes | Effort |
 |---|---|---|---|
 | **P1** | Fork `main`, then prune | Fork rather than fresh repo — the history is where the reasoning lives (address bit order, the `__dummy_mapping` trap, the packbits shift) | 1 day |
-| **P2** | `pyproject.toml`, one CLI entry point | none exists today. **The command surface is designed in §5.1 — it is a decision, not a formatting job** | 1 day |
+| **P2** | `pyproject.toml`, one CLI entry point | none exists today. **The command surface is designed in §5.2 — it is a decision, not a formatting job** | 1 day |
 | **P3** | **A licence** | **none exists.** Blocks anyone using it, and blocks citing it | 1 h |
 | **P4** | README, worked examples | `rtl/example-model-1x50/` is already a good artifact to build on | 1–2 days |
 | **P5** | CI on a second dataset | The claim is generality; it needs a second dataset to be a claim at all | 2–3 days |
 | **P6** | Decide the upstream-version policy | Currently one pinned commit (`9f887a0`). Drift fails silently — `__dummy_mapping` has the same shape and dtype as a real mapping | design call |
 
-### 5.1 The command surface — derive, do not ask
+### 5.1 Emit balanced reductions, always
+
+**Decided 2026-08-11 by measurement.** `rtl/argmax.v` was a sequential `for` loop, which
+synthesizes to a chain of `K-1` dependent compare-selects. At JSC's five classes that is four
+deep and invisible; at MNIST's ten it is nine deep, 17 logic levels, and it held `dwn_top` to
+87.5 MHz against a 100 MHz board. A balanced tree closed it at 108.0 MHz.
+
+**It is unconditional here too, as of 2026-08-11.** It was briefly conditional (`K > 5`) to keep
+JSC's published 108 and 1,619 from moving, and that was withdrawn: a branch may encode a
+discontinuity in the *target* (`MAX_N = 6` is one — at n=7 a node stops being one LUT6) but not a
+fact about the project's own history. The published figures are pinned by the `jsc-complete` tag
+instead, and `verify_phase1.py` re-measured to 110 / 1,621.
+
+**The general rule that came out of it, and it belongs in the tool:** if a conditional's condition
+can only be explained by referring to the past rather than to the hardware, it does not belong in
+a generator. Those branches do not compose — each new case adds another, and every one needs its
+own verification.
+
+⚠️ **The wider rule: emit balanced reductions explicitly, do not rely on synthesis to fix a
+loop.** `popcount.v` is written as the same shape of loop and is fine, because addition is
+associative and the tool rebalances it. `argmax` is a data-dependent select and the tool leaves it
+linear. Whether a generated reduction is fast should not depend on a property of the operator that
+the emitter never checks.
+
+### 5.2 The command surface — derive, do not ask
 
 **The target is `dwn2rtl build model.pt` producing Verilog.** Not twenty flags. A tool that makes
 the user restate what is already in the checkpoint is not a tool, it is a wrapper.
