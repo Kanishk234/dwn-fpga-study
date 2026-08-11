@@ -30,8 +30,13 @@ point.
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ |
 | M1d | Export and pass Gate 1 bit-exact | ⬜ |
 | M1e | Synthesize; measure core / encoder / top separately | ⬜ |
-| M1f | Harness record format and vector-store capacity | ⬜ |
-| M1g | Gate 1b on the board, full MNIST test set | ⬜ |
+| ~~M1f~~ | ~~Harness record format and vector-store capacity~~ | ❌ **out of scope 2026-08-11** — the tool is generator-only |
+| ~~M1g~~ | ~~Gate 1b on the board, full MNIST test set~~ | ❌ **out of scope 2026-08-11** — same |
+
+**Scope, decided 2026-08-11:** the tool is **generator-only** — synthesizable Verilog for the
+network, no harness. So this phase ends at **M1e** (Gate 1 plus a measured area), and the record
+format and vector store are not touched. The JSC board path on `main` is untouched and stays as
+evidence: 166,000 of 166,000 exact on silicon is the strongest correctness claim the generator has.
 
 **The gate, after every generalisation commit** — `scripts/verify_phase1.py` at **12/12 with areas
 108 / 1,519 / 1,619**, plus `run_gate1.py` on the two-layer `300-100` checkpoint. Identical, not
@@ -216,4 +221,5 @@ even. `1x200` also works; `256` does not, because the final layer must divide by
 | Does the upstream MNIST recipe binarise differently from JSC? | ⬜ Open. `docs/checkpoint-format.md` was verified against JSC checkpoints only |
 | How many MNIST vectors fit in the vector store? | ⬜ Open. Sets whether Gate 1b is one pass or many |
 | Does the paper's `1000, 500` fit at any precision? | ⬜ Open. A negative answer is a result, not a failure |
-| **Generator-only, or generator + board flow?** | ⚠️ **Open, and it decides whether M1f and M1g exist.** Generator-only ends this phase at M1e and drops the record-format and vector-store work — one to two days instead of a harness rework. Raised in `docs/tool-roadmap.md` §6 (Q1). Not blocking M1a–M1e |
+| ~~Generator-only, or generator + board flow?~~ | ✅ **Closed 2026-08-11: generator-only.** The tool emits network Verilog; users bring their own harness, as hls4ml does. **M1f and M1g are out of scope** and this phase ends at M1e. The encoder still ships — it is intrinsic to a DWN and is most of the area, so omitting it would repeat the reporting failure `REPORT.md` §5.2 criticises |
+| ~~How many MNIST vectors fit in the vector store?~~ | ✅ **Moot 2026-08-11** — no board path for MNIST |

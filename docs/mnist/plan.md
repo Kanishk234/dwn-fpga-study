@@ -234,20 +234,34 @@ dimensions, so a failure means one thing.
 | **M1c** | Train a **small** MNIST model on Kaggle — one layer, few hundred nodes | checkpoint + vectors in `training/artifacts/` |
 | **M1d** | Export and run Gate 1 | **bit-exact on every vector** |
 | **M1e** | Synthesize out-of-context, report core / encoder / top | area known; whether it fits is a *result* either way |
-| **M1f** | Harness: record format and vector-store capacity (B2, B3) | JSC board path still works |
-| **M1g** | Bitstream, program, Gate 1b on the full MNIST test set | hardware matches software exactly |
+| ~~**M1f**~~ | ~~Harness: record format and vector-store capacity~~ | ❌ **Out of scope, 2026-08-11** |
+| ~~**M1g**~~ | ~~Bitstream, program, Gate 1b on the MNIST test set~~ | ❌ **Out of scope, 2026-08-11** |
 
 **M1a and M1b are generalisation** and land as their own commits, gated on §1.2. **M1c onward is
 MNIST-specific.**
 
-⚠️ **M1f and M1g may not exist at all.** `docs/tool-roadmap.md` §6 raises the question this plan
-did not: **is the deliverable the generator, or the generator plus the board flow?** If
-generator-only, then MNIST is Gate 1 only — the record format (B2) and the vector store (B3) drop
-out entirely, and this phase ends at M1e. That is roughly one to two days instead of a harness
-rework, and it matches how the comparable tools ship: hls4ml has no board flow either.
+✅ **Answered 2026-08-11: the tool is generator-only, so this phase ends at M1e.**
 
-**Answer it before M1c**, because it decides how much of this phase exists. It does not affect
-M1a–M1e, so it is not blocking right now.
+The tool emits synthesizable Verilog for the network and nothing around it. A user takes that and
+plugs in whatever harness their application needs — which is the point, because the harness changes
+with every application and every dataset. hls4ml ships an HLS project, not a board design, for the
+same reason.
+
+**So MNIST needs no harness work.** The record format and the vector store were the two largest
+remaining items and they are gone: roughly one to two days of bring-up instead of a rework.
+
+Two things this does *not* mean:
+
+- **The encoder still ships.** Thermometer encoding is intrinsic to a DWN, not preprocessing a user
+  supplies, and it is where the area goes — fourteen times the network on the smallest JSC model.
+  A generator that emitted the network alone would repeat exactly the reporting failure `REPORT.md`
+  §5.2 criticises, and hand users a LUT count missing most of their design.
+- **The JSC board path stays on `main`**, untouched. It is not part of the tool, but *166,000 of
+  166,000 exact on real silicon* is the best evidence the generator's output is correct. It belongs
+  in the tool's README as evidence rather than as a feature.
+
+If an MNIST board demo is ever wanted for its own sake, M1f and M1g are still written up below —
+they are out of scope, not impossible.
 
 ### What would make this fail, and what each failure means
 

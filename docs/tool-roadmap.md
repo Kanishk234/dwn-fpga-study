@@ -157,13 +157,32 @@ Free to answer, and each one narrows what the work above actually is.
 
 | # | Decision | Why it matters now |
 |---|---|---|
-| **Q1** | **Generator-only, or generator + board flow?** | Decides whether **B2 and B3 exist at all**. Generator-only makes MNIST *Gate 1 only* — roughly 1–2 days instead of the harness rework the Phase 1 ledger scoped. hls4ml, the obvious model, ships no board flow |
-| **Q2** | **Does Gate 1 ship?** (V1) | Yes, in my view — and it settles Q1, because Gate-1-only scope means the harness is optional |
+| ~~**Q1**~~ | ✅ **RESOLVED 2026-08-11: generator-only.** The tool emits synthesizable Verilog for the network and nothing around it. Users bring their own harness, because the harness changes with every application and dataset — the same reason hls4ml ships an HLS project rather than a board design. **B2 and B3 therefore do not exist**, and MNIST Phase 1 ends at M1e |
+| ~~**Q2**~~ | ✅ **RESOLVED 2026-08-11: yes, Gate 1 ships.** A generator whose output nobody can check is worth much less, and this repo has the evidence — the emitter's own read-back check reported 20/20 correct while the design was wrong on 958 of 1,504 vectors |
 | **Q3** | **Which upstream DWN versions?** (P6) | One pinned commit is honest and cheap; a range needs a compatibility layer plus silent-drift detection |
 | **Q4** | **Name, and where it lives** | `mnist/plan.md` §1.6 forbids branch- or person-named files; the same discipline should apply to the fork |
 
-**Q1 is the highest-leverage question in this document.** Answering "generator-only" removes B2,
-B3 and most of the MNIST harness work in one stroke, and matches how the comparable tools ship.
+**Q1 was the highest-leverage question in this document, and it is now answered: generator-only.**
+That removes B2, B3 and the whole MNIST harness rework in one stroke.
+
+**Two consequences worth stating, because they are not obvious.**
+
+**The interface becomes the product surface.** Ship only Verilog and what a user actually consumes
+is the port list, the latency in cycles, and the initiation interval — not the internals. That is
+already close to right: `dwn_top` takes `clk` and a flat feature word and returns a class index,
+with `dwn_top_params.vh` carrying the pipeline depth so a testbench and a harness cannot disagree
+about it. It needs documenting rather than building.
+
+**The encoder always ships, and its area is always reported separately.** Thermometer encoding is
+not preprocessing a user can supply — it is intrinsic to a DWN, and on the smallest JSC model it is
+fourteen times the network it feeds. `REPORT.md` §5.2 criticises published work for reporting
+core-only LUT counts; a tool of ours that emitted the network and left the encoder to the user
+would commit exactly that error, and hand users a number that understates their design by most of
+its cost.
+
+**Gate 1b stays in this repo, and stays a claim.** The board flow is not part of the tool, but
+"166,000 of 166,000 exact on real silicon" is the strongest evidence the generator's output is
+correct. It belongs in the tool's README as evidence, not as a feature.
 
 ---
 
@@ -189,8 +208,8 @@ BEFORE    B1  fix the hardcoded feature count          ← ✅ done 2026-08-11 (
           Q1  decide generator-only vs board flow      ← ⬅ OPEN, free, and removes work
           F1  configurable precision                   ← ⬅ NEXT; the fit enabler
                     ↓  JSC must reproduce exactly after each (mnist-plan §1.2)
-DURING    M1–M5, V4                                    ← MNIST finds what inspection cannot
-          B2, B3 only if Q1 said "board flow"
+DURING    M1a-M1e, V4                                  ← MNIST finds what inspection cannot
+          B2, B3 -- DROPPED, Q1 answered generator-only
 AFTER     V2, V3   self-contained verification
           P1–P6    fork, package, licence, CI
           R1, R2   sweep tooling, if the tool offers sweeps at all
