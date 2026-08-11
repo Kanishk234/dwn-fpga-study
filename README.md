@@ -39,6 +39,10 @@ student FPGA board, far smaller and cheaper than the chips the original paper us
 | 3 — Controlled Comparison | Compare against standard tools + published results | ✅ **complete** |
 | Stretch — second dataset (MNIST) | Repeat 2 & 3 on a different problem | next |
 
+> **Reproducing these numbers:** they are measured at the git tag **`jsc-complete`**. Later RTL
+> improvements shift some areas by a couple of lookup tables (≤0.12%); `git checkout jsc-complete`
+> reproduces the exact figures below.
+
 ### Phase 1 — it works on silicon
 
 The reference config is **`1x50`**: 50 lookup-table neurons, the paper's smallest JSC model.
