@@ -132,6 +132,32 @@ to layer width, and MNIST's ladder goes to 2,000 nodes — so **timing, not area
 MNIST's binding constraint too**, exactly as it was for JSC. Pipeline depth is a synthesis-side
 sweep needing no retraining, and the harness already parameterises it.
 
+#### The cost-per-comparator gap has a cause, and it is a finding in its own right
+
+The 1.06 -> 1.50 LUTs-per-comparator miss is not noise and not a missing optimisation. Learnable
+Reduction and encoder narrowing are in neither the prediction nor the measurement, and configurable
+precision *was* used — this ran at nine bits. It is amortisation:
+
+| design | word | comparators | features | **per feature** | LUTs each |
+|---|---|---|---|---|---|
+| JSC `1x2400 z=50` | 16 | 746 | 16 | 46.6 | 7.71 |
+| JSC `1x2400 z=50` | 9 | 746 | 16 | 46.6 | **1.06** |
+| MNIST synthetic `1x300 z=25` | 9 | 1,734 | 784 | **2.2** | **1.50** |
+
+Same word width, 42% dearer per comparator, and twenty times less sharing per feature. Every
+comparator on one feature reads the same input word, so synthesis amortises the common decode
+across them; JSC spreads it over ~47 comparators, MNIST over 2.2.
+
+**So a wide, shallow input costs more per comparator than a narrow, deep one** — an architectural
+property of thermometer encoding on this fabric, and one the JSC study could not have found because
+it never varied the feature count. It also means the encoder cost model needs a
+comparators-per-feature term, not just a width term (roadmap R1).
+
+⚠️ **Provisional: the MNIST half is synthetic.** Real pixels are mostly zero, so quantile
+thresholds will collapse onto duplicates and the real comparators-per-feature ratio will differ —
+probably lower still, which would make the effect stronger. Re-measure at M1e on a trained model
+before this goes in any report.
+
 #### What this does NOT establish
 
 Real MNIST pixels are **mostly zero**, so quantile-placed thresholds will collapse onto duplicates
