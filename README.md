@@ -147,6 +147,84 @@ runs on a **$150 board** rather than a data-centre FPGA.
 **Read this next:** [`docs/phase3-report.md`](./docs/phase3-report.md) — the comparison, both
 literature defects, and what we chose not to measure.
 
+## Running it yourself
+
+### What you need
+
+| | |
+|---|---|
+| **Python 3.12** | pinned to match the Kaggle image that writes the checkpoints. 3.14 also works, and Phase 1 reproduces bit-for-bit on it, but the pin is deliberate; see `requirements.txt` |
+| **Vivado 2025.2** | for anything that synthesizes. Simulation uses `xsim`, which ships with it |
+| **A Basys 3** | *optional*. Everything except the board tests runs without one |
+| **A GPU** | *only* for training new models. Upstream `torch_dwn` has no CPU path, so training runs on Kaggle (see [`training/README.md`](./training/README.md)). Every result here reproduces from committed checkpoints without training anything |
+
+Vitis HLS is needed only for the hls4ml and conifer comparisons, and it lives inside the Vivado
+install, so there is no second toolchain to set up.
+
+```
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+```
+
+### Reproduce the headline claim
+
+The one that matters: regenerate the hardware from a trained checkpoint and prove it bit-for-bit
+identical to the software model. Exits non-zero if a single test vector disagrees.
+
+```
+.venv\Scripts\python.exe scripts\run_gate1.py
+```
+
+Then the full reproduction, 12 checks without a board and 22 with one. **Areas must match
+exactly**, or this machine's numbers are not comparable to the ones reported here:
+
+```
+.venv\Scripts\python.exe scripts\verify_phase1.py
+.venv\Scripts\python.exe scripts\verify_phase1.py --with-board
+```
+
+### On real hardware
+
+```
+.venv\Scripts\python.exe scripts\build_bitstream.py
+.venv\Scripts\python.exe scripts\program.py            # volatile, lost on power cycle
+.venv\Scripts\python.exe scripts\host.py --ping
+.venv\Scripts\python.exe scripts\host.py --gate1b      # all 166,000 vectors on silicon
+```
+
+### One synthesis run
+
+Out of context, reporting network, encoder and complete design separately. That split matters:
+published figures for this architecture usually exclude the encoder, which is most of the cost at
+small model sizes.
+
+```
+.venv\Scripts\python.exe scripts\run_synth.py          # synthesis only
+.venv\Scripts\python.exe scripts\run_synth.py --impl   # place-and-route; the quotable numbers
+```
+
+### The design-space sweep
+
+```
+.venv\Scripts\python.exe dse\grid.py                   # what would be built, and the budget
+.venv\Scripts\python.exe dse\run.py --all --impl       # the sweep, resumable
+.venv\Scripts\python.exe dse\report.py                 # table, frontier, headline number
+.venv\Scripts\python.exe dse\plot.py                   # figures
+```
+
+⚠️ **The full sweep is tens of hours of Vivado.** Every result is already committed under
+[`docs/results/`](./docs/results/), so you do not need to re-run it to read or check the numbers.
+
+### The comparisons
+
+```
+.venv\Scripts\python.exe cc\conifer\run_conifer.py --sweep    # boosted trees
+.venv\Scripts\python.exe cc\hls4ml\run_hls4ml.py --shrink     # quantized MLP, shrink sequence
+.venv\Scripts\python.exe cc\literature\table.py               # combined comparison table
+.venv\Scripts\python.exe cc\literature\plot.py --snapshot     # both figures
+```
+
 ## Documentation
 
 **Start here:** [**`REPORT.md`**](./REPORT.md) — the full write-up as a standalone document.
@@ -175,7 +253,9 @@ any other file in this repository.
 | `harness/` | UART, vector store, benchmark FSM — the board design |
 | `dse/` | the sweep: grid, runner, area model, report, plots |
 | `scripts/` | Gate 1, synthesis, bitstream, board host |
+| `cc/` | the comparisons: conifer, hls4ml, and the published-literature table |
 | `experiments/` | analyses outside the shipped flow |
+| `training/` | Kaggle notebooks — training needs a GPU and runs off-machine |
 
 ## Built on
 
@@ -197,6 +277,25 @@ project exists to fill.
 
 The benchmark is **jet substructure classification (JSC)**, the standard low-latency FPGA-ML task,
 via the `hls4ml_lhc_jets_hlf` dataset.
+
+## Citing this
+
+If you use the measurements or the comparison tables, please cite the report and note which
+dataset the numbers are on — that distinction is load-bearing, and [`REPORT.md`](./REPORT.md) §5
+explains why.
+
+```
+Sama, K. and Sama, K. "A Weightless Neural Network on an Entry-Level FPGA, and Two Defects
+in How Its Field Compares Results." 2026. https://github.com/Kanishk234/dwn-fpga
+```
+
+The underlying architecture is not ours; cite [Bacellar et al.](https://arxiv.org/abs/2410.11112)
+for that.
+
+## License
+
+Not yet chosen. Until one is added, the default applies: all rights reserved, and the code is
+readable here but not licensed for reuse. The vendored submodule keeps its own upstream licence.
 
 ## Team
 
