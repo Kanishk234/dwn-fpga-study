@@ -240,6 +240,15 @@ dimensions, so a failure means one thing.
 **M1a and M1b are generalisation** and land as their own commits, gated on §1.2. **M1c onward is
 MNIST-specific.**
 
+⚠️ **M1f and M1g may not exist at all.** `docs/tool-roadmap.md` §6 raises the question this plan
+did not: **is the deliverable the generator, or the generator plus the board flow?** If
+generator-only, then MNIST is Gate 1 only — the record format (B2) and the vector store (B3) drop
+out entirely, and this phase ends at M1e. That is roughly one to two days instead of a harness
+rework, and it matches how the comparable tools ship: hls4ml has no board flow either.
+
+**Answer it before M1c**, because it decides how much of this phase exists. It does not affect
+M1a–M1e, so it is not blocking right now.
+
 ### What would make this fail, and what each failure means
 
 | Failure | What it tells us |

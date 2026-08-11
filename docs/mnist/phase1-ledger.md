@@ -216,3 +216,4 @@ even. `1x200` also works; `256` does not, because the final layer must divide by
 | Does the upstream MNIST recipe binarise differently from JSC? | ⬜ Open. `docs/checkpoint-format.md` was verified against JSC checkpoints only |
 | How many MNIST vectors fit in the vector store? | ⬜ Open. Sets whether Gate 1b is one pass or many |
 | Does the paper's `1000, 500` fit at any precision? | ⬜ Open. A negative answer is a result, not a failure |
+| **Generator-only, or generator + board flow?** | ⚠️ **Open, and it decides whether M1f and M1g exist.** Generator-only ends this phase at M1e and drops the record-format and vector-store work — one to two days instead of a harness rework. Raised in `docs/tool-roadmap.md` §6 (Q1). Not blocking M1a–M1e |

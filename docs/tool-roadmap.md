@@ -5,11 +5,11 @@ another person could use on their own model, with each item marked by *when* it 
 relative to the MNIST port.
 
 **How it differs from the two docs beside it.** `docs/reusable-generator.md` argues *whether* to
-build the tool and scopes it in weeks. `docs/mnist-plan.md` covers what MNIST specifically needs.
+build the tool and scopes it in weeks. `docs/mnist/plan.md` covers what MNIST specifically needs.
 This is the union, audited against the code as it stands, with file and line references so nothing
 here is a guess. Where the three disagree, this one was checked most recently.
 
-**Identifiers.** `B*`, `F*`, `R*` and `T*` are `docs/mnist-plan.md` §2's; `M1a`–`M1g` are its §3
+**Identifiers.** `B*`, `F*`, `R*` and `T*` are `docs/mnist/plan.md` §2's; `M1a`–`M1g` are its §3
 steps. Items that already have an ID there keep it — this document does not invent a second name
 for the same thing. `B4`, and the `V*`/`P*`/`Q*` groups below, are new here because no existing ID
 covers them.
@@ -23,7 +23,7 @@ covers them.
 | **AFTER** | packaging and polish. Real work, but it should follow a generator that has stopped moving. |
 | **ANYTIME** | independent of MNIST; costs little and unblocks thinking. |
 
-**The organising principle**, from `docs/mnist-plan.md` §1.3, and worth repeating because it is the
+**The organising principle**, from `docs/mnist/plan.md` §1.3, and worth repeating because it is the
 test that decides most of these calls:
 
 > *Would this still be right for a dataset we have not thought of?* Not: *does this work for MNIST?*
@@ -37,9 +37,14 @@ These are not generalisations. They are bugs that JSC's particular shape hides, 
 
 | # | Defect | Evidence | Why it is dangerous | When | Effort |
 |---|---|---|---|---|---|
-| **B1** | Feature count hardcoded in the core emitter: `input_bits = 16 * cfg['thermometer_bits']` | `rtlgen/emit_core.py:97` | Emits a core with the wrong input width for any non-16-feature model. No error — Gate 1 fails confusingly, one level away from the cause. **`rtlgen/emit_encoder.py:41` and `tb/gen_vectors.py:74` already derive it correctly** (`thresholds.shape[0]`), so this is one file disagreeing with the two beside it | **BEFORE** | 30 min |
+| ~~**B1**~~ ✅ **done 2026-08-11** (`fbc3be8`) | Feature count hardcoded in the core emitter: `input_bits = 16 * cfg['thermometer_bits']` | `rtlgen/emit_core.py:97` | Emits a core with the wrong input width for any non-16-feature model. No error — Gate 1 fails confusingly, one level away from the cause. **`rtlgen/emit_encoder.py:41` and `tb/gen_vectors.py:74` already derive it correctly** (`thresholds.shape[0]`), so this is one file disagreeing with the two beside it | **BEFORE** | 30 min |
 | **R1** | Area model hardcodes the feature count and self-tests at five classes | `dse/area_model.py:39,168,183,222` | Silently wrong predictions for any other dataset — but nothing in the Gate 1 path reads it, so it blocks *predicting* MNIST area, not measuring it | **DURING**, and only if area is predicted before synthesising | 1 h |
 | **R2** | Grid is JSC-shaped throughout — size ladder, `tau` anchors, slugs | `dse/grid.py` | Not a defect in the emitter. It means "run a sweep" is not something a user can do on their own model | **AFTER**, and only if the tool offers sweeps | 2–3 h |
+
+> **Status note, 2026-08-11.** B1 and B4 landed while this document was being written — see
+> `docs/mnist/phase1-ledger.md`. JSC reproduces exactly after both (12/12, areas 108 / 1,519 /
+> 1,619, plus the two-layer `300-100` checkpoint bit-exact). **F1 is now the only BEFORE item
+> left**, and it remains the fit enabler.
 
 **Only B1 is genuinely BEFORE.** R1 and R2 sit in `dse/`, which no part of emit → Gate 1 →
 synthesise touches, so neither can block or corrupt the MNIST bring-up. An earlier draft of this
@@ -57,7 +62,7 @@ Real work, no current failure. Ordered by whether MNIST is blocked without them.
 | # | Gap | Evidence | When | Effort |
 |---|---|---|---|---|
 | **F1** | **Configurable precision.** `Q3.12` is a module-level constant; `HardwareConfig` carries `word_bits`/`frac_bits` but nothing passes them, and `config.py` *asserts* they equal the constants | `exporter/extract.py:118-119`, `rtlgen/config.py:186-187` | **BEFORE** | 1 day incl. verification |
-| **B4** | **A dataset descriptor** so dimensions are data, not code | none exists (`datasets/` absent) | **BEFORE** | half day |
+| ~~**B4**~~ ✅ **done 2026-08-11** (`9815062`) | **A dataset descriptor** so dimensions are data, not code | ~~none exists~~ `datasets/__init__.py`, frozen `Dataset` per dataset with `check_checkpoint()`. Its first act was to catch a real bug: `record_bytes()` used `word_bits // 8`, which gives one byte for an 11-bit word | **BEFORE** | half day |
 | **B2** | **Board record format fixed at 33 bytes** (32 feature + 1 label) | `harness/uart_loader.v:14,64-65`, `scripts/host.py:58` | **DURING** — only if the board path is in scope | 1 day |
 | **B3** | **Vector store sized for JSC** — `DATA_W=256`, `DEPTH=1024` | `harness/vector_store.v:24-27` | **DURING** — same condition | half day |
 | **P7** | **Default checkpoint paths name a JSC file** in four scripts | `run_gate1.py:27`, `run_tb.py:25`, `host.py:48`, `verify_phase1.py:118` | **AFTER** — they are defaults with overrides, harmless until packaging | 1 h |
@@ -84,7 +89,7 @@ These cannot be decided by inspection. Attempting them earlier means guessing.
 | How many thermometer thresholds per pixel? | `784 × z` is the entire area problem. JSC used 200; MNIST almost certainly cannot afford it. Only measurement says what it can |
 | Are MNIST pixels standard-scaled or min-max? | Decides how many integer bits the word needs — the input to F1's derivation logic |
 | Does the upstream MNIST recipe binarise differently? | `docs/checkpoint-format.md` is verified against **JSC checkpoints only**. A mismatch produces a valid-looking wrong export, which is the expensive failure mode |
-| Does the paper's `1000, 500` fit at any precision? | A negative answer is a publishable result, not a failure (`mnist-plan.md` §3) |
+| Does the paper's `1000, 500` fit at any precision? | A negative answer is a publishable result, not a failure (`mnist/plan.md` §3) |
 
 **The most valuable output of MNIST is a list of bugs**, not an accuracy number. Phase 2 and 3
 found four JSC-shaped assumptions nobody had noticed by inspection — the `np.packbits` shift at
@@ -155,7 +160,7 @@ Free to answer, and each one narrows what the work above actually is.
 | **Q1** | **Generator-only, or generator + board flow?** | Decides whether **B2 and B3 exist at all**. Generator-only makes MNIST *Gate 1 only* — roughly 1–2 days instead of the harness rework the Phase 1 ledger scoped. hls4ml, the obvious model, ships no board flow |
 | **Q2** | **Does Gate 1 ship?** (V1) | Yes, in my view — and it settles Q1, because Gate-1-only scope means the harness is optional |
 | **Q3** | **Which upstream DWN versions?** (P6) | One pinned commit is honest and cheap; a range needs a compatibility layer plus silent-drift detection |
-| **Q4** | **Name, and where it lives** | `mnist-plan.md` §1.6 forbids branch- or person-named files; the same discipline should apply to the fork |
+| **Q4** | **Name, and where it lives** | `mnist/plan.md` §1.6 forbids branch- or person-named files; the same discipline should apply to the fork |
 
 **Q1 is the highest-leverage question in this document.** Answering "generator-only" removes B2,
 B3 and most of the MNIST harness work in one stroke, and matches how the comparable tools ship.
@@ -171,7 +176,7 @@ Recorded so they are not silently reconsidered:
   *possible*; it should not become the default.
 - **Learnable Reduction.** Reopened in `docs/phase2-ledger.md` at ~35% of the headline design, but
   never explored enough to belong in a tool. It is a research axis, not a packaging task.
-- **Reorganising the JSC artifacts.** `mnist-plan.md` §1.4 — `REPORT.md` and the `jsc-complete`
+- **Reorganising the JSC artifacts.** `mnist/plan.md` §1.4 — `REPORT.md` and the `jsc-complete`
   tag reference current paths.
 
 ---
@@ -179,10 +184,10 @@ Recorded so they are not silently reconsidered:
 ## 8. Suggested order
 
 ```
-BEFORE    B1  fix the hardcoded feature count          ← wrong today; fix on main
-          Q1  decide generator-only vs board flow      ← free, and removes work
-          B4  dataset descriptors
-          F1  configurable precision                   ← the fit enabler
+BEFORE    B1  fix the hardcoded feature count          ← ✅ done 2026-08-11 (fbc3be8)
+          B4  dataset descriptors                      ← ✅ done 2026-08-11 (9815062)
+          Q1  decide generator-only vs board flow      ← ⬅ OPEN, free, and removes work
+          F1  configurable precision                   ← ⬅ NEXT; the fit enabler
                     ↓  JSC must reproduce exactly after each (mnist-plan §1.2)
 DURING    M1–M5, V4                                    ← MNIST finds what inspection cannot
           B2, B3 only if Q1 said "board flow"
@@ -198,8 +203,8 @@ consistent with `docs/reusable-generator.md` §4's estimate, and still "almost n
 
 ## 9. Pointers
 
-- `docs/mnist-plan.md` — ground rules for the branch, and the JSC-must-not-break gate
-- `docs/mnist-phase1-ledger.md` — the dated log for the port
+- `docs/mnist/plan.md` — ground rules for the branch, and the JSC-must-not-break gate
+- `docs/mnist/phase1-ledger.md` — the dated log for the port
 - `docs/reusable-generator.md` — whether to build the tool at all, and how to split it off
 - `REPORT.md` §7 — the precision measurement F1 exists to expose
 - `docs/checkpoint-format.md` — what the exporter reads, verified against JSC only (M4)
