@@ -33,9 +33,20 @@ EXPECTED = {
     'gate1_top_vectors': 1518,
     'nodes': 50,
     'comparators': 202,
-    'core_luts': 108, 'core_ff': 73,
+    # ⚠️ core_luts and top_luts CHANGED on 2026-08-11, from 108 and 1619, when rtl/argmax.v
+    # became a balanced tree unconditionally (it was a sequential scan). The tree costs +2 LUTs
+    # at five classes and is what lets ten classes meet the board clock at all.
+    #
+    # The pre-change values are not lost: they are reproducible at the `jsc-complete` tag, which
+    # is what REPORT.md's JSC figures are measured at and now say so. Pinning a published result
+    # to a tag is the right mechanism; freezing the RTL to protect a printed number is not.
+    #
+    # docs/results/sweep-results.json still holds chain-era areas. Anything synthesized after
+    # this change reads ~2 LUTs higher -- 0.12% at 1x50, 0.02% at the headline config, so no
+    # frontier point or conclusion moves. Do not mix the two in one table without saying so.
+    'core_luts': 110, 'core_ff': 73,
     'enc_luts': 1519, 'enc_ff': 0,
-    'top_luts': 1619, 'top_ff': 269,
+    'top_luts': 1621, 'top_ff': 269,
     'board_luts': 2058, 'board_ff': 865, 'board_bram': 8, 'board_dsp': 0,
     'gate1b_agree': 166000, 'gate1b_total': 166000,
     'core_cycles': 166815,
