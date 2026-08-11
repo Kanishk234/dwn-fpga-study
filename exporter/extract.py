@@ -150,6 +150,27 @@ def saturation_is_lossless(thr_q, word_bits=WORD_BITS):
     return int(np.min(thr_q)) > lo and int(np.max(thr_q)) < hi
 
 
+def required_int_bits(thresholds):
+    """The integer bits a word MUST have to represent every threshold. Exact, not a heuristic.
+
+    A threshold outside the representable range makes the comparison against it meaningless, so
+    this is a hard floor: `word_bits >= 1 + required_int_bits(thr) + frac_bits`.
+
+    ⚠️ Its counterpart is NOT derivable. How many FRACTIONAL bits are needed depends on whether
+    quantisation changes predictions, which depends on the data, not the checkpoint. Deriving a
+    fractional width from thresholds alone reproduces the mistake in REPORT.md 5.6, where a
+    narrowing was fitted and validated on the same 1,000 samples and 8 of 15 features came out
+    too narrow. Report a floor as a floor; call a width "safe" only after measuring on held-out
+    data (experiments/experiment_encoder_width.py does that).
+    """
+    import numpy as _np
+    span = float(_np.max(_np.abs(_np.asarray(thresholds, dtype=_np.float64))))
+    bits = 0
+    while (1 << bits) <= span:
+        bits += 1
+    return bits
+
+
 def quantize_thresholds(thresholds, frac_bits=FRAC_BITS):
     """Thresholds -> the integer constants the comparators are built against.
 

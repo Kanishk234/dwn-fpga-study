@@ -178,6 +178,10 @@ def _selftest() -> int:
     import extract
     import run_synth
 
+    # NOTE this checks the DEFAULT instance against the module constants -- it asserts that the
+    # two agree on what "unset" means, not that every build uses that width. Non-default widths
+    # are legal and are passed explicitly (run_gate1.py --word-bits/--frac-bits). Do not "relax"
+    # this: it is the guard that catches a default drifting away from the module that owns it.
     hw = HardwareConfig()
     checks = [
         ('pipe_lut  vs emit_core.PIPE_LUT', hw.pipe_lut, emit_core.PIPE_LUT),
