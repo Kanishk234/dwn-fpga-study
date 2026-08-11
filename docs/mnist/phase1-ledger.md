@@ -27,11 +27,11 @@ point.
 |---|---|---|
 | M1a | Derive the feature count; add `datasets/` descriptors | ✅ done 2026-08-11 — JSC identical |
 | M1b | Thread configurable precision through the flow | ✅ done 2026-08-11 — JSC identical, Gate 1 passes at 11-bit |
-| M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ **next** — `1x300`, z=25, n=6 |
-| M1d | Export and pass Gate 1 bit-exact | ⬜ |
-| M1e | Synthesize; measure core / encoder / top separately | ⬜ |
-| M1f | Harness record format and vector-store capacity | 🟡 **decision pending** — only if MNIST goes on the board |
-| M1g | Gate 1b on the board, full MNIST test set | 🟡 **decision pending** — same |
+| M1c | Train a small MNIST model (Kaggle, off-machine) | ⬜ **next** — `1x300`, **z=3**, n=6, min-max (T3) |
+| M1d | Export and pass Gate 1 bit-exact | 🟡 **mechanically proven 2026-08-11** on a synthetic 784/10 checkpoint; needs a real one |
+| M1e | Synthesize; measure core / encoder / top separately | 🟡 **synthetic measured**: 3,233 LUTs (15.5%), **fails timing at 91.5 MHz** |
+| M1f | Harness record format and vector-store capacity | ⬜ **in scope 2026-08-11** — MNIST goes on the board |
+| M1g | Gate 1b on the board, full MNIST test set | ⬜ **in scope 2026-08-11** |
 
 **Scope, 2026-08-11 — two questions, and only one is answered.**
 
@@ -81,6 +81,121 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-11 — the generator works at MNIST's shape, measured, before any training
+
+`experiments/make_test_checkpoint.py --dataset mnist` (added by the other machine in `42d9b0b`,
+on top of the `datasets/` descriptors from M1a — the two tracks met without coordination). It
+fabricates a checkpoint at any dataset shape, so **Gate 1 can run at 784 features and 10 classes
+with nothing trained.**
+
+That is legitimate because Gate 1 verifies the *emitter*, not the model: both sides are derived
+from the same checkpoint, so random tables exercise the machinery as well as learned ones, and
+better in one respect — they reach address patterns a trained model may never produce. It is the
+argument `make_test_checkpoint.py` was written for, and it is what caught the `np.packbits` shift
+at n<3.
+
+#### Gate 1 PASSES at MNIST's shape
+
+`1x300`, z=25, n=6, 784 features, 10 classes, Q0.8 nine-bit words:
+
+```
+1,734 distinct bits selected of 19,600
+dwn_core : 1,504 vectors, 0 mismatches, PASS
+dwn_top  : 2,199 vectors, 0 mismatches, PASS
+```
+
+**The mechanical half of M1d is answered.** Port widths, wiring indices, address ordering and the
+4-bit class index are all correct at a shape nothing has been trained at.
+
+#### And it synthesizes — with two findings
+
+Place-and-routed, `xc7a35tcpg236-1`, 10 ns:
+
+| | projected | **measured** |
+|---|---|---|
+| comparators | 1,353 | **1,734** |
+| encoder | 1,434 | **2,607** |
+| core | 684 | **641** |
+| top | 2,557 | **3,233 (15.5%)** |
+| timing | — | ❌ **FAILS — 91.5 MHz** |
+
+**⚠️ The area projection was 26% low, and the encoder specifically was 82% low.** Two errors
+compounded: 28% more comparators than the occupancy model predicted, and **1.50 LUTs per
+comparator against the 1.06 measured on JSC at nine bits.** The 49x extrapolation on feature count
+does not hold as well as the 2026-08-11 threshold analysis implied. Treat every number in that
+entry as indicative, not predictive.
+
+**⚠️ It misses the board clock at 300 nodes.** 91.5 MHz against the required 100, with the core
+itself at 94.2. JSC's `1x50` closed 147 MHz. Ten classes make the popcount groups wider relative
+to layer width, and MNIST's ladder goes to 2,000 nodes — so **timing, not area, is likely to be
+MNIST's binding constraint too**, exactly as it was for JSC. Pipeline depth is a synthesis-side
+sweep needing no retraining, and the harness already parameterises it.
+
+#### What this does NOT establish
+
+Real MNIST pixels are **mostly zero**, so quantile-placed thresholds will collapse onto duplicates
+in a way uniform synthetic data never does. Duplicate thresholds cost nothing in hardware, so the
+real design is likely **cheaper** than the numbers above. Nothing here says anything about
+accuracy, about whether upstream's checkpoints have the structure we expect, or about Gate 1b.
+The trained models are still required for every result.
+
+### 2026-08-11 — T3: what upstream actually does for MNIST, and it is not what we assumed
+
+Read from `third_party/DWN/examples/mnist.py` and `src/torch_dwn/`, at the pinned commit. Three
+risks retired, one assumption overturned.
+
+#### ✅ The checkpoint format holds
+
+Upstream binarises MNIST with the **same `DistributiveThermometer`** class as JSC, and
+`feature_wise=True` is the default, so thresholds are per-feature quantiles exactly as
+`docs/checkpoint-format.md` describes. No new format work.
+
+#### ✅ Both wiring representations are already exercised
+
+Upstream's MNIST stacks `LUTLayer(..., mapping='learnable')` then `LUTLayer(...)` — and
+`LUTLayer`'s default is **`mapping='random'`**, a fixed mapping. So layer 2 uses the `§3b` fixed
+path, not the learnable one.
+
+That could have been a nasty surprise. It is not: our `300-100` JSC checkpoint is **learnable then
+fixed**, so both paths are already Gate 1 verified. Recorded so nobody re-audits it.
+
+#### ✅ No StandardScaler, and nothing needs one
+
+Upstream feeds `transforms.ToTensor()`, which puts pixels in **[0, 1]** — no scaler at all, unlike
+our JSC path. Checked whether that breaks us: `exporter/`, `rtlgen/` and `tb/` never read
+`ck['scaler']`; only a comment in `emit_encoder.py` mentions it. So an MNIST checkpoint without a
+scaler flows through unchanged. The descriptor's `scaling='minmax'` is right.
+
+#### ⚠️ Upstream uses `DistributiveThermometer(3)` — z=3, not the 25 we planned
+
+This is the overturned assumption. **Three thresholds per pixel**, giving 784 x 3 = 2,352
+thermometer bits, against the 19,600 our z=25 recommendation implied.
+
+It is consistent with the 2026-08-11 threshold finding rather than contradicting it: MNIST is
+slot-limited, so `z` buys little area either way. But it means the accuracy knob probably sits far
+lower than JSC's 200, and upstream — who trained these models — chose 3.
+
+Projected at Q0.8, nine bits:
+
+| config | z=3 | z=8 | z=25 |
+|---|---|---|---|
+| `1x300` | **9.4%** | 10.6% | 12.3% |
+| `1x1000` | 21.6% | 26.3% | 31.1% |
+| `2000, 1000` (upstream's own) | **32.9%** | 41.7% | 52.1% |
+
+**Upstream's full MNIST model projects to roughly a third of the device.** That is a far better
+starting position than the paper's `1000, 500` at 16 bits, which was over the device entirely.
+
+**Revised bring-up recommendation: `1x300`, z=3, n=6, min-max to [0,1].** Matching upstream's `z`
+removes a variable — if accuracy disappoints, that is a training question, not a suspicion about
+our binarisation. Sweep `z` afterwards, when it is an accuracy knob rather than a guess.
+
+#### Also worth noting
+
+Upstream's example is `2000, 1000`, not the paper's `1000, 500`, and uses `tau = 1/0.3`. Neither
+blocks anything, but the two sources disagree about what "the MNIST model" is, and the paper's
+Table 14 is the one `docs/paper-configs.md` records.
 
 ### 2026-08-11 — M1b: precision is a parameter, and the golden model moves with it
 
@@ -292,11 +407,11 @@ even. `1x200` also works; `256` does not, because the final layer must divide by
 
 | Question | Status |
 |---|---|
-| ~~How many thermometer thresholds per pixel is right?~~ | ✅ **Largely settled 2026-08-11: `z` is cheap here.** MNIST is slot-limited, not pool-limited, so z=8→200 costs only 2.3× in comparators. Use **z=25** for bring-up and treat z as an accuracy knob later, not an area one. |
-| Are MNIST pixels standard-scaled or min-max normalised? | ⬜ Open. Decides how many integer bits the word needs, and M1b depends on the answer |
-| Does the upstream MNIST recipe binarise differently from JSC? | ⬜ Open. `docs/checkpoint-format.md` was verified against JSC checkpoints only |
+| ~~How many thermometer thresholds per pixel is right?~~ | ✅ **Settled 2026-08-11.** `z` is cheap here — MNIST is slot-limited, so z=8→200 costs only 2.3× in comparators. **Upstream uses z=3** (T3), so start there rather than the 25 first guessed, and treat `z` as an accuracy knob afterwards. |
+| ~~Are MNIST pixels standard-scaled or min-max normalised?~~ | ✅ **Closed 2026-08-11: min-max, [0,1]**, via `transforms.ToTensor()`. No scaler in the pipeline, and nothing in our flow requires one |
+| ~~Does the upstream MNIST recipe binarise differently from JSC?~~ | ✅ **Closed 2026-08-11: no.** Same `DistributiveThermometer`, `feature_wise=True`. Both wiring paths (learnable, fixed) already Gate 1 verified by our `300-100` checkpoint |
 | How many MNIST vectors fit in the vector store? | ⬜ Open. Sets whether Gate 1b is one pass or many |
 | Does the paper's `1000, 500` fit at any precision? | ⬜ Open. A negative answer is a result, not a failure |
 | ~~Does the **tool** ship a harness?~~ | ✅ **Closed 2026-08-11: no, generator-only.** Users bring their own, as hls4ml does. The encoder still ships — intrinsic to a DWN and most of the area, so omitting it would repeat the reporting failure `REPORT.md` §5.2 criticises |
-| **Does MNIST run on our board in this repo?** | ⚠️ **Open, and separate from the question above** — an earlier entry wrongly treated it as settled by it. Decides whether M1f and M1g happen. Does not affect M1a–M1e. Decide before M1e finishes |
+| ~~Does MNIST run on our board in this repo?~~ | ✅ **Closed 2026-08-11: yes.** M1f and M1g are in scope. Separate from the tool question — the tool still ships generator-only; the board demo is this project's own deliverable, and a second dataset on real silicon is a far stronger result than a second dataset in simulation |
 | How many MNIST vectors fit in the vector store? | ⬜ Open, and only matters if the board answer is yes. ~48× wider per vector than JSC, so `DEPTH` falls to order 100 |
