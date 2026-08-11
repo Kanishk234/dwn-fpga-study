@@ -143,11 +143,58 @@ reason: maintaining a fork while the emitters move means merging every change tw
 | # | Item | Notes | Effort |
 |---|---|---|---|
 | **P1** | Fork `main`, then prune | Fork rather than fresh repo — the history is where the reasoning lives (address bit order, the `__dummy_mapping` trap, the packbits shift) | 1 day |
-| **P2** | `pyproject.toml`, one CLI entry point | none exists today | 1 day |
+| **P2** | `pyproject.toml`, one CLI entry point | none exists today. **The command surface is designed in §5.1 — it is a decision, not a formatting job** | 1 day |
 | **P3** | **A licence** | **none exists.** Blocks anyone using it, and blocks citing it | 1 h |
 | **P4** | README, worked examples | `rtl/example-model-1x50/` is already a good artifact to build on | 1–2 days |
 | **P5** | CI on a second dataset | The claim is generality; it needs a second dataset to be a claim at all | 2–3 days |
 | **P6** | Decide the upstream-version policy | Currently one pinned commit (`9f887a0`). Drift fails silently — `__dummy_mapping` has the same shape and dtype as a real mapping | design call |
+
+### 5.1 The command surface — derive, do not ask
+
+**The target is `dwn2rtl build model.pt` producing Verilog.** Not twenty flags. A tool that makes
+the user restate what is already in the checkpoint is not a tool, it is a wrapper.
+
+**Almost everything is derivable, and this repo already derives it.** Read straight from a
+checkpoint today, with no input from anyone:
+
+| | from | example |
+|---|---|---|
+| features, classes | `config`, threshold shape | 16 / 5 |
+| layers, `n`, `z` | `config`, `state_dict` | `[300, 100]`, 6, 8 |
+| wiring and table contents | `state_dict` | 300 tables, 1,800 indices |
+| **integer bits** | thresholds — **exact** | 3 for JSC's `1x50`, 1 for the `t8` models |
+| **threshold-separation floor** | wired thresholds per feature | 11 bits for `1x50`, 9 for `t8 300-100` |
+| pipeline depth | a safe default, JSC-proven at four stages | |
+
+**Exactly one thing is not derivable: how many FRACTIONAL bits are safe.** That depends on whether
+quantisation changes predictions, which depends on the data. §4's V4 argument, and REPORT.md §5.6
+is the scar — a narrowing fitted and validated on the same 1,000 samples put 8 of 15 features too
+narrow.
+
+So the surface is **two commands and an escape hatch**, not a flag per parameter:
+
+```
+dwn2rtl build model.pt                    # derives everything derivable; prints every choice
+dwn2rtl build model.pt --data test.npz    # measures what needs data; narrower, and it says so
+dwn2rtl build model.pt --width 11         # you already know; the tool verifies and obeys
+```
+
+**Without data it must not guess.** It uses the derived separation floor, which is conservative,
+and says which parts were derived and which were assumed:
+
+```
+features 16, classes 5, layers [50], n=6, z=200          from checkpoint
+integer bits 3                                            derived, exact
+fractional bits 8  -> Q3.8, 12-bit word                   FLOOR, not measured
+  pass --data to measure the safe width; it is usually narrower
+```
+
+**The generator-only decision shrinks this further.** No part, no clock target, no synthesis
+strategy — the user's toolchain, not ours. Those are three flags that never have to exist.
+
+**This repo's scripts are not the tool's interface.** `run_gate1.py --word-bits/--frac-bits` is
+development plumbing for sweeping and experimenting, and it is fine for it to be explicit. The
+product is allowed a smaller surface than the workshop that built it.
 
 ---
 
