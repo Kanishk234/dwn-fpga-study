@@ -18,6 +18,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 LIT = os.path.join(HERE, 'jsc_literature.json')
 OURS = os.path.join(REPO, 'docs', 'results', 'sweep-results.json')
 CONIFER = os.path.join(REPO, 'docs', 'results-cc', 'conifer-results.json')
+HLS4ML = os.path.join(REPO, 'docs', 'results-cc', 'hls4ml-results.json')
 
 OUR_PART = 'xc7a35t-1'
 
@@ -94,6 +95,38 @@ def load_conifer(path=CONIFER, fitting_only=True):
     return out
 
 
+def load_hls4ml(path=HLS4ML, fitting_only=True):
+    """The hls4ml quantised MLP sweep, same silicon and same build.tcl as everything else.
+
+    NOTE the accuracy is the FLOAT model's, an upper bound on what the quantised design scores --
+    hls4ml's own accuracy needs its generated C++ compiled, which the measuring machine could not
+    do. Carried through as a note so the row cannot be quoted as a measured accuracy.
+    """
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding='utf-8') as fh:
+        raw = json.load(fh)
+    out = []
+    for c in raw:
+        fits = c.get('status') == 'ok' and c.get('luts')
+        if fitting_only and not fits:
+            continue
+        cyc, fmax = c.get('latency_cycles'), c.get('fmax_mhz')
+        out.append({
+            'method': 'hls4ml (measured)', 'model': c['name'], 'variant': None,
+            'dataset': 'openml', 'accuracy_pct': c.get('accuracy_float_pct'),
+            'lut': c.get('luts'), 'ff': c.get('ff'), 'dsp': c.get('dsp'), 'bram': c.get('bram'),
+            'fmax_mhz': fmax,
+            'latency_ns': (cyc / fmax * 1000) if (cyc and fmax) else None,
+            'latency_cycles': cyc, 'part': OUR_PART, 'encoder_included': 'n/a',
+            'source': 'docs/results-cc/hls4ml-results.json', 'confidence': 'measured',
+            'fits': bool(fits), 'device_pct': c.get('device_pct'),
+            'accuracy_is_upper_bound': bool(c.get('accuracy_is_float_upper_bound')),
+        })
+    out.sort(key=lambda r: -(r['accuracy_pct'] or 0))
+    return out
+
+
 def _conv(row):
     e = row.get('encoder_included')
     return {True: 'incl', False: 'core only', 'n/a': 'n/a', 'unknown': '?'}.get(e, '?')
@@ -107,7 +140,9 @@ def render(rows, markdown=False):
     hdr = ['Method', 'Model', 'Acc %', 'LUT', 'FF', 'Fmax', 'Lat ns', 'Encoder', 'Part']
     body = [[
         r['method'] + ('' if r.get('fits', True) else ' !'),
-        r['model'] or '', _fmt(r['accuracy_pct'], '.2f'), _fmt(r['lut'], ','),
+        r['model'] or '',
+        _fmt(r['accuracy_pct'], '.2f') + ('*' if r.get('accuracy_is_upper_bound') else ''),
+        _fmt(r['lut'], ','),
         _fmt(r['ff'], ','), _fmt(r['fmax_mhz'], '.0f'), _fmt(r['latency_ns'], '.1f'),
         _conv(r), r['part'] or '?',
     ] for r in rows]
@@ -139,6 +174,7 @@ def main(argv=None):
     if not args.no_ours:
         rows += load_ours(fitting_only=not args.include_unfittable)
         rows += load_conifer(fitting_only=not args.include_unfittable)
+        rows += load_hls4ml(fitting_only=not args.include_unfittable)
 
     wanted = ['openml', 'cernbox', 'unknown'] if args.dataset == 'all' else [args.dataset]
     ds = lit['datasets']

@@ -24,7 +24,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from table import load_conifer, load_literature, load_ours   # noqa: E402
+from table import (load_conifer, load_hls4ml, load_literature,   # noqa: E402
+                   load_ours)
 
 OUT = os.path.join(REPO, 'build', 'cc', 'literature')
 SNAP = os.path.join(REPO, 'docs', 'results-cc')
@@ -37,6 +38,7 @@ C = {
     # our silicon
     'this project': '#0072B2',
     'conifer (GBDT)': '#D55E00',
+    'hls4ml (measured)': '#9467BD',
     # the DWN family
     'DWN': '#009E73',
     # published, OpenML
@@ -111,6 +113,8 @@ def draw(ax, rows, dataset, ours_present):
             [max(pts, key=lambda x: x['accuracy_pct']), min(pts, key=lambda x: x['lut'])])
         for i, p in enumerate(to_label):
             text = p['model'] if curve else method
+            if p.get('accuracy_is_upper_bound'):
+                text += ' *'      # accuracy is the float model's, not the built design's
             # Alternate the offset: several published points sit within 0.3 pp of each other
             # at ~76%, and a fixed offset stacks their labels on top of one another.
             dx, dy = ((8, 6), (8, -12), (-8, 8), (-8, -12))[(_LBL[0] + i) % 4]
@@ -144,7 +148,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     lit = load_literature()
-    rows = list(lit['results']) + load_ours() + load_conifer()
+    rows = list(lit['results']) + load_ours() + load_conifer() + load_hls4ml()
     os.makedirs(OUT, exist_ok=True)
 
     written = []
@@ -180,10 +184,12 @@ def main(argv=None):
                     transform=ax.transAxes, ha='center', va='top', fontsize=9,
                     color='#B00020', linespacing=1.5,
                     bbox=dict(fc='#FFF4F4', ec='#B00020', lw=1.2, alpha=.97, pad=7))
-        fig.text(.125, .012,
-                 'filled = LUT count includes input encoder   ·   hollow = core only, encoder '
-                 'excluded   ·   square = no separate encoder stage',
-                 fontsize=7.5, color='#666')
+        note = ('filled = LUT count includes input encoder   ·   hollow = core only, encoder '
+                'excluded   ·   square = no separate encoder stage')
+        if any(r.get('accuracy_is_upper_bound') for r in rows):
+            note += ('\n*  accuracy is the full-precision model, an upper bound on what the '
+                     'built design scores, not a measurement of it')
+        fig.text(.125, .012, note, fontsize=7.5, color='#666')
         fig.tight_layout(rect=[0, .03, 1, .94])
 
         for d in ([OUT, SNAP] if args.snapshot else [OUT]):
