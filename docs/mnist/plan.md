@@ -303,6 +303,8 @@ the only genuinely bad outcome, which is why Gate 1 comes before any area number
 ## 5. Pointers
 
 - `docs/mnist/phase1-ledger.md` — the dated log for this work
+- `docs/mnist/reduction-ledger.md` — the learnable-reduction study, and the `tau` confound that
+  invalidated its first result
 - `../../REPORT.md` — the JSC study this is being generalised away from
 - `../checkpoint-format.md` — what the exporter reads, verified against JSC only
 - `../phase1-ledger.md` — how the JSC bring-up actually went, including what broke
