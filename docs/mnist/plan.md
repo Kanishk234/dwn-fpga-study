@@ -234,8 +234,8 @@ dimensions, so a failure means one thing.
 | **M1c** | Train a **small** MNIST model on Kaggle — one layer, few hundred nodes | checkpoint + vectors in `training/artifacts/` |
 | **M1d** | Export and run Gate 1 | **bit-exact on every vector** |
 | **M1e** | Synthesize out-of-context, report core / encoder / top | area known; whether it fits is a *result* either way |
-| **M1f** | Harness: record format and vector-store capacity | 🟡 **decision pending** — needed only if MNIST goes on the board |
-| **M1g** | Bitstream, program, Gate 1b on the full MNIST test set | 🟡 **decision pending** — same |
+| **M1f** | Harness: record format and vector-store capacity | ⬜ **in scope** — JSC board path must still work |
+| **M1g** | Bitstream, program, Gate 1b on the full MNIST test set | ⬜ **in scope** — hardware matches software exactly |
 
 **M1a and M1b are generalisation** and land as their own commits, gated on §1.2. **M1c onward is
 MNIST-specific.**
@@ -249,10 +249,10 @@ because the harness changes with every application and dataset. hls4ml ships an 
 than a board design for the same reason. This is a decision about a deliverable that comes *after*
 a successful MNIST port.
 
-**Question two — does MNIST run on our board in this repo? STILL OPEN.** It does not follow from
-question one. The tool not shipping a harness says nothing about whether this project demonstrates
-a second dataset on real silicon, and the brief's deliverable list has always included a working
-board demo.
+**Question two — does MNIST run on our board in this repo? ANSWERED 2026-08-11: yes.** It does not
+follow from question one, and it was decided on its own merits: a second dataset on real silicon is
+a far stronger result than a second dataset in simulation, and the brief's deliverable list has
+always included a working board demo. **M1f and M1g are in scope.**
 
 M1f and M1g exist only if question two is answered yes. What they would cost:
 
