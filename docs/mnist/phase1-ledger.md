@@ -82,6 +82,72 @@ decides whether MNIST runs here.
 
 ## Log
 
+### 2026-08-11 — the harness cost was one line of Verilog, and MNIST fits without streaming
+
+**MNIST now builds to a bitstream at 4,586 LUTs (22.05%) and meets 100 MHz with +0.292 ns.** It
+was 10,460 LUTs (50.29%) and had not been through implementation. Nothing about the model
+changed; `dwn_top` is 1,543 LUTs in both.
+
+The cause was `uart_loader.v`:
+
+```verilog
+wr_data[byte_idx*8 +: 8] <= rx_data;      // was
+wr_data <= {rx_data, wr_data[DATA_W-1:8]}; // now
+```
+
+A variable part-select **write** synthesises to a `VEC_BYTES`-way address decoder driving a write
+enable on every byte lane. At JSC's 32 lanes that is 439 LUTs and nobody notices. At MNIST's 1,568
+it was **6,343 LUTs and 5,228 FF — four times the classifier it exists to feed.** Bytes arrive in
+order and are never revisited, so the decoder buys nothing; inserting at the top and shifting down
+leaves byte 0 at `[7:0]` after `VEC_BYTES` bytes, which is the same little-endian layout
+`tb/gen_vectors.py` and `scripts/host.py` already pack.
+
+| design | before | after |
+|---|---|---|
+| MNIST `dwn_basys3_top` | 10,460 LUTs (50.29%), no impl | **4,586 (22.05%), WNS +0.292 ns** |
+| MNIST `u_loader` | 6,343 LUTs, 5,228 FF | **468 LUTs, 6,408 FF, 274 SRL** |
+| JSC `dwn_basys3_top` | 2,060 LUTs, WNS +1.753 ns | **1,896 LUTs, WNS +2.014 ns** |
+| JSC `u_loader` | 439 LUTs | **81 LUTs** |
+
+#### ⚠️ A prediction that was wrong, and the mechanism it missed
+
+The change was proposed as *"this moves cost from LUTs to flip-flops"* — reasoning that a
+12,544-bit shift register still needs 12,544 flops, so the win would be modest and would show up
+as an FF increase. **LUTs fell 13.5× and flops rose only 1.2×.** The missing mechanism is that a
+shift register can be mapped into **SRL16/SRL32 primitives** — a LUT holding 16 or 32 bits of
+shift depth instead of one bit of logic — and an indexed write forbids that mapping, because any
+element may be written at any time. MNIST's build shows 278 LUTs used as shift register absorbing
+what would otherwise be thousands of flops. The lesson is narrower than "shift registers are
+good": *the access pattern determines which primitives are reachable*, and a decoder-shaped write
+locks the design out of the cheapest one.
+
+#### This retires the argument for streaming, at least for MNIST
+
+Streaming was proposed to eliminate `u_store`'s 2,416 LUTs of distributed RAM — real, since a
+12,544-bit-wide store cannot map to block RAM (a BRAM36 is at most 72 bits wide, so one cycle of
+that width would need ~175 of the 50 on the device; the build reports **0 BRAM** for MNIST against
+8 for JSC). But **fit is no longer the binding problem** — 22% with timing met — so streaming is
+now a throughput and convenience change, not an enabling one. `DEPTH=16` at the default
+`--bram-budget` means 625 load/run batches for the 10,000-sample test set.
+
+**What streaming would still buy, and what it would cost:** it removes the store entirely
+(≈2,400 LUTs, taking the design to roughly 2,200) and makes a full test pass one command instead
+of 625. What it gives up is the `cycle_count` measurement — the batch path preloads and issues one
+vector per clock, which is what makes that number a real II=1 throughput figure comparable to the
+paper (brief §9). Streaming is UART-bound at ~314,000 cycles per record, so it can measure
+**accuracy only**. That is why both loaders should coexist rather than one replacing the other,
+and it is the concrete reason the harness is organised by *mechanism* rather than by dataset.
+
+#### Scope note
+
+`dwn_core` and `dwn_top` are untouched — `uart_loader` is harness, outside `dwn_top` — so **no
+Phase 2 frontier point moves.** The only recorded number affected is `verify_phase1.py`'s
+`board_luts`, updated 2060 → 1896 with `board_ff` 865 → 861.
+
+⚠️ **Not yet on silicon.** Both bitstreams are built and meet timing; neither has been programmed
+since this change. `verify_phase1.py --with-board` is the gate, and until it runs the JSC row
+above is a synthesis result, not a hardware one.
+
 ### 2026-08-11 — ⚠️ the testbench was checking three of MNIST's four class-index bits
 
 Found by sweeping Gate 1 across class counts before trusting the argmax change — not by suspecting
@@ -748,12 +814,12 @@ hardware and cannot be filled in from here.
 | | What to capture | Why it matters |
 |---|---|---|
 | **JSC regression on silicon** | `verify_phase1.py --with-board` → 22/22, 166,000/166,000 | The loader changed. Simulation says it is fine; silicon has disagreed with simulation before |
-| **MNIST `DEPTH` actually used** | the `--bram-budget` finally chosen, and the block-RAM figure | 16 at the default is probably impractical; the honest number is whatever was used |
-| **Batches for a full pass** | count, and wall-clock for 10,000 vectors | Projected ~23 min at 115,200 baud with `DEPTH=64`. Projected, not measured |
+| ~~**MNIST `DEPTH` actually used**~~ | ✅ **16 at the default `--bram-budget 0.15`, and 0 BRAM** — a 12,544-bit-wide store cannot map to block RAM at all, so it fell to 2,416 LUTs of distributed RAM. JSC uses 8 BRAM at DATA_W=256 | Answered by synthesis, not hardware — the store's width is what decides this, and width is known without a board |
+| **Batches for a full pass** | count, and wall-clock for 10,000 vectors | **625 batches at `DEPTH=16`**, which is the count; the wall-clock still needs hardware |
 | **Baud actually achieved** | the highest working rate at a 1,569-byte record | JSC found a UART ceiling; a 48x longer record may find a different one |
-| **Bitstream area at MNIST dimensions** | LUT/FF/BRAM for `dwn_basys3_top`, and the harness share | The harness was ~439 LUTs for JSC and does not scale with the model — worth confirming that still holds at DATA_W=12,544 |
+| ~~**Bitstream area at MNIST dimensions**~~ | ✅ **4,586 LUTs (22.05%), 10,750 FF, 0 BRAM, WNS +0.292 ns.** Harness share 3,043 LUTs — `u_loader` 468, `u_store` 2,416 | ⚠️ **The premise was wrong: the harness DOES scale with the model.** It was assumed fixed at ~439 LUTs from JSC. `u_store` scales with record width by construction, and `u_loader` did too until the shift-register fix. Both were found by measuring at a second dataset |
 | **Gate 1b result** | mismatches out of the full MNIST test set | The actual deliverable of M1g |
-| **Timing with the harness attached** | Fmax, and whether 100 MHz still closes | The synthetic core already missed it at 91.5 MHz *without* the harness |
+| ~~**Timing with the harness attached**~~ | ✅ **100 MHz closes, WNS +0.292 ns post-route.** Margin is thin — 2.9% — so a wider config or a slower corner could lose it | The synthetic core missed at 91.5 MHz *without* the harness; the real model plus harness makes it, which is the argmax tree rather than anything the harness does |
 
 ⚠️ **The synthetic run already suggests timing will be the problem, not area.** If the real model
 misses 100 MHz, pipeline depth is the lever and it needs no retraining — but it changes the
