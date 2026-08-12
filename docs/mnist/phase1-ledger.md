@@ -104,10 +104,15 @@ leaves byte 0 at `[7:0]` after `VEC_BYTES` bytes, which is the same little-endia
 
 | design | before | after |
 |---|---|---|
-| MNIST `dwn_basys3_top` | 10,460 LUTs (50.29%), no impl | **4,586 (22.05%), WNS +0.292 ns** |
-| MNIST `u_loader` | 6,343 LUTs, 5,228 FF | **468 LUTs, 6,408 FF, 274 SRL** |
-| JSC `dwn_basys3_top` | 2,060 LUTs, WNS +1.753 ns | **1,896 LUTs, WNS +2.014 ns** |
-| JSC `u_loader` | 439 LUTs | **81 LUTs** |
+| MNIST `dwn_basys3_top` | 10,460 LUTs (50.29%), post-synth, never routed | **4,586 (22.05%), 10,746 FF, WNS +0.292 ns** |
+| MNIST `u_loader` | 6,343 LUTs, 5,228 FF (post-synth) | **463 LUTs, 6,404 FF, 274 SRL** |
+| JSC `dwn_basys3_top` | 2,060 LUTs, 865 FF, WNS +1.753 ns | **1,893 LUTs, 864 FF, WNS +2.014 ns** |
+| JSC `u_loader` | 439 LUTs | **77 LUTs** |
+
+⚠️ **Post-route unless marked**, from `utilization_routed.rpt`. The MNIST "before" exists only
+post-synth because that build was interrupted during `opt_design`, so the 10,460 → 4,586 span
+mixes two report stages and slightly overstates the win; the like-for-like post-synth pair is
+10,460 → 4,585. Every JSC row is post-route on both sides.
 
 #### ⚠️ A prediction that was wrong, and the mechanism it missed
 
@@ -142,11 +147,36 @@ and it is the concrete reason the harness is organised by *mechanism* rather tha
 
 `dwn_core` and `dwn_top` are untouched — `uart_loader` is harness, outside `dwn_top` — so **no
 Phase 2 frontier point moves.** The only recorded number affected is `verify_phase1.py`'s
-`board_luts`, updated 2060 → 1896 with `board_ff` 865 → 861.
+`board_luts`, updated 2060 → 1893 with `board_ff` 865 → 864.
 
-⚠️ **Not yet on silicon.** Both bitstreams are built and meet timing; neither has been programmed
-since this change. `verify_phase1.py --with-board` is the gate, and until it runs the JSC row
-above is a synthesis result, not a hardware one.
+#### ✅ Verified on silicon — and the area check caught a reporting error first
+
+`verify_phase1.py --with-board`, JSC, after the loader change:
+
+| | result |
+|---|---|
+| **Gate 1b** | **166,000 / 166,000** |
+| core cycles (II=1) | 166,815 — exact |
+| accuracy float32 / Q3.12 | 73.8361 / 73.8349 — both exact |
+| board LUTs / FF | 1,893 / 864, meets 100 MHz |
+
+The shift-register loader is correct on hardware, not just in simulation.
+
+⚠️ **The run first came back 20/22**, and the cause was this ledger, not the design. `EXPECTED`
+had been filled in from `utilization.rpt` (post-synth, 1896/861) while `build_bitstream.py` parses
+`utilization_routed.rpt` (post-route, 1893/864) — the source every historical figure here,
+including 2058 and 2060, came from. Two builds of the same design were then confirmed byte-
+identical, so nothing was stochastic; one report stage had simply been read for another.
+
+**Worth keeping because the failure mode is general:** the wrong number was within 0.2% of the
+right one. A tolerance check would have passed it and the two stages would now be mixed across the
+document. `verify_phase1.py` demands exact equality precisely so a 3-LUT discrepancy is loud, and
+that is the second time on this branch the strictness has paid for itself.
+
+#### Still not on silicon: MNIST
+
+The MNIST bitstream is built and meets timing but has not been programmed. Its loader runs 1,568
+shift iterations against JSC's 32, so the large-`VEC_BYTES` path remains simulation-only.
 
 ### 2026-08-11 — ⚠️ the testbench was checking three of MNIST's four class-index bits
 

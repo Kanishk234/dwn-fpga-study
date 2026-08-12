@@ -52,13 +52,18 @@ EXPECTED = {
     #   2058  jsc-complete tag, chain argmax + indexed-write loader
     #   2060  argmax tree (+2). Confirmed on hardware -- Gate 1b 166,000/166,000, cycles and
     #         both accuracies unchanged, so the +2 was area only.
-    #   1896  uart_loader byte shift register (-164). The variable part-select write it
-    #         replaced cost 439 LUTs in the loader; a shift register costs 81 and lets Vivado
+    #   1893  uart_loader byte shift register (-167). The variable part-select write it
+    #         replaced cost 439 LUTs in the loader; a shift register costs 77 and lets Vivado
     #         map part of it into SRLs. WNS also improved +1.753 -> +2.014 ns.
+    #
+    # ALL THREE ARE POST-ROUTE, from utilization_routed.rpt, which is what build_bitstream.py
+    # parses and therefore the only source this dict may be fed from. utilization.rpt in the
+    # same directory is POST-SYNTH and reads 1896/861 for the same design -- close enough to
+    # look like the right number and wrong enough to fail this check. Do not mix them.
     #
     # Only dwn_core/dwn_top feed the DSE sweep, and neither moved here -- the loader is harness,
     # outside dwn_top. So no Phase 2 frontier point is affected by this line.
-    'board_luts': 1896, 'board_ff': 861, 'board_bram': 8, 'board_dsp': 0,
+    'board_luts': 1893, 'board_ff': 864, 'board_bram': 8, 'board_dsp': 0,
     'gate1b_agree': 166000, 'gate1b_total': 166000,
     'core_cycles': 166815,
     'acc_float': '73.8361', 'acc_fixed': '73.8349',
