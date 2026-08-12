@@ -295,20 +295,31 @@ Also fixed while in there: `run_config` was calling `gate1()` **without** passin
 and the RTL agreed only by coincidence, and would have diverged the moment anything overrode the
 default — which is exactly what widening does.
 
-#### ⚠️ This revealed that the JSC study has no `linear` encoding data at all
+#### ~~This revealed that the JSC study has no `linear` encoding data at all~~ — ⚠️ overstated, withdrawn
 
-Running the check across JSC's grid, **two configs would widen**: `1x200 linear` and `1x360 linear`,
-whose thresholds span ±8.906 and need 4 integer bits against Q3.12's 3.
+Running the check across JSC's grid, two configs would widen: `1x200 linear` and `1x360 linear`,
+thresholds spanning ±8.906 against Q3.12's 3 integer bits. Both are recorded as `gate1-failed`, and
+they are the only 2 failures in all 54 JSC configs.
 
-Both are recorded in `docs/results/sweep-results.json` as **`gate1-failed`, "emit_encoder.py
-failed"** — and they are the *only* 2 failures in all 54 JSC configs. The `gaussian` pair at the
-same rungs succeeded. So the entire `linear` axis of the JSC one-factor-at-a-time study is missing,
-**and the cause was the fixed Q3.12 word, not anything about the hardware or the encoding.**
+**This was written up as a discovery. It is not one.** `docs/phase2-ledger.md` already records the
+cause and the decision: Q4.11 would represent them at *identical* area (still 16-bit), but the
+encoding axis spread is **0.12 pp against a 0.15 pp noise floor**, so the precision plumbing was
+judged not worth it. Documented failure with a stated reason, not a silent gap.
 
-**Nothing has been re-run and no committed JSC number has changed** — `dse/run.py` skips
-already-done configs, so the two rows stay `gate1-failed` until someone deliberately forces them.
-Doing so is a real decision with a real payoff (it would fill in a missing sweep axis) and it
-belongs to whoever owns the JSC study, not to a side effect of MNIST work. Flagged, not taken.
+**And rebuilding them with `widen_for_checkpoint()` would be actively wrong.** It widens the WORD
+(16 → 17 bits, Q4.12) because it refuses to touch fractional bits. The comparable fix is **Q4.11 —
+16 bits, identical area**. At 17 bits the linear points stop being comparable to the gaussian and
+distributive points at 16, so the encoding axis becomes confounded with word width. That is the
+same defect the MNIST `z=1` vs `z=25` comparison had to be caveated for, and here it would be
+self-inflicted on an axis already known to be inside the noise.
+
+**Decision: not rebuilding.** No committed JSC number changes.
+
+⚠️ **The general lesson for `widen_for_checkpoint()`:** widening is right when the fractional bits
+are load-bearing (MNIST needs all 8 to represent 8-bit pixels exactly, so Q1.8 at 10 bits is the
+only option). It is the wrong lever when an equally exact narrower-fraction format exists at the
+same width, because it silently trades comparability for representability. The function does not
+know the difference — it optimises for exactness, which is the safe default, not the free one.
 
 ### 2026-08-12 — `run.py` and `report.py` too, and the sweep runner caught the `tau` confound itself
 
