@@ -38,20 +38,29 @@ These are not generalisations. They are bugs that JSC's particular shape hides, 
 | # | Defect | Evidence | Why it is dangerous | When | Effort |
 |---|---|---|---|---|---|
 | ~~**B1**~~ ✅ **done 2026-08-11** (`fbc3be8`) | Feature count hardcoded in the core emitter: `input_bits = 16 * cfg['thermometer_bits']` | `rtlgen/emit_core.py:97` | Emits a core with the wrong input width for any non-16-feature model. No error — Gate 1 fails confusingly, one level away from the cause. **`rtlgen/emit_encoder.py:41` and `tb/gen_vectors.py:74` already derive it correctly** (`thresholds.shape[0]`), so this is one file disagreeing with the two beside it | **BEFORE** | 30 min |
-| **R1** | Area model hardcodes the feature count and self-tests at five classes | `dse/area_model.py:39,168,183,222` | Silently wrong predictions for any other dataset — but nothing in the Gate 1 path reads it, so it blocks *predicting* MNIST area, not measuring it | **DURING**, and only if area is predicted before synthesising | 1 h |
-| **R2** | Grid is JSC-shaped throughout — size ladder, `tau` anchors, slugs | `dse/grid.py` | Not a defect in the emitter. It means "run a sweep" is not something a user can do on their own model | **AFTER**, and only if the tool offers sweeps | 2–3 h |
+| **R1** | Area model is JSC-calibrated and self-tests at five classes | `dse/area_model.py:39,48,87,168,183` | `predict()` now *takes* `features` and `num_classes`, so the shape is parameterised — what remains is the `JSC_FEATURES` default and the **calibration constants**, which are the part that is actually wrong for another dataset. Nothing in the Gate 1 path reads it, so it blocks *predicting* MNIST area, not measuring it | **DURING** — and see R3, which decides whether a corrected R1 can be right at all | 1 h |
+| **R2** | Grid is JSC-shaped throughout — size ladder, `tau` anchors, slugs, `NUM_CLASSES = 5` | `dse/grid.py:41,59,95` | ~~Not a defect in the emitter~~ — but as of 2026-08-12 it is **blocking MNIST Phase 2** (`docs/mnist/phase2-ledger.md` M2c). `dse/run.py` resolves a checkpoint *by grid slug*, so no MNIST slug exists and `--all` finds nothing to run | ⬅ **NOW**, promoted from AFTER | 2–3 h |
+| **R3** 🆕 | **There is no live encoder cost model** | `docs/mnist/phase1-ledger.md`, the 2026-08-11 retraction | Two hypotheses have now died: `features × z` comparators (the paper's MNIST config was projected at ~67,000 encoder LUTs and is really far less, because the **learned mapping only builds comparators for bits it picks** — 720 of 2,352 on the board model), and the amortisation explanation for LUTs-per-comparator. **R1 cannot be made correct until one replaces them**, and the tool's area reporting depends on it | **DURING** | 3 synthesis runs |
 
-> **Status note, 2026-08-11.** B1 and B4 landed while this document was being written — see
-> `docs/mnist/phase1-ledger.md`. JSC reproduces exactly after both (12/12, areas 108 / 1,519 /
-> 1,619, plus the two-layer `300-100` checkpoint bit-exact). **F1 is now the only BEFORE item
-> left**, and it remains the fit enabler.
+> **Status note, 2026-08-12.** **Every BEFORE item is done.** B1, B4 and F1 all landed, and the
+> descriptor work went considerably further than B4 described (below). JSC reproduces exactly:
+> 12/12, areas **110 / 1,519 / 1,621** — ⚠️ *not* the 108 / 1,519 / 1,619 this document was written
+> with. The argmax tree costs +2 in the core and +2 in `dwn_top`; the pre-change values are pinned
+> at the `jsc-complete` tag. Plus the two-layer `300-100` checkpoint bit-exact, and 166,000/166,000
+> on silicon.
 
-**Only B1 is genuinely BEFORE.** R1 and R2 sit in `dse/`, which no part of emit → Gate 1 →
-synthesise touches, so neither can block or corrupt the MNIST bring-up. An earlier draft of this
-document marked all three BEFORE; that was wrong.
+> ⚠️ **B4 was narrower than the defect it named, and this is the useful lesson.** It said "add a
+> dataset descriptor." The descriptor was added — and **nothing imported it** for a month, while
+> every consumer kept a private copy of JSC's constants. The refactor of 2026-08-12 found **seven**
+> sites of the same shape, *a dataset constant sitting where a derived value belongs*, and the fix
+> that makes it stop is `datasets.identify(ck)` plus removing module-level constants entirely, so
+> a missing width is a `TypeError` at the call site rather than a plausible wrong number reaching
+> the FPGA. **Adding the right data structure is not the same as making anything read it**, and
+> only the second half stops the bug recurring.
 
-**B1 deserves fixing on `main` regardless of whether the tool ever happens.** It is a live
-correctness bug in a shipped emitter.
+**R1 and R2 sit in `dse/`**, which no part of emit → Gate 1 → synthesise touches, so neither can
+corrupt a bring-up. That is still true — but R2 now blocks the MNIST *sweep*, which is a different
+claim from blocking the port, and this document previously conflated them.
 
 ---
 
@@ -61,17 +70,22 @@ Real work, no current failure. Ordered by whether MNIST is blocked without them.
 
 | # | Gap | Evidence | When | Effort |
 |---|---|---|---|---|
-| **F1** | **Configurable precision.** `Q3.12` is a module-level constant; `HardwareConfig` carries `word_bits`/`frac_bits` but nothing passes them, and `config.py` *asserts* they equal the constants | `exporter/extract.py:118-119`, `rtlgen/config.py:186-187` | **BEFORE** | 1 day incl. verification |
+| ~~**F1**~~ ✅ **done 2026-08-11** | **Configurable precision.** `Q3.12` was a module-level constant | ~~`exporter/extract.py:118-119`~~ — **`extract.py` now has no module constants at all**; `quantize`, `quantize_thresholds`, `saturation_is_lossless` and `fits_in_word` take widths as **required** arguments. `HardwareConfig.from_dataset()` (`rtlgen/config.py:128`) resolves them from the descriptor. The surviving assert (`:210`) checks the *default instance* against `datasets.JSC` — a regression guard, not a constraint | **BEFORE** | 1 day incl. verification |
 | ~~**B4**~~ ✅ **done 2026-08-11** (`9815062`) | **A dataset descriptor** so dimensions are data, not code | ~~none exists~~ `datasets/__init__.py`, frozen `Dataset` per dataset with `check_checkpoint()`. Its first act was to catch a real bug: `record_bytes()` used `word_bits // 8`, which gives one byte for an 11-bit word | **BEFORE** | half day |
-| **B2** | **Board record format fixed at 33 bytes** (32 feature + 1 label) | `harness/uart_loader.v:14,64-65`, `scripts/host.py:58` | **DURING** — only if the board path is in scope | 1 day |
-| **B3** | **Vector store sized for JSC** — `DATA_W=256`, `DEPTH=1024` | `harness/vector_store.v:24-27` | **DURING** — same condition | half day |
-| **P7** | **Default checkpoint paths name a JSC file** in four scripts | `run_gate1.py:27`, `run_tb.py:25`, `host.py:48`, `verify_phase1.py:118` | **AFTER** — they are defaults with overrides, harmless until packaging | 1 h |
+| ~~**B2**~~ ✅ **done 2026-08-11** | **Board record format fixed at 33 bytes** | Now derived. `record_bytes()` rounds up rather than flooring, and `uart_loader.v` shifts bytes into the record instead of indexing a 6-bit counter that silently capped at 63. **Verified on silicon 2026-08-12** at 1,569 bytes/record | **DURING** — and per Q1, **not tool work**; this was the demo | 1 day |
+| ~~**B3**~~ ✅ **done 2026-08-11** | **Vector store sized for JSC** — `DATA_W=256`, `DEPTH=1024` | Dimensions come from the model; `--depth` is the one argument a checkpoint genuinely cannot supply, being a property of the bitstream | **DURING** — same, not tool work | half day |
+| **P7** | **Default checkpoint paths name a JSC file** in four scripts | `run_gate1.py:27`, `run_tb.py:25`, `host.py:50`, `verify_phase1.py:145` — ⚠️ **also `experiments/make_test_checkpoint.py:51`**, which is five, not four | **AFTER** — they are defaults with overrides, harmless until packaging | 1 h |
 
-**F1 is the one that decides whether MNIST fits at all.** MNIST pixels are natively 8-bit
-integers; a 16-bit signed word with twelve fractional bits is roughly double what is needed, and
-`REPORT.md` §7 measured that the encoder is where the area goes. Its own finding — an 11-bit word
-gives a 5.80× smaller encoder for 0.142 pp on JSC — is the reason this is a *fit enabler* and not
-just tidiness.
+**F1 was the one that decided whether MNIST fits at all**, and it delivered: MNIST runs at
+**Q0.8, a 9-bit word**, and the format turned out to be *lossless on the full test set* —
+0 of 10,000 predictions differ from float32 despite 56,835 values saturating, because 8-bit pixels
+have only 256 distinct values. `REPORT.md` §7's JSC finding (11-bit gives a 5.80× smaller encoder
+for 0.142 pp) generalised, and then some.
+
+⚠️ **And it moved the headline constraint.** Phase 1 projected the paper's `2x[1000,500]` at
+**102.5% of the device at 16-bit and 38.0% at 11-bit** — so **word width, not `z`, is what decides
+whether a model fits**. That is the opposite of what this document assumed when it called
+`784 × z` "the entire area problem" (§3), and the correction is R3's.
 
 **On `LABEL_W`:** the harness already parameterises it (`benchmark_fsm.v:35`,
 `dwn_basys3_top.v:47`, default 3). MNIST's ten classes need 4 bits, which is a parameter change
@@ -83,18 +97,23 @@ rather than a rewrite. Good news, and worth recording so nobody re-audits it.
 
 These cannot be decided by inspection. Attempting them earlier means guessing.
 
-| Question | Why it needs a second dataset |
-|---|---|
-| Does the generator emit correct RTL at 784 features and 10 classes? | Every emitted design so far is 16 features / 5 classes. Gate 1 on an MNIST model is the actual test of generality — the whole point of the exercise |
-| How many thermometer thresholds per pixel? | `784 × z` is the entire area problem. JSC used 200; MNIST almost certainly cannot afford it. Only measurement says what it can |
-| Are MNIST pixels standard-scaled or min-max? | Decides how many integer bits the word needs — the input to F1's derivation logic |
-| Does the upstream MNIST recipe binarise differently? | `docs/checkpoint-format.md` is verified against **JSC checkpoints only**. A mismatch produces a valid-looking wrong export, which is the expensive failure mode |
-| Does the paper's `1000, 500` fit at any precision? | A negative answer is a publishable result, not a failure (`mnist/plan.md` §3) |
+**Five of six are now settled**, all by MNIST Phase 1 (2026-08-11/12).
 
-**The most valuable output of MNIST is a list of bugs**, not an accuracy number. Phase 2 and 3
-found four JSC-shaped assumptions nobody had noticed by inspection — the `np.packbits` shift at
-n<3, the `tau` schedule, the encoder-narrowing fit, the constant selection ratio. A second dataset
-is how the next one gets found.
+| Question | Answer |
+|---|---|
+| ~~Does the generator emit correct RTL at 784 features and 10 classes?~~ | ✅ **Yes.** Gate 1 bit-exact, then **Gate 1b 10,000/10,000 on silicon**. This is the claim the whole exercise existed to test |
+| ~~How many thermometer thresholds per pixel?~~ | ✅ **z=3**, which is what upstream uses. And the premise was wrong: `784 × z` is *not* the area problem, because the learned mapping builds comparators only for bits it selects (720 of 2,352). **Word width is** — see F1 |
+| ~~Are MNIST pixels standard-scaled or min-max?~~ | ✅ **min-max, [0,1]**, via `transforms.ToTensor()`. No scaler in the pipeline |
+| ~~Does the upstream MNIST recipe binarise differently?~~ | ✅ **No.** Same `DistributiveThermometer`, `feature_wise=True` |
+| ~~Does the paper's `1000, 500` fit at any precision?~~ | ✅ **Projected yes at 11-bit (38.0%), over at 16-bit (102.5%).** ⚠️ Projected, never built — and worth building, because it is the only remaining "does it fit" question |
+| **Why is LUTs-per-comparator lower on real data than synthetic?** | ⬜ **Open** — the one that did not survive. Hypothesis: what matters is threshold *values*, not counts, because real MNIST pixels are mostly zero so quantile thresholds cluster near zero and collapse to narrow compares. **This is R3** |
+
+**The most valuable output of MNIST is a list of bugs**, not an accuracy number — and it delivered.
+Beyond the four JSC-shaped assumptions Phase 2 and 3 found, MNIST produced **seven more** in one
+refactor (§1), three silent-cap bugs (`uart_loader`'s 6-bit counter, `host.py`'s byte alignment, a
+testbench checking three of four class-index bits), a linear `argmax` chain that cost 20 MHz, and
+two dead cost models. **Not one of them was findable by inspection.** That is the argument for P5
+(CI on a second dataset) stated as evidence rather than as principle.
 
 ---
 
@@ -105,9 +124,9 @@ This is the strongest differentiator over rolling your own, and most of it alrea
 | # | Item | State | When |
 |---|---|---|---|
 | **V1** | **Ship Gate 1 with the tool** | `tb/dwn_core_tb.v` already self-checks and prints `PASS (bit-exact on every vector)` | **ANYTIME** (decision), **AFTER** (packaging) |
-| **V2** | **Vectors without a dataset** — generate random inputs, run both golden model and RTL | not built. `tb/gen_vectors.py` assumes a saved `_testvectors.npz` | **AFTER** |
-| **V3** | **Simulator independence** — Verilator or Icarus alongside `xsim` | `run_gate1.py` hardcodes Vivado's `xsim` (`:74,115`), but it is isolated behind `find_vivado_bin()`/`run_xsim()`, so it is a backend swap | **AFTER** |
-| **V4** | **A precision-choice procedure**, not a constant | `exporter/extract.py` already has `fits_in_word()` and `saturation_is_lossless()`; `experiments/analyze_precision.py` measures the requirement | **DURING** — MNIST is its first real exercise |
+| **V2** | **Vectors without a dataset** — generate random inputs, run both golden model and RTL | **half built.** `experiments/make_test_checkpoint.py` synthesizes a checkpoint *and* its `_testvectors.npz` from a `datasets/` descriptor, and it proved itself: **Gate 1 passed at MNIST's shape — 784 features, 10 classes, 2 layers — before any MNIST training existed.** What is missing is the other direction: `tb/gen_vectors.py:97` still requires a saved npz beside a *real* checkpoint, so a user with their own model and no test set cannot verify it | **AFTER** |
+| **V3** | **Simulator independence** — Verilator or Icarus alongside `xsim` | Unchanged. `run_gate1.py` hardcodes Vivado's `xsim` (`:74,115,132`), but behind `find_vivado_bin()`/`run_xsim()`, so it is a backend swap. ⚠️ **Now the largest single barrier to anyone using the tool** — every other Vivado dependency is the user's own synthesis, which they were doing anyway; this one makes *verification* need a Vivado licence | **AFTER** |
+| ~~**V4**~~ ✅ **exercised 2026-08-12** | **A precision-choice procedure**, not a constant | Worked, and the contract below held exactly. MNIST derived **Q0.8**; `saturation_is_lossless()` said the format was safe and the **full 10,000-sample test set confirmed it — 0 divergences**. Note which half did the work: the *derivation* gave the floor, the *data* upgraded it to measured | **DURING** — done |
 
 **On V1 — ship it.** A generator whose output nobody can check is worth much less, and this
 project has the evidence: the emitter's own read-back check reported 20/20 correct while the design
@@ -148,6 +167,7 @@ reason: maintaining a fork while the emitters move means merging every change tw
 | **P4** | README, worked examples | `rtl/example-model-1x50/` is already a good artifact to build on | 1–2 days |
 | **P5** | CI on a second dataset | The claim is generality; it needs a second dataset to be a claim at all | 2–3 days |
 | **P6** | Decide the upstream-version policy | Currently one pinned commit (`9f887a0`). Drift fails silently — `__dummy_mapping` has the same shape and dtype as a real mapping | design call |
+| **P8** 🆕 | **Checkpoints are enormous, and it is almost all dead weight** | A learnable mapping stores a `(features × z) × (width × n)` float32 matrix — **17 MB** for MNIST `1x300`, **113 MB** for `1x2000`, **471 MB** for `1x1000 z=25`. `extract.py:60` does `weights.argmax(axis=0)`, so the exporter uses **~7 KB** of that 471 MB. Consequences: `dwn2rtl build model.pt` must stream rather than `torch.load` whole where it can, anything over 100 MB cannot go in git (so P5's CI fixtures must be synthesized, not committed), and "email me your checkpoint" is not a support channel. **`make_test_checkpoint.py` already generates fixtures of any shape**, which is the answer for CI | half day |
 
 ### 5.1 Emit balanced reductions, always
 
@@ -264,8 +284,14 @@ Recorded so they are not silently reconsidered:
 - **Adopting the encoder narrowing for JSC.** `REPORT.md` §7 argues against it — the binding
   constraint on this device is timing, and the encoder is not on the critical path. F1 makes it
   *possible*; it should not become the default.
-- **Learnable Reduction.** Reopened in `docs/phase2-ledger.md` at ~35% of the headline design, but
-  never explored enough to belong in a tool. It is a research axis, not a packaging task.
+- **Learnable Reduction.** ~~Never explored enough to belong in a tool.~~ **Now explored, and the
+  answer is still no** — `docs/mnist/reduction-ledger.md`, 35 trained configurations. A learned
+  taper genuinely works (**+3.69 pp** over a plain narrow layer at the same group size) and is
+  **dominated anyway**: `1x500` reaches 97.70% with 500 nodes and the identical 500-bit popcount
+  that the best taper spends 2,800 nodes to reach 97.43% with. ⚠️ One exception, worth a line in
+  the tool's docs rather than a feature: a **mild** 2:1 taper (`2x[2000,1000]`) is the best model
+  in the study with half the adder tree. So the tool should keep emitting `GroupSum` and say
+  nothing about pyramids.
 - **Reorganising the JSC artifacts.** `mnist/plan.md` §1.4 — `REPORT.md` and the `jsc-complete`
   tag reference current paths.
 
@@ -273,29 +299,51 @@ Recorded so they are not silently reconsidered:
 
 ## 8. Suggested order
 
+**Rewritten 2026-08-12. Everything BEFORE and DURING is done; the remaining work is all AFTER,
+plus one item that jumped the queue.**
+
 ```
-BEFORE    B1  fix the hardcoded feature count          ← ✅ done 2026-08-11 (fbc3be8)
-          B4  dataset descriptors                      ← ✅ done 2026-08-11 (9815062)
-          Q1  decide generator-only vs board flow      ← ⬅ OPEN, free, and removes work
-          F1  configurable precision                   ← ⬅ NEXT; the fit enabler
-                    ↓  JSC must reproduce exactly after each (mnist-plan §1.2)
-DURING    M1a-M1e, V4                                  ← MNIST finds what inspection cannot
-          B2, B3 -- not TOOL work; still needed if the
-                    MNIST board demo goes ahead (open)
-AFTER     V2, V3   self-contained verification
-          P1–P6    fork, package, licence, CI
-          R1, R2   sweep tooling, if the tool offers sweeps at all
+DONE      B1  hardcoded feature count            ✅ 2026-08-11 (fbc3be8)
+          B4  dataset descriptors                ✅ 2026-08-11 (9815062)
+              ...and actually IMPORTED           ✅ 2026-08-12 -- the half that mattered
+          F1  configurable precision             ✅ 2026-08-11 -- MNIST runs at Q0.8
+          B2  board record format                ✅ 2026-08-11, on silicon 2026-08-12
+          B3  vector store dimensions            ✅ 2026-08-11
+          Q1  generator-only                     ✅ RESOLVED -- removed B2/B3 from TOOL scope
+          Q2  Gate 1 ships                       ✅ RESOLVED
+          V4  precision procedure                ✅ exercised, and the contract held
+          5.1 balanced argmax tree               ✅ 2026-08-11 -- 87.5 -> 108.0 MHz
+                    ↓  JSC reproduced exactly after every one (12/12, 110/1,519/1,621)
+
+NOW       R2  make dse/ dataset-aware            ⬅ promoted from AFTER. MNIST Phase 2 (M2c)
+                                                    cannot run without it, and it is the only
+                                                    remaining item on BOTH the tool's path and
+                                                    the study's
+          R3  find an encoder cost model         ⬅ 3 synthesis runs. R1 cannot be made correct
+                                                    before it, and the tool reports area
+          R1  fix area_model's calibration       ⬅ after R3, not before
+
+AFTER     V2, V3   self-contained verification   ← V3 is the real barrier: verification
+                                                    currently needs a Vivado licence
+          P1-P8    fork, package, licence, CI, checkpoint size
+          P7       stop defaulting to a JSC path (five sites, not four)
+
+OPEN      Q3  upstream-version policy
+          Q4  name, and where it lives
 ```
 
-**Rough total, excluding MNIST itself:** two to three days before, one to two weeks after —
-consistent with `docs/reusable-generator.md` §4's estimate, and still "almost none of it RTL".
+**Rough total:** ~half a day for R1–R3, one to two weeks for AFTER — consistent with
+`docs/reusable-generator.md` §4, and still "almost none of it RTL". The estimate did not move;
+what moved is that the *before* column is empty.
 
 ---
 
 ## 9. Pointers
 
 - `docs/mnist/plan.md` — ground rules for the branch, and the JSC-must-not-break gate
-- `docs/mnist/phase1-ledger.md` — the dated log for the port
+- `docs/mnist/phase1-ledger.md` — the dated log for the port, and where every ✅ above is evidenced
+- `docs/mnist/phase2-ledger.md` — the sweep, and M2c, which is R2 under another name
+- `docs/mnist/reduction-ledger.md` — why Learnable Reduction stays out of scope (§7)
 - `docs/reusable-generator.md` — whether to build the tool at all, and how to split it off
 - `REPORT.md` §7 — the precision measurement F1 exists to expose
 - `docs/checkpoint-format.md` — what the exporter reads, verified against JSC only (M4)
