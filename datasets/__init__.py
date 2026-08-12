@@ -36,6 +36,13 @@ class Dataset:
     word_bits: int = 16
     frac_bits: int = 12
 
+    # How the canonical test split is taken from the fetched data, for scripts/dump_testset.py.
+    # 'tail:N' = the last N rows, which is the standard split for datasets published in
+    # train-then-test order. Empty means the split is not reproducible from the raw data alone
+    # (e.g. a seeded random split done in a training notebook) -- the dump script then refuses
+    # rather than inventing a different split and calling it the test set.
+    test_split: str = ''
+
     # Sweep axes, as data. dse/ walks these; it does not define them.
     size_ladder: tuple = ()
     z_values: tuple = ()
@@ -114,6 +121,9 @@ MNIST = Dataset(
     classes=10,
     openml_name='mnist_784',
     scaling='minmax',
+    # mnist_784 is published in train-then-test order, so the last 10,000 rows are the canonical
+    # test split every published MNIST number is measured on. Do NOT shuffle before slicing.
+    test_split='tail:10000',
     # Q0.8: one sign bit, eight fractional bits, range [-1, 1). Chosen because it represents
     # min-max scaled 8-bit pixels EXACTLY -- there are only 256 distinct input values, so nine
     # bits loses nothing, unlike on JSC where narrowing truncated continuous features and cost
