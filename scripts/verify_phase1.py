@@ -47,7 +47,10 @@ EXPECTED = {
     'core_luts': 110, 'core_ff': 73,
     'enc_luts': 1519, 'enc_ff': 0,
     'top_luts': 1621, 'top_ff': 269,
-    'board_luts': 2058, 'board_ff': 865, 'board_bram': 8, 'board_dsp': 0,
+    # 2058 -> 2060 for the same reason as core_luts/top_luts above: the argmax tree.
+    # Confirmed on hardware 2026-08-11 -- Gate 1b still 166,000/166,000, cycles and both
+    # accuracies unchanged, so the +2 is area only.
+    'board_luts': 2060, 'board_ff': 865, 'board_bram': 8, 'board_dsp': 0,
     'gate1b_agree': 166000, 'gate1b_total': 166000,
     'core_cycles': 166815,
     'acc_float': '73.8361', 'acc_fixed': '73.8349',
