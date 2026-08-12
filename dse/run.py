@@ -91,11 +91,25 @@ def resolve_checkpoint(cfg):
         p = os.path.join(ARTIFACTS, alias)
         if os.path.exists(p):
             return p
-    # Both spellings, because the two grids disagree: JSC's notebook writes bare `<slug>_...`
-    # and MNIST's writes `mnist_<slug>_...`. The prefix is a dataset fact (datasets/), not a
-    # rule to normalise by renaming trained checkpoints -- that would break recorded numbers.
-    names = [f'{DS.slug_prefix}{slug}_checkpoint.pt']
+    # Three spellings, most specific first.
+    #
+    # 1. TAU-SUFFIXED, e.g. `mnist_n6_z3_distributive_w300_tau1p678_checkpoint.pt`. When a
+    #    schedule changes, a config is retrained at the new tau and the suffix keeps the new
+    #    file beside the old one instead of overwriting a checkpoint other numbers refer to.
+    #    The suffix is CONSTRUCTED from the tau this grid wants, not globbed -- so it can only
+    #    ever match the right one, and a directory holding both tau=3.3333 and tau=1.678 for
+    #    the same architecture is unambiguous. This is why it is tried first: a bare-slug file
+    #    may well exist and be the superseded model.
+    # 2. PREFIXED, `mnist_<slug>_...` -- MNIST's notebooks write the dataset name; JSC's do not.
+    # 3. BARE, `<slug>_...` -- JSC's convention.
+    #
+    # None of this normalises by renaming: renaming a trained checkpoint breaks every recorded
+    # number that refers to it, which is the same reason ALIASES exists above.
+    tau_tag = f'{cfg.model.tau:.3f}'.replace('.', 'p')
+    names = [f'{DS.slug_prefix}{slug}_tau{tau_tag}_checkpoint.pt',
+             f'{DS.slug_prefix}{slug}_checkpoint.pt']
     if DS.slug_prefix:
+        names.append(f'{slug}_tau{tau_tag}_checkpoint.pt')
         names.append(f'{slug}_checkpoint.pt')
     for root in (SWEEPS, ARTIFACTS):
         for nm in names:
