@@ -48,6 +48,11 @@ DEFAULT_CHECKPOINT = os.path.join(
     'training', 'artifacts', 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt')
 
 # Must match harness/vector_store.v's DEPTH. The device cannot hold more than this per batch.
+# The JSC bitstream's vector-store depth. NOT a constant of the system: build_bitstream.py
+# derives DEPTH from the model and the block-RAM budget, and a 784-feature record is ~48x wider
+# than JSC's, so an MNIST build holds far fewer. The host must be told what the bitstream it is
+# talking to was built with -- it cannot see it -- hence --depth. Loading more records than the
+# store holds silently wraps and every result after the wrap is wrong.
 DEVICE_DEPTH = 1024
 
 
@@ -231,7 +236,7 @@ def list_candidate_ports():
     return sorted(ports, key=rank)
 
 
-def autodetect(baud, timeout=1.0, verbose=True):
+def autodetect(baud, timeout=1.0, verbose=True, depth=DEVICE_DEPTH):
     """Find the board by pinging candidates. Returns (Board, port_info).
 
     Pinging is the detection: a port with the right USB IDs may still be the JTAG interface, or
@@ -249,7 +254,7 @@ def autodetect(baud, timeout=1.0, verbose=True):
         if verbose:
             print(f'  trying {p.device:8s} {p.description}')
         try:
-            board = Board(p.device, baud, timeout=timeout)
+            board = Board(p.device, baud, timeout=timeout, depth=depth)
         except SystemExit:
             raise
         except Exception as e:
@@ -275,7 +280,7 @@ def autodetect(baud, timeout=1.0, verbose=True):
 
 
 class Board:
-    def __init__(self, port, baud=115200, timeout=5.0):
+    def __init__(self, port, baud=115200, timeout=5.0, depth=DEVICE_DEPTH):
         serial = _serial()
         try:
             self.ser = serial.Serial(port, baud, timeout=timeout)
@@ -285,6 +290,7 @@ class Board:
                 '  Run with --list-ports to see what is actually present, or omit --port\n'
                 '  entirely to auto-detect.')
         self.port = port
+        self.depth = depth
         self.baud = baud
 
     def close(self):
@@ -297,8 +303,10 @@ class Board:
 
     def load_bytes(self, blob, n):
         """Load n pre-packed records. One write for the whole batch."""
-        if n > DEVICE_DEPTH:
-            raise ValueError(f'{n} records exceeds the device store ({DEVICE_DEPTH})')
+        if n > self.depth:
+            raise ValueError(f'{n} records exceeds the device store ({self.depth}). The '
+                             f'bitstream was built with a smaller DEPTH than the host assumes; '
+                             f'pass --depth to match it.')
         # Header and payload in a single write: two writes per batch means two chances for the
         # driver to sit on a partial buffer waiting out the latency timer.
         self.ser.write(b'L' + struct.pack('<H', n) + blob)
@@ -429,10 +437,12 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     npz = np.load(path)
     x_raw, y_true, y_float = npz['x_raw'], npz['y'], npz['pred']
     print(f'  test set : {os.path.basename(path)} ({x_raw.shape[0]} samples)')
+    print(f"  batching : {batch} vectors per load (the store's DEPTH)")
     if not is_full:
-        print('  WARNING: this is the 1000-sample testbench file, not the full test set.')
-        print('           Gate 1b requires all 166k. Run training/dump_testset_kaggle.ipynb')
-        print('           and put the result in training/artifacts/.')
+        print(f'  WARNING: this is the {x_raw.shape[0]}-sample testbench file, not a full test '
+              'set.')
+        print("           Gate 1b's claim is about the WHOLE test set, so this run does not")
+        print('           support it. Dump the full set (see training/) and rerun.')
     if limit:
         x_raw, y_true, y_float = x_raw[:limit], y_true[:limit], y_float[:limit]
         print(f'  --limit  : first {len(x_raw)} only -- a smoke test, not Gate 1b')
@@ -540,6 +550,9 @@ def main():
     ap.add_argument('--list-ports', action='store_true', help='show serial ports and exit')
     ap.add_argument('--ping', action='store_true')
     ap.add_argument('--gate1b', action='store_true')
+    ap.add_argument('--depth', type=int, default=DEVICE_DEPTH,
+                    help='vector-store DEPTH the bitstream was built with (default '
+                         '%(default)s, which is the JSC build). build_bitstream.py prints it.')
     ap.add_argument('--limit', type=int, help='only run the first N samples')
     ap.add_argument('--set-latency', type=int, metavar='MS',
                     help='set the FTDI latency timer (needs admin + a replug). 1 is ideal.')
@@ -573,7 +586,7 @@ def main():
         return selftest(ckpt)
 
     if args.port:
-        board = Board(args.port, args.baud)
+        board = Board(args.port, args.baud, depth=args.depth)
         if not board.ping():
             board.close()
             raise SystemExit(
@@ -583,7 +596,7 @@ def main():
         print(f'ping OK on {args.port} at {args.baud} baud')
     else:
         print(f'auto-detecting board at {args.baud} baud...')
-        board, info = autodetect(args.baud)
+        board, info = autodetect(args.baud, depth=args.depth)
         print(f'ping OK on {info.device} ({info.description}) at {args.baud} baud')
 
     lat = ftdi_latency(board.port)
@@ -598,7 +611,7 @@ def main():
     try:
         if args.gate1b:
             print('\n=== Gate 1b ===')
-            return gate1b(board, ckpt, limit=args.limit)
+            return gate1b(board, ckpt, batch=args.depth, limit=args.limit)
         return 0
     finally:
         board.close()
