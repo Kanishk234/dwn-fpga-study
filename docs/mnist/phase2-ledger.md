@@ -20,8 +20,8 @@ conclusions this way and every one was caught by measuring at a second point.
 | M2a | Machine parity — prove this box reproduces Phase 1 | ⬜ **do this first, before anything else** |
 | M2·0 | **Noise floor** — run `mnist_noise_floor_kaggle.ipynb` | 🟡 notebook built, needs a Kaggle GPU session. Not strictly blocking, but it decides whether several reduction-study findings survive |
 | M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally** |
-| M2c | Make `dse/` dataset-aware (it is JSC-shaped today) | ⬜ blocking; see §3 |
-| M2d | Fix the two known-wrong constants in `dse/area_model.py` | ⬜ blocking for any *prediction*, not for measurement |
+| M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
+| M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
 | M2e | Gate 1 across the grid | ⬜ |
 | M2f | Synthesis + place-and-route sweep | ⬜ the long pole |
 | M2g | Report, frontier, snapshot | ⬜ |
@@ -143,10 +143,14 @@ mistake to prevent.
 
 ---
 
-## 3. `dse/` is JSC-shaped and must be generalised first
+## 3. ~~`dse/` is JSC-shaped and must be generalised first~~ ✅ done 2026-08-12
 
-This is the largest known work item and it is not optional — `dse/` does not import `datasets` at
-all, so every dataset fact in it is a private copy of JSC's.
+**Kept for the record; the work is done.** `dse/` now imports `datasets` and JSC is verified
+byte-identical. What follows is the survey that scoped it, and §3.1 is still live — the area
+model is worse than this section estimated. See the log.
+
+Originally: `dse/` did not import `datasets` at all, so every dataset fact in it was a private
+copy of JSC's.
 
 | file | what is JSC-specific |
 |---|---|
@@ -244,11 +248,12 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 | Question | Status |
 |---|---|
 | ~~Does the `tau` correction change the frontier?~~ | ✅ **Closed 2026-08-11, before Phase 2 started** — and yes, it changes the ladder's *shape*, not just its offset. Corrected grid trained (35 configs), analysis in `docs/mnist/reduction-ledger.md`. **Consequence for Phase 2: sweep the `_tau*` checkpoints, not the baselines.** §1.3 |
-| Does `dse/` come under the dataset-agnostic contract? | ⬜ **Open, and blocking M2c.** See §3 |
+| ~~Does `dse/` come under the dataset-agnostic contract?~~ | ✅ **Closed 2026-08-12: yes, option 1.** JSC verified byte-identical |
 | **No MNIST noise floor exists** ⚠️ | 🟡 **Notebook built, not yet run** — `training/mnist_noise_floor_kaggle.ipynb`, 16 runs (4 configs × 4 seeds), ~2 h on a Kaggle GPU. Until it lands, `2x[2000,1000]`'s +0.06 pp over `1x2000` and the −0.13 / −0.27 pp taper deltas are **unresolved, not small**. Deliberately four *widths*, since JSC took its 0.15 pp from one config and applied it everywhere |
 | Does the paper's `2x[1000,500]` fit at any precision? | ⬜ Open. Phase 1 projected yes at 11-bit (38.0% of device), never built. ⚠️ Also **97.93% against `1x1000`'s 97.97** — 50% more nodes for nothing, so it is a fit question, not a frontier one |
 | Does `2x[2000,1000]` fit? | ⬜ Open, and **the most interesting single build in Phase 2.** Best model in the study at **98.32%**, the only taper on the projected frontier, with a 2× smaller adder tree than `1x2000` — but 3,000 nodes against `1x300`'s 300, projected ~4,620 LUTs. Whether it fits at all is the first question |
-| Why is LUTs-per-comparator lower on real data than synthetic? | ⬜ Open, hypothesis untested. §3.1 |
+| ~~Why is LUTs-per-comparator lower on real data than synthetic?~~ | ✅ **Closed 2026-08-12: two mechanisms, previously conflated.** Within a dataset it is logic sharing (falls monotonically with comparators-per-feature, 3 points); between datasets it is threshold values. See the log |
+| Should `word_bits` be stored or derived per config? | ⬜ **Open, and newly urgent.** `z=25` needs Q1.8 where every other MNIST config needs Q0.8, so the descriptor's word width is a default, not an invariant. `required_int_bits()` derives the floor exactly. Decide before sweeping many z |
 | Is 5 Mbaud a ceiling for a 1,569-byte record? | ⬜ Open, deliberately not measured. Phase 1 §6 — the I/O wall is 243,271×, so a faster link changes no reported number. Revisit only if a config makes a full pass painful |
 | Does a corrected-`tau` model reproduce on silicon? | ⬜ Open. The board currently holds the **confounded** `1x300` (96.14%). Gate 1b's bit-exactness is unaffected by `tau`, but the hardware demo is not the best available model |
 
@@ -256,4 +261,113 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 
 ## Log
 
-*(empty — Phase 2 has not started. Add a dated entry per work session, newest first.)*
+### 2026-08-12 — M2c done: `dse/` is dataset-aware. M2d is worse than it looked.
+
+**`dse/grid.py` and `dse/area_model.py` now read `datasets/`.** Option 1 from §3 — `dse/` is under
+the dataset-agnostic contract. `python dse/grid.py --dataset mnist` builds a 29-config grid; the
+default is still JSC.
+
+Moved from module constants into the descriptor: `classes`, the size ladder, z values, base `n`
+and encoding, the `tau` schedule, the training recipe, OFAT rungs, Group B rungs, corners, and the
+encoder calibration.
+
+**JSC is byte-identical.** `--json` training set unchanged across all 40 runs, `--list` unchanged
+across all 54 configs, `rtlgen/config.py` self-test still passes. Two things nearly broke it and
+are worth naming:
+
+- `tau_for` moved to `Dataset.tau_for` and had to reproduce four-anchor geometric interpolation
+  exactly — verified over every width 5–3000, zero mismatches. The descriptor also had to express
+  MNIST's *one* anchor plus a borrowed exponent, which four-anchor interpolation cannot.
+- The Group B clock-variant gate reads `ofat_rungs[-1]` (360), **not** `group_b_rungs[-1]` (1600).
+  Substituting the wrong one moved every clock variant to a different width. Caught by the diff,
+  which is the only reason the baseline was captured first.
+
+`tau_basis` is a new descriptor field because JSC feeds `tau_for(sum(layers))` while the
+physically motivated width is the **final** layer — GroupSum's logit range is
+`(final / classes) / tau`. JSC keeps `'total'` for reproducibility with a comment saying it is
+preserved, not endorsed; MNIST uses `'final'`. They differ only for multi-layer configs.
+
+#### ⚠️ The MNIST area model is not usable, and the cause is not the constant I set out to fix
+
+`predict_comparators` is calibrated on **one** JSC configuration and does not transfer:
+
+| config | predicted | measured | error |
+|---|---|---|---|
+| JSC `1x50 z=200` (the calibration point) | 224 | 202 | **+10.9%** |
+| MNIST `1x1000 z=1` | 666 | 431 | **+54.5%** |
+| MNIST `1x1000 z=3` | 1,496 | 720 | **+107.8%** |
+| MNIST `1x1000 z=25` | 3,364 | 3,400 | −1.1% |
+
+It is accurate only where the encoder saturates (z=25: 19,600 bits available against 6,000 slots).
+At the low `z` that matters most for MNIST — z=1–3, the cheap end the reduction study says is
+nearly free — it is wrong by a factor of two. `selection_fraction` was fitted deep in a regime
+MNIST does not occupy.
+
+**The `LUT_PER_COMPARATOR_BIT` constant is now per-dataset and is measured, but it cannot rescue
+this**, because the error is in the comparator count it multiplies.
+
+| | comparators | comps/feature | LUT/bit | LUT/comparator |
+|---|---|---|---|---|
+| JSC `1x50 z=200` | 202 | 12.62 | 0.4700 | 7.52 |
+| MNIST `1x1000 z=1` | 431 | 0.55 | 0.2181 | 1.96 |
+| MNIST `1x1000 z=3` | 720 | 0.92 | 0.1417 | 1.27 |
+| MNIST `1x1000 z=25` | 3,400 | 4.34 | 0.0863 | 0.86 |
+
+**This resolves the open question about cost-per-comparator — as two mechanisms, not one.** Within
+MNIST, cost per comparator falls monotonically as comparators-per-feature rises: logic sharing
+between comparisons against different constants on the *same* input word. That is the
+"amortisation" idea, and it survives on three points. It does **not** explain the gap *between*
+datasets — JSC has by far the most comparators per feature (12.62) and is still the most expensive
+per bit — which leaves threshold *values* as the between-dataset mechanism, as hypothesised.
+Previously these two were conflated into a single claim, which is why one measurement appeared to
+falsify it.
+
+⚠️ **A z-dependent comparator model is the real fix and is not done.** Until it is, no MNIST area
+*projection* should be quoted. This does **not** block the sweep: `should_synthesize` only skips
+configs predicted far too large, every MNIST config is predicted to fit, so nothing is filtered and
+no measurement depends on the prediction.
+
+#### The JSC self-test was already failing, before any of this
+
+`python dse/area_model.py` reports **FAIL** at 10.9% on the `1x50` encoder, and does so identically
+at the commit before the descriptor refactor — verified by running the old file. It also compares
+against a stale board number (2,058; now 1,893). Pre-existing, not caused here, and still open.
+
+### 2026-08-12 — the first two MNIST sweep points, and z=1 is as cheap as the study hoped
+
+`1x1000` at both ends of the z axis, Gate 1 bit-exact, place-and-routed:
+
+| | z=1 | z=25 | Δ |
+|---|---|---|---|
+| accuracy | 97.91% | 98.23% | +0.32 pp |
+| `dwn_core` | 2,272 | 2,272 | — |
+| `thermometer_encoder` | **846** | **2,935** | **3.47×** |
+| `dwn_top` | **3,118 (15.0%)** | **5,195 (25.0%)** | **+2,077 LUTs, +66.6%** |
+| Fmax | 95.4 MHz | 92.8 MHz | both **MISS** 100 |
+
+**0.32 pp of accuracy costs 2,077 LUTs — two thirds of the design.** The cores are identical, as
+they must be: same 1,000 nodes, same group size, so the entire difference is encoder.
+
+⚠️ **Not a clean single-variable comparison.** z=25 must be built at **Q1.8 (10-bit)** and z=1 at
+Q0.8 (9-bit), so a 1.11× word-width factor is folded into that 3.47×. Correcting for it crudely
+leaves ~3.1×, so the conclusion is unchanged in direction and slightly overstated in size. There is
+no 9-bit z=25 build to compare against, because one cannot exist — see below.
+
+#### `z=25` cannot be built at Q0.8, and the emitter caught it
+
+Its maximum threshold is **exactly 1.000000** — at 25 quantiles one lands on the top pixel value —
+and Q0.8 represents [−1, 1). The emitter refused rather than emitting comparisons against a wrapped
+constant. Every other config in the grid tops out at 0.992157 and is fine at 9 bits.
+
+**So `word_bits` in the descriptor is a default, not a dataset invariant.** It is correct for z≤8
+and wrong for z=25 *on the same dataset* — the same shape as the JSC finding that the safe width
+moved between two configurations. `required_int_bits()` derives the floor exactly, so the open
+question is whether the descriptor should store a width at all or compute it per config. **Decide
+before sweeping many z.**
+
+#### Both miss 100 MHz, which confirms a Phase 1 prediction
+
+`1x1000 z=1` uses 15.0% of the device and still misses the clock at 95.4 MHz. Phase 1 predicted
+timing would bind before area for MNIST, against the JSC frontier's shape. **First evidence in, and
+it holds.** Pipeline depth is the lever and needs no retraining — Group B rungs for MNIST are
+already 300 / 1000 / 2000 in the descriptor.
