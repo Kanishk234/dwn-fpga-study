@@ -30,8 +30,8 @@ point.
 | M1c | Train a small MNIST model (Kaggle, off-machine) | ✅ done 2026-08-11 — ~~96.14% (best 96.28%)~~ → **96.77%** (best 96.88%) after the `tau` correction, see open questions |
 | M1d | Export and pass Gate 1 bit-exact | ✅ done 2026-08-11 — **PASS on the trained model**, and Q0.8 is lossless |
 | M1e | Synthesize; measure core / encoder / top separately | ✅ done 2026-08-11 — **1,548 LUTs (7.4%), 108.0 MHz** after the argmax fix |
-| M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — ⚠️ **simulation-verified only**, not yet on silicon |
-| M1g | Gate 1b on the board, full MNIST test set | ⬜ **in scope 2026-08-11** |
+| M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — **verified on silicon 2026-08-12** |
+| M1g | Gate 1b on the board, full MNIST test set | ✅ **done 2026-08-12 — 10,000/10,000** |
 
 **Scope, 2026-08-11 — two questions, and only one is answered.**
 
@@ -39,15 +39,15 @@ point.
 harness changes with every application and dataset. That is a decision about a deliverable *after*
 a successful port.
 
-**Whether MNIST runs on our board here is still open**, and does not follow from it. M1a–M1e are
-unaffected either way; M1f and M1g exist only if the answer is yes. See `docs/mnist/plan.md` §3 for
-what they would cost — the short version is a 1,569-byte record against JSC's 33, a vector store
-about 48× wider per entry, and roughly 23 minutes to stream the test set at 115,200 baud. Real
-work, not prohibitive, and `LABEL_W` is already a parameter.
+~~**Whether MNIST runs on our board here is still open.**~~ ✅ **Answered 2026-08-12: yes.**
+Gate 1b passes 10,000/10,000 on silicon at 4,586 LUTs (22.05%), meeting 100 MHz. The projection
+above was close on the record size (1,569 bytes) and wrong on the time — 31.9 s, not ~23 minutes,
+because that assumed 115,200 baud and the link runs at 5 Mbaud.
 
 **The gate, after every generalisation commit** — `scripts/verify_phase1.py` at **12/12 with areas
-108 / 1,519 / 1,619**, plus `run_gate1.py` on the two-layer `300-100` checkpoint. Identical, not
-close. See `docs/mnist/plan.md` §1.2.
+110 / 1,519 / 1,621** (⚠️ *not* the 108 / 1,519 / 1,619 this file was written with; the argmax tree
+costs +2, and the pre-change values live at the `jsc-complete` tag), plus `run_gate1.py` on the
+two-layer `300-100` checkpoint. Identical, not close. See `docs/mnist/plan.md` §1.2.
 
 ---
 
@@ -58,10 +58,16 @@ The JSC baseline this generalisation must not disturb:
 | | |
 |---|---|
 | Gate 1 | bit-exact, 1,504 core vectors / 1,518 top vectors |
-| `dwn_core` | **108 LUTs**, 73 FF |
+| `dwn_core` | ~~108~~ → **110 LUTs**, 73 FF |
 | `thermometer_encoder` | **1,519 LUTs**, 0 FF |
-| `dwn_top` | **1,619 LUTs**, 269 FF |
-| On silicon | 166,000 / 166,000 exact |
+| `dwn_top` | ~~1,619~~ → **1,621 LUTs**, 269 FF |
+| whole board design | ~~2,058~~ → **1,893 LUTs**, 864 FF (post-route) |
+| On silicon | 166,000 / 166,000 exact — **re-confirmed 2026-08-12** |
+
+The struck values are the `jsc-complete` tag's, which is what `REPORT.md` and `README.md` quote.
+The current ones include the argmax tree (+2 in the core, +2 in `dwn_top`) and the loader shift
+register (−167 on the board). Do not mix the two columns in one table without saying which is
+which.
 
 What MNIST is walking into, for scale:
 
@@ -81,6 +87,115 @@ decides whether MNIST runs here.
 ---
 
 ## Log
+
+### 2026-08-12 — M1g: MNIST passes Gate 1b on the board, 10,000/10,000
+
+**The port is real hardware now, not simulation.**
+
+| | MNIST | JSC (same day, same tree) |
+|---|---|---|
+| **Gate 1b** | **10,000 / 10,000** | **166,000 / 166,000** |
+| fixed-point vs float32 | **0 / 10,000 differ** | 30 / 166,000 (0.018%) |
+| accuracy, both models | **96.1400%** | 73.8361 / 73.8349% |
+| board area | 4,586 LUTs (22.05%) | 1,893 (9.10%) |
+| core throughput | 76.2 M samples/s | 76.1 M samples/s |
+| over the link | 313 samples/s | ~14,800 samples/s |
+| **I/O wall** | **243,271×** | ~5,100× |
+
+**Q0.8 is lossless on the full test set, not just the 1,000-sample subset** — 56,835 feature
+values saturate and not one flips an encoder bit, exactly as the descriptor's reasoning predicted
+(8-bit pixels have only 256 distinct values, so nine bits cannot lose anything). This is the
+sharpest contrast with JSC, where fixed point costs 30 samples because the features are genuinely
+continuous.
+
+#### The I/O wall is 48× worse than JSC's, and that is the whole streaming argument in one number
+
+The core classifies one vector per clock regardless of dataset; the link carries 1,569 bytes per
+MNIST record against JSC's 33. So the ratio is what changes, not the core. **It also settles that
+streaming cannot measure throughput** — at 243,271× the link dominates by five orders of
+magnitude, so any UART-bound harness measures the UART. `cycle_count` stays a batch-mode number.
+
+#### The full test set did not need Kaggle
+
+`scripts/dump_testset.py` is new. The float32 and fixed-point golden models differ ONLY in the
+thermometer comparison — LUT lookup, GroupSum and argmax are exact integer work either way — so
+both references are plain numpy and any dataset whose descriptor declares a reproducible
+`test_split` can be dumped locally. MNIST's is `tail:10000`, the canonical split, since `mnist_784`
+ships in train-then-test order. JSC's split was made in a notebook with a seed, so the script
+**refuses** it rather than inventing a different split and calling it the test set.
+
+⚠️ **It validates before it writes.** A test set with the wrong split, scaling or row order
+produces a Gate 1b run that looks completely normal and means nothing. So the script regenerates
+the rows that already exist in the committed `_testvectors.npz` and requires an exact match on
+both features and predictions before saving anything. It reproduced all 1,000, and the float32
+accuracy came out at 96.1400% against the checkpoint's recorded `final_acc` of 0.9614 — an
+independent confirmation, since that number came from a Kaggle GPU run months of plumbing ago.
+
+New dependencies: `scikit-learn` (the OpenML fetch) and `pandas` (which `fetch_openml`'s default
+parser requires for dense data). Only this script imports them; a missing scikit-learn degrades
+test-set dumping and nothing else.
+
+#### ⚠️ The accuracy to quote here is 96.14%, not 96.77%
+
+Both numbers are real and they measure different checkpoints. **96.1400%** is
+`mnist_n6_z3_distributive_w300`, which is what is in the bitstream, on the board, and verified to
+the sample. **96.77%** is `..._tau1p678`, the retrained model after the `tau` correction, whose
+checkpoint is **not in `training/artifacts/` on this machine** and has therefore never been
+exported, synthesized or run. Quote 96.14% for anything describing the hardware; quote 96.77% only
+as the corrected training result, and re-run this whole chain before the two are merged into one
+claim.
+
+### 2026-08-12 — the dataset descriptor became load-bearing, and it was carrying nothing
+
+`datasets/` was written in M1a as the single place dataset facts live. **Nothing imported it.** It
+held the right numbers while every consumer kept a private copy of JSC's, which is why the same
+defect kept surfacing one crash at a time — seven sites now, all the same shape: *a dataset
+constant sitting where a derived value belongs*.
+
+| # | site | wrong for MNIST because |
+|---|---|---|
+| 1 | `emit_core.py` `16 * thermometer_bits` | 784 features, not 16 |
+| 2 | `record_bytes()` `word_bits // 8` | 9 bits is 2 bytes, floor gives 1 |
+| 3 | `uart_loader.v` `reg [5:0]` | caps at 63; the record is 1,568 bytes |
+| 4 | testbenches `[2:0]` class index | 10 classes need 4 bits |
+| 5 | `dwn_basys3_top.v` `correct_count[7:0]` | part-select past the end at ADDR_W=4 |
+| 6 | `extract.py` `FRAC_BITS/WORD_BITS` | Q3.12 imported as a default by six modules |
+| 7 | `host.py` `WORD_BITS // 8`, `'33 bytes'` | the same two defects again, in the host |
+
+**The fix that makes it stop: `datasets.identify(ck)`**, which matches a checkpoint to its
+descriptor on `(features, classes)`. Deliberately not on the filename — a slug is a naming
+convention, and resolving behaviour through one means a renamed checkpoint silently changes its
+quantisation. An unrecognised shape raises with instructions instead of falling back to JSC.
+
+**`exporter/extract.py` has no module constants at all now.** `quantize`, `quantize_thresholds`,
+`saturation_is_lossless` and `fits_in_word` take the widths as **required** arguments. That is the
+part that makes this durable rather than tidy: a missing argument is a `TypeError` at the call
+site, whereas a default is a plausible wrong number that reaches the FPGA. `--word-bits` and
+`--frac-bits` survive as explicit overrides, because sweeping width is a real experiment; what is
+gone is *inheriting* a width without saying so.
+
+`experiments/` was deliberately left JSC-bound, but now says so: `FRAC_BITS = datasets.JSC.frac_bits`.
+Those are JSC analyses outside the dataset-agnostic contract, and one of them hardcodes
+`LUT_PER_BIT = 1519 / 202` outright. Stating the binding is honest; pretending it is universal was
+the original error.
+
+#### Verification — the contract is "identical, not close", and it held
+
+| check | result |
+|---|---|
+| JSC single-layer, `verify_phase1.py` | **12/12**, areas 110 / 1,519 / 1,621 identical |
+| JSC two-layer `300-100`, `run_gate1.py` | **PASS** both levels |
+| JSC on silicon, `--with-board` | **22/22**, Gate 1b 166,000/166,000 |
+| MNIST, `run_gate1.py`, **no precision flags** | **PASS** both levels |
+
+That last row is the evidence the refactor did its job: MNIST previously required
+`--word-bits 9 --frac-bits 8` and now requires nothing. The only argument left that the checkpoint
+genuinely cannot supply is `--depth`, which is a property of the bitstream rather than the model.
+
+**The §1.5 contract is now testable rather than aspirational:** a third dataset means adding a
+`Dataset` and a `docs/<name>/` directory. `test_split` was added as a descriptor field in this
+pass for exactly that reason — the dump script needed a dataset fact, and the fact went into the
+descriptor rather than into the script.
 
 ### 2026-08-11 — the harness cost was one line of Verilog, and MNIST fits without streaming
 
@@ -843,12 +958,12 @@ hardware and cannot be filled in from here.
 
 | | What to capture | Why it matters |
 |---|---|---|
-| **JSC regression on silicon** | `verify_phase1.py --with-board` → 22/22, 166,000/166,000 | The loader changed. Simulation says it is fine; silicon has disagreed with simulation before |
+| ~~**JSC regression on silicon**~~ | ✅ **22/22, 166,000/166,000** on 2026-08-12, after both the loader change and the descriptor refactor | The loader changed. Simulation says it is fine; silicon has disagreed with simulation before |
 | ~~**MNIST `DEPTH` actually used**~~ | ✅ **16 at the default `--bram-budget 0.15`, and 0 BRAM** — a 12,544-bit-wide store cannot map to block RAM at all, so it fell to 2,416 LUTs of distributed RAM. JSC uses 8 BRAM at DATA_W=256 | Answered by synthesis, not hardware — the store's width is what decides this, and width is known without a board |
-| **Batches for a full pass** | count, and wall-clock for 10,000 vectors | **625 batches at `DEPTH=16`**, which is the count; the wall-clock still needs hardware |
-| **Baud actually achieved** | the highest working rate at a 1,569-byte record | JSC found a UART ceiling; a 48x longer record may find a different one |
+| ~~**Batches for a full pass**~~ | ✅ **625 batches at `DEPTH=16`, 31.9 s** for 10,000 vectors — 313 samples/s over the link | Measured, not projected. The earlier ~23 min projection assumed 115,200 baud; 5 Mbaud is 43× faster |
+| **Baud actually achieved** | ⚠️ **5 Mbaud works** — but this was not swept, so it is a working rate, not a measured ceiling | JSC found a UART ceiling; a 48x longer record may find a different one, and nothing here looked for it |
 | ~~**Bitstream area at MNIST dimensions**~~ | ✅ **4,586 LUTs (22.05%), 10,750 FF, 0 BRAM, WNS +0.292 ns.** Harness share 3,043 LUTs — `u_loader` 468, `u_store` 2,416 | ⚠️ **The premise was wrong: the harness DOES scale with the model.** It was assumed fixed at ~439 LUTs from JSC. `u_store` scales with record width by construction, and `u_loader` did too until the shift-register fix. Both were found by measuring at a second dataset |
-| **Gate 1b result** | mismatches out of the full MNIST test set | The actual deliverable of M1g |
+| ~~**Gate 1b result**~~ | ✅ **0 mismatches out of 10,000.** Q0.8 also differs from float32 on 0/10,000 — lossless on the full set, with 56,835 values saturating harmlessly | The actual deliverable of M1g |
 | ~~**Timing with the harness attached**~~ | ✅ **100 MHz closes, WNS +0.292 ns post-route.** Margin is thin — 2.9% — so a wider config or a slower corner could lose it | The synthetic core missed at 91.5 MHz *without* the harness; the real model plus harness makes it, which is the argmax tree rather than anything the harness does |
 
 ⚠️ **The synthetic run already suggests timing will be the problem, not area.** If the real model
