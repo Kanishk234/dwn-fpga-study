@@ -416,7 +416,34 @@ to layer width, and MNIST's ladder goes to 2,000 nodes — so **timing, not area
 MNIST's binding constraint too**, exactly as it was for JSC. Pipeline depth is a synthesis-side
 sweep needing no retraining, and the harness already parameterises it.
 
-#### The cost-per-comparator gap has a cause, and it is a finding in its own right
+#### ⚠️ RETRACTED 2026-08-11 — the amortisation explanation below does not survive a third point
+
+Written from two measurements. The real MNIST model is the third, and it breaks the trend:
+
+| design | word | comparators | features | per feature | LUTs each |
+|---|---|---|---|---|---|
+| JSC `1x2400 z=50` | 9 | 746 | 16 | 46.62 | 1.06 |
+| MNIST **synthetic** z=25 | 9 | 1,734 | 784 | 2.21 | 1.50 |
+| MNIST **real** z=3 | 9 | 720 | 784 | **0.92** | **1.27** |
+
+"Fewer comparators per feature means less sharing, so each costs more" predicts the real model
+should be the dearest. It has the fewest per feature of the three and is **cheaper** than the
+synthetic one. The claim is withdrawn.
+
+**A better candidate, and it is a hypothesis rather than a finding:** what matters is the
+threshold *values*, not how many share a feature. Real MNIST pixels are mostly zero, so quantile
+thresholds cluster near zero, and a comparison against a near-zero constant collapses to a test
+on a couple of bits. The synthetic run's uniform random pixels spread thresholds across the whole
+range, where every comparison is a full-width compare against an arbitrary constant.
+
+**Testable**, and cheaply: emit the same model at several `z` and compare LUTs per comparator
+against the threshold distribution. Not done. **Nothing downstream should rest on either
+explanation until it is.**
+
+The original text is kept below, struck through, because the reasoning error is the useful part:
+a mechanism inferred from two points, stated with more confidence than two points support.
+
+#### ~~The cost-per-comparator gap has a cause, and it is a finding in its own right~~
 
 The 1.06 -> 1.50 LUTs-per-comparator miss is not noise and not a missing optimisation. Learnable
 Reduction and encoder narrowing are in neither the prediction nor the measurement, and configurable
