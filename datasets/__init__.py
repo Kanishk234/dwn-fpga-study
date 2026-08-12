@@ -290,7 +290,11 @@ MNIST = Dataset(
     build_subdir='mnist',
     ofat_rungs=(1000,),       # the tau anchor; every off-anchor rung needs its own tau
     group_b_rungs=(300, 1000, 2000),
-    corners=(((2000, 1000), 3), ((1000,), 1)),
+    # (layers, z). `2x[1000,500]` is THE PAPER'S MNIST configuration (Table 14) and the
+    # reason it is a corner rather than an ofat-L point: ofat-L builds EQUAL splits via
+    # _split(), so it would never produce a 2:1 taper. Without this entry the one
+    # architecture published work can be compared against directly has no grid row.
+    corners=(((2000, 1000), 3), ((1000,), 1), ((1000, 500), 3)),
     notes=('MNIST is slot-limited rather than pool-limited: 784 x z far exceeds the input slots '
            'of any layer that fits, so z costs far less area here than on JSC (z=8 to z=200 is '
            'only 2.3x the comparators). Word width, not z, decides whether a model fits -- at '
