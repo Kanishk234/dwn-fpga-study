@@ -499,7 +499,20 @@ def main() -> int:
     vivado_bin = find_vivado_bin(args.vivado_bin)
     ran = skipped = missing = filtered = 0
     for group, label, cfg, _ in sel:
-        if cfg.name in done and not args.force:
+        # A recorded result counts as done ONLY if it is a measurement. `checkpoint-mismatch`
+        # and `untrained` describe the state of the artifacts tree at the time, not the config
+        # -- and both become stale the moment the right checkpoint arrives. Treating them as
+        # done meant that downloading the corrected `_tau*` set changed nothing: the sweep
+        # skipped all five rungs it had just been unblocked for, and reported "skipped 24
+        # already-done" as though there were nothing to do.
+        #
+        # `gate1-failed` and `synth-failed` DO count as done: those are results about the
+        # design, and re-running them without changing anything would just fail again.
+        TRANSIENT = ('checkpoint-mismatch', 'untrained')
+        prior = done.get(cfg.name)
+        if prior is not None and prior.get('status') in TRANSIENT:
+            prior = None                      # retry: the blocker may have been resolved
+        if prior is not None and not args.force:
             skipped += 1
             continue
 
