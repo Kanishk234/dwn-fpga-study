@@ -193,9 +193,21 @@ module uart_loader #(
 
                     S_LOAD_D: begin
                         if (byte_idx < VEC_BYTES[IDX_W-1:0]) begin
-                            // Direct indexed placement, not a shift: byte k -> [k*8 +: 8].
-                            wr_data[byte_idx*8 +: 8] <= rx_data;
-                            byte_idx                 <= byte_idx + 1'b1;
+                            // SHIFT, not indexed placement. Both put byte k at [k*8 +: 8], but
+                            // `wr_data[byte_idx*8 +: 8] <= rx_data` is a variable part-select
+                            // write, which synthesises to a VEC_BYTES-way address decoder
+                            // driving a write enable on every byte lane. At JSC's 32 lanes that
+                            // is invisible; at MNIST's 1,568 it measured 6,343 LUTs and 5,228
+                            // FF -- four times the classifier it exists to feed.
+                            //
+                            // Bytes arrive in order and are never revisited, so the decoder buys
+                            // nothing. Inserting at the top and shifting down leaves byte 0 at
+                            // [7:0] after VEC_BYTES bytes, which is the same little-endian
+                            // layout tb/gen_vectors.py and scripts/host.py pack -- verified by
+                            // the loader suite, which checks the stored word, not just that a
+                            // write happened.
+                            wr_data  <= {rx_data, wr_data[DATA_W-1:8]};
+                            byte_idx <= byte_idx + 1'b1;
                         end else begin
                             // Final byte of the record is the label.
                             wr_label <= rx_data[LABEL_W-1:0];

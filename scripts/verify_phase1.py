@@ -47,10 +47,18 @@ EXPECTED = {
     'core_luts': 110, 'core_ff': 73,
     'enc_luts': 1519, 'enc_ff': 0,
     'top_luts': 1621, 'top_ff': 269,
-    # 2058 -> 2060 for the same reason as core_luts/top_luts above: the argmax tree.
-    # Confirmed on hardware 2026-08-11 -- Gate 1b still 166,000/166,000, cycles and both
-    # accuracies unchanged, so the +2 is area only.
-    'board_luts': 2060, 'board_ff': 865, 'board_bram': 8, 'board_dsp': 0,
+    # The board design moved TWICE, in opposite directions, and only the second is large:
+    #
+    #   2058  jsc-complete tag, chain argmax + indexed-write loader
+    #   2060  argmax tree (+2). Confirmed on hardware -- Gate 1b 166,000/166,000, cycles and
+    #         both accuracies unchanged, so the +2 was area only.
+    #   1896  uart_loader byte shift register (-164). The variable part-select write it
+    #         replaced cost 439 LUTs in the loader; a shift register costs 81 and lets Vivado
+    #         map part of it into SRLs. WNS also improved +1.753 -> +2.014 ns.
+    #
+    # Only dwn_core/dwn_top feed the DSE sweep, and neither moved here -- the loader is harness,
+    # outside dwn_top. So no Phase 2 frontier point is affected by this line.
+    'board_luts': 1896, 'board_ff': 861, 'board_bram': 8, 'board_dsp': 0,
     'gate1b_agree': 166000, 'gate1b_total': 166000,
     'core_cycles': 166815,
     'acc_float': '73.8361', 'acc_fixed': '73.8349',
