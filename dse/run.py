@@ -285,6 +285,19 @@ def widen_for_checkpoint(cfg, checkpoint):
     Fractional bits are NOT touched. They are not derivable from the checkpoint (see
     required_int_bits' docstring), and narrowing them to keep the word width would trade an
     exact representation for a smaller one silently.
+
+    ⚠️ THAT CHOICE HAS A COST, and it is not always the right trade. Widening changes the word
+    width, so a widened config is no longer area-comparable with the rest of a sweep -- which
+    matters most on a one-factor-at-a-time axis, where the whole point is that only one thing
+    varies. JSC's two `linear` configs are the case in point: Q4.11 would represent them at
+    IDENTICAL 16-bit area, while this function would take them to 17-bit Q4.12 and confound the
+    encoding axis with word width.
+
+    So: correct when the fractional bits are load-bearing (MNIST needs all 8 to represent 8-bit
+    pixels exactly, so Q1.8 at 10 bits is the only option), and the wrong lever when an equally
+    exact narrower-fraction format exists at the same width. This function optimises for
+    exactness, which is the safe default, not the free one -- check `word_bits_widened` in a
+    result before reading a widened config against unwidened ones.
     """
     ck = load_checkpoint(checkpoint)
     thr = ck['thermometer']['thresholds'].numpy()
