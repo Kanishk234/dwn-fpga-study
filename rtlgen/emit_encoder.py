@@ -30,12 +30,14 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, layer_indices,  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
+from extract import (load_checkpoint, layer_indices,  # noqa: E402
                      required_int_bits,
                      extract_tables, extract_wiring, quantize_thresholds, fits_in_word)
 
 
-def emit_encoder(ck, used, out_path, frac_bits=FRAC_BITS, word=WORD_BITS):
+def emit_encoder(ck, used, out_path, frac_bits, word):
     cfg = ck['config']
     z = cfg['thermometer_bits']
     thresholds = ck['thermometer']['thresholds'].numpy()
@@ -98,7 +100,7 @@ def emit_encoder(ck, used, out_path, frac_bits=FRAC_BITS, word=WORD_BITS):
 
 
 def emit_top(ck, out_path, total_bits, n_features, num_classes, core_latency,
-             word=WORD_BITS, pipe_enc=1, core_pipe=(1, 1, 1)):
+             word, pipe_enc=1, core_pipe=(1, 1, 1)):
     idx_w = max(1, int(np.ceil(np.log2(num_classes))))
     latency = pipe_enc + core_latency
     core_lut, core_pop, core_out = core_pipe
@@ -153,7 +155,7 @@ def emit_top(ck, out_path, total_bits, n_features, num_classes, core_latency,
     return latency
 
 
-def verify_emitted(path, used, thr_q, z, word=WORD_BITS):
+def verify_emitted(path, used, thr_q, z, word):
     """Parse the emitted comparators back and check every one against the checkpoint."""
     src = open(path).read()
     pat = re.compile(
@@ -183,16 +185,22 @@ def main():
     ap.add_argument('--pipe-enc', type=int, default=1,
                     help='register after the comparators (default %(default)s)')
     # Precision is a HARDWARE choice, not a property of the trained model: the same checkpoint
-    # can be built at several widths. Defaults are the JSC-era Q3.12 so every existing command
-    # behaves identically.
-    ap.add_argument('--word-bits', type=int, default=WORD_BITS,
-                    help='signed input word width (default %(default)s)')
-    ap.add_argument('--frac-bits', type=int, default=FRAC_BITS,
-                    help='fractional bits in the input word (default %(default)s)')
+    # can be built at several widths, and sweeping width is a real experiment. So these stay as
+    # flags -- but their DEFAULT comes from the dataset descriptor the checkpoint matches, not
+    # from a constant. It used to default to Q3.12 for everything, which is right for JSC and
+    # silently wrong for MNIST's Q0.8.
+    ap.add_argument('--word-bits', type=int, default=None,
+                    help='signed input word width (default: the dataset descriptor)')
+    ap.add_argument('--frac-bits', type=int, default=None,
+                    help='fractional bits in the input word (default: the dataset descriptor)')
     args = ap.parse_args()
-    word, frac = args.word_bits, args.frac_bits
 
     ck = load_checkpoint(args.checkpoint)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word = ds.word_bits if args.word_bits is None else args.word_bits
+    frac = ds.frac_bits if args.frac_bits is None else args.frac_bits
+    print(f'dataset      : {ds.name}  (Q{word - 1 - frac}.{frac}, {word}-bit word)')
     cfg = ck['config']
     n, num_classes, z = cfg['n'], cfg['num_classes'], cfg['thermometer_bits']
     thresholds = ck['thermometer']['thresholds'].numpy()

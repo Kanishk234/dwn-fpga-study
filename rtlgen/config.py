@@ -30,6 +30,8 @@ from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -89,8 +91,12 @@ class HardwareConfig:
     pipe_lut: int = 1               # after the LUT layer
     pipe_pop: int = 1               # after the popcounts
     pipe_out: int = 1               # after the argmax
-    word_bits: int = 16             # Q3.12 signed: 16-bit word...
-    frac_bits: int = 12             # ...12 fractional bits
+    # Fixed-point word. These default to JSC's Q3.12 because HardwareConfig() with no
+    # arguments means "the Phase 1 shipped build", which was JSC -- but they are NOT a property
+    # of the flow, and anything building a non-JSC model must pass the dataset's own values.
+    # `HardwareConfig.for_checkpoint(ck)` below does it for you.
+    word_bits: int = datasets.JSC.word_bits
+    frac_bits: int = datasets.JSC.frac_bits
     part: str = 'xc7a35tcpg236-1'
     clock_ns: float = 10.0          # the Basys 3's 100 MHz
     strategy: Optional[str] = None  # Vivado directive; None = tool default
@@ -108,6 +114,18 @@ class HardwareConfig:
     @property
     def pipe_slug(self) -> str:
         return f'{self.pipe_enc}{self.pipe_lut}{self.pipe_pop}{self.pipe_out}'
+
+    @classmethod
+    def for_checkpoint(cls, ck, **overrides) -> 'HardwareConfig':
+        """A HardwareConfig whose precision comes from the checkpoint's dataset descriptor.
+
+        Prefer this to `HardwareConfig()` anywhere a real model is involved. The bare
+        constructor keeps JSC's Q3.12, which is correct only for JSC and is the exact shape of
+        defect this refactor removed everywhere else.
+        """
+        ds = datasets.identify(ck)
+        ds.check_checkpoint(ck)
+        return cls(word_bits=ds.word_bits, frac_bits=ds.frac_bits, **overrides)
 
 
 @dataclass(frozen=True)
@@ -178,7 +196,7 @@ def _selftest() -> int:
     import extract
     import run_synth
 
-    # NOTE this checks the DEFAULT instance against the module constants -- it asserts that the
+    # NOTE this checks the DEFAULT instance against the JSC descriptor -- it asserts that the
     # two agree on what "unset" means, not that every build uses that width. Non-default widths
     # are legal and are passed explicitly (run_gate1.py --word-bits/--frac-bits). Do not "relax"
     # this: it is the guard that catches a default drifting away from the module that owns it.
@@ -187,8 +205,10 @@ def _selftest() -> int:
         ('pipe_lut  vs emit_core.PIPE_LUT', hw.pipe_lut, emit_core.PIPE_LUT),
         ('pipe_pop  vs emit_core.PIPE_POP', hw.pipe_pop, emit_core.PIPE_POP),
         ('pipe_out  vs emit_core.PIPE_OUT', hw.pipe_out, emit_core.PIPE_OUT),
-        ('word_bits vs extract.WORD_BITS', hw.word_bits, extract.WORD_BITS),
-        ('frac_bits vs extract.FRAC_BITS', hw.frac_bits, extract.FRAC_BITS),
+        # extract.py no longer owns a word width -- it has no module constants at all, by
+        # design. The descriptor is the owner now, so the default is checked against that.
+        ('word_bits vs datasets.JSC', hw.word_bits, datasets.JSC.word_bits),
+        ('frac_bits vs datasets.JSC', hw.frac_bits, datasets.JSC.frac_bits),
         ('part      vs run_synth.DEFAULT_PART', hw.part, run_synth.DEFAULT_PART),
         ('latency   vs Phase 1 measured', hw.latency, 4),
     ]

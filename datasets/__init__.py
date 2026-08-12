@@ -144,3 +144,39 @@ def get(name: str) -> Dataset:
 
 def names() -> list:
     return sorted(_ALL)
+
+
+def identify(ck) -> Dataset:
+    """Which dataset a checkpoint belongs to, from its own shape.
+
+    THIS IS THE FUNCTION THAT MAKES THE PACKAGE LOAD-BEARING. Before it existed, `datasets/` held
+    the right facts and nothing imported it: every consumer kept a private copy of JSC's numbers,
+    so each new dataset surfaced them one crash at a time -- six separate sites on this branch,
+    all the same defect wearing different clothes.
+
+    Matching is on (features, classes), which are structural: they are fixed by the trained model
+    and cannot be set wrong without the export failing anyway. Deliberately NOT on the filename --
+    a slug is a naming convention, and resolving behaviour through one means a renamed checkpoint
+    quietly changes its quantisation.
+
+    An unknown shape is an error with instructions, not a silent fallback to JSC's Q3.12. A
+    fallback is exactly how a dataset gets exported at another dataset's precision and produces a
+    model that elaborates, synthesizes, and is wrong.
+    """
+    thr = ck['thermometer']['thresholds']
+    feats, classes = thr.shape[0], ck['config']['num_classes']
+
+    hits = [d for d in _ALL.values() if d.features == feats and d.classes == classes]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        raise KeyError(
+            f'no dataset descriptor matches this checkpoint ({feats} features, {classes} '
+            f'classes). Known: ' + ', '.join(f'{d.name} ({d.features}x{d.classes})'
+                                             for d in _ALL.values()) +
+            '.\nAdd a Dataset to datasets/__init__.py -- that is the whole change; no emitter, '
+            'testbench or script should need editing.')
+    raise KeyError(
+        f'{feats} features x {classes} classes matches more than one descriptor '
+        f'({", ".join(d.name for d in hits)}), so precision cannot be resolved from shape alone. '
+        'Give the dataset explicitly.')

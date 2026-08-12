@@ -27,7 +27,9 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, layer_indices,  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
+from extract import (load_checkpoint, layer_indices,  # noqa: E402
                      extract_tables, extract_wiring, forward, quantize,
                      quantize_thresholds, encode, fits_in_word)
 
@@ -46,7 +48,7 @@ def bits_to_hex(row, width):
     return np.packbits(row[::-1].astype(np.uint8), bitorder='big').tobytes().hex()
 
 
-def words_to_hex(words, word_bits=WORD_BITS):
+def words_to_hex(words, word_bits):
     """int[F] -> hex for a packed feature vector, feature f at [f*word_bits +: word_bits]."""
     value = 0
     mask = (1 << word_bits) - 1
@@ -67,11 +69,20 @@ def main():
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'gate1'))
     # Must match what emit_encoder.py was given, or the golden model and the RTL are quantising
     # differently and Gate 1 compares two different designs. run_gate1.py passes both together.
-    ap.add_argument('--word-bits', type=int, default=WORD_BITS)
-    ap.add_argument('--frac-bits', type=int, default=FRAC_BITS)
+    # Default from the dataset descriptor, not a constant. These must match what
+    # emit_encoder.py used; both now resolve the same way from the same checkpoint, so the
+    # default case cannot disagree.
+    ap.add_argument('--word-bits', type=int, default=None)
+    ap.add_argument('--frac-bits', type=int, default=None)
     args = ap.parse_args()
 
     ck = load_checkpoint(args.checkpoint)
+    _ds = datasets.identify(ck)
+    _ds.check_checkpoint(ck)
+    if args.word_bits is None:
+        args.word_bits = _ds.word_bits
+    if args.frac_bits is None:
+        args.frac_bits = _ds.frac_bits
     cfg = ck['config']
     n, num_classes, z = cfg['n'], cfg['num_classes'], cfg['thermometer_bits']
     thresholds = ck['thermometer']['thresholds'].numpy()

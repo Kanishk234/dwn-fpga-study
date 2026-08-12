@@ -113,13 +113,21 @@ def forward(x_bits, layers, num_classes):
 #
 # Q3.12 signed (16-bit): 10 bit errors and 0 class changes vs float32 on the 1000 local
 # samples. Q3.15 (19-bit) is the zero-bit-error fallback if that ever stops being good enough.
+# That is JSC's format, and it now lives in `datasets.JSC`, not here.
+#
+# THERE ARE NO MODULE-LEVEL FRAC_BITS/WORD_BITS. They were 12 and 16 -- JSC's -- and every
+# consumer that imported them inherited JSC's precision as a default it never stated. MNIST is
+# Q0.8, so each of those sites was a silent wrong answer waiting for a second dataset; six were
+# found one crash at a time before the constants were removed.
+#
+# The parameters below are therefore REQUIRED, not defaulted. A caller that does not know the
+# word width does not know enough to quantize, and should ask `datasets.identify(ck)`. Making
+# them required is the point: a missing argument is a TypeError at the call site, whereas a
+# default is a plausible wrong number that reaches the FPGA.
 # ---------------------------------------------------------------------------
 
-FRAC_BITS = 12
-WORD_BITS = 16
 
-
-def quantize(x, frac_bits=FRAC_BITS, word_bits=WORD_BITS):
+def quantize(x, frac_bits, word_bits):
     """Real features -> fixed point. Truncation, not rounding: free in hardware.
 
     SATURATES to the word range, and that is lossless here rather than a compromise. Q3.12
@@ -140,7 +148,7 @@ def quantize(x, frac_bits=FRAC_BITS, word_bits=WORD_BITS):
     return np.clip(q, lo, hi).astype(np.int64)
 
 
-def saturation_is_lossless(thr_q, word_bits=WORD_BITS):
+def saturation_is_lossless(thr_q, word_bits):
     """True if clamping features to the word range cannot change any comparison.
 
     Holds exactly when every threshold is strictly inside the representable range: a saturated
@@ -171,7 +179,7 @@ def required_int_bits(thresholds):
     return bits
 
 
-def quantize_thresholds(thresholds, frac_bits=FRAC_BITS):
+def quantize_thresholds(thresholds, frac_bits):
     """Thresholds -> the integer constants the comparators are built against.
 
     floor() specifically: with T = floor(t * 2**F), `q_x > T` implies `x > t` exactly, so the
@@ -190,7 +198,7 @@ def encode(xq, thr_q):
     return (xq[:, :, None] > thr_q[None, :, :]).reshape(xq.shape[0], -1)
 
 
-def fits_in_word(values, word_bits=WORD_BITS):
+def fits_in_word(values, word_bits):
     """Range check for the chosen fixed-point word -- silent overflow would be invisible."""
     lo, hi = -(2 ** (word_bits - 1)), 2 ** (word_bits - 1) - 1
     return int(np.min(values)) >= lo and int(np.max(values)) <= hi

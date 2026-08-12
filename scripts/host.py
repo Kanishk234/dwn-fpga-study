@@ -40,7 +40,9 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, quantize,  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
+from extract import (load_checkpoint, quantize,  # noqa: E402
                      quantize_thresholds, saturation_is_lossless, layer_indices,
                      extract_tables, extract_wiring, encode, forward)
 
@@ -60,7 +62,7 @@ DEVICE_DEPTH = 1024
 # encoding
 # ---------------------------------------------------------------------------
 
-def bytes_per_feature(word_bits=WORD_BITS):
+def bytes_per_feature(word_bits):
     """Wire width of one feature, in whole bytes. CEILING, not floor.
 
     A word that is not a byte multiple pads on the wire: 9 bits travels as 2 bytes. Using
@@ -71,7 +73,7 @@ def bytes_per_feature(word_bits=WORD_BITS):
     return -(-word_bits // 8)
 
 
-def pack_record(features_q, label, word_bits=WORD_BITS):
+def pack_record(features_q, label, word_bits):
     """Quantized features + label -> the record bytes the loader expects.
 
     Little-endian per feature and in feature order, so byte k lands at x_flat[k*8 +: 8]. Any
@@ -90,7 +92,7 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
     return bytes(out)
 
 
-def pack_batch(features_q, labels):
+def pack_batch(features_q, labels, word_bits):
     """Vectorized pack_record over a whole batch. Returns one bytes object.
 
     The per-record version runs 16 int.to_bytes() calls per sample -- 2.7 million of them
@@ -101,11 +103,11 @@ def pack_batch(features_q, labels):
     '<i2' forces little-endian 16-bit regardless of host byte order, so the wire format does
     not silently depend on what machine the host runs on.
     """
-    nbytes = bytes_per_feature()
+    nbytes = bytes_per_feature(word_bits)
     dtype = {1: '<i1', 2: '<i2', 4: '<i4'}.get(nbytes)
     if dtype is None:
         raise SystemExit(f'no little-endian integer type is {nbytes} bytes wide; a word of '
-                         f'{WORD_BITS} bits needs explicit padding in both this function and '
+                         f'{word_bits} bits needs explicit padding in both this function and '
                          f'the Verilog loader before it can be sent')
     words = np.ascontiguousarray(features_q).astype(dtype)     # (n, features) LE
     feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, features * nbytes)
@@ -113,18 +115,18 @@ def pack_batch(features_q, labels):
     return np.hstack([feat_bytes, lab]).tobytes()              # row-major = record after record
 
 
-def quantize_features(x_raw, thr_q=None, frac_bits=FRAC_BITS):
-    """Scaled float features -> Q3.12 integers, exactly as the golden model does.
+def quantize_features(x_raw, frac_bits, word_bits, thr_q=None):
+    """Scaled float features -> fixed-point integers, exactly as the golden model does.
 
     quantize() saturates to the word range. The full test set has outliers past Q3.12's +8,
     and clamping them is lossless because every threshold sits well inside the range -- but
     that has to be checked against the actual thresholds, not assumed, so pass thr_q.
     """
-    q = quantize(x_raw, frac_bits)
-    if thr_q is not None and not saturation_is_lossless(thr_q, WORD_BITS):
+    q = quantize(x_raw, frac_bits, word_bits)
+    if thr_q is not None and not saturation_is_lossless(thr_q, word_bits):
         raise SystemExit(
             'A thermometer threshold lies at or beyond the edge of the '
-            f'Q{WORD_BITS-1-frac_bits}.{frac_bits} range, so saturating features could flip '
+            f'Q{word_bits-1-frac_bits}.{frac_bits} range, so saturating features could flip '
             'an encoder bit. Widen the INTEGER bits (Q4.12), not the fractional ones -- Q3.15 '
             'has the same range and would not help.')
     return q
@@ -370,12 +372,15 @@ def selftest(checkpoint):
     hex_lines = open(os.path.join(work, 'x_quant.hex')).read().split()
     exp_lines = open(os.path.join(work, 'expected_top.hex')).read().split()
 
-    q = quantize_features(x_raw)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word, frac = ds.word_bits, ds.frac_bits
+    q = quantize_features(x_raw, frac, word)
     n_check = min(len(q), 200)
     errors = 0
 
     for i in range(n_check):
-        rec = pack_record(q[i], int(exp_lines[i], 16))
+        rec = pack_record(q[i], int(exp_lines[i], 16), word)
         # x_quant.hex is one 256-bit word per line, LSB-last. Reassembling the record's
         # feature bytes little-endian must reproduce it exactly.
         got = int.from_bytes(rec[:-1], 'little')      # every byte but the trailing label
@@ -384,7 +389,9 @@ def selftest(checkpoint):
             if errors < 3:
                 print(f'  MISMATCH record {i}\n    got  {got:064x}\n    want {want:064x}')
             errors += 1
-        expect_len = len(q[i]) * (WORD_BITS // 8) + 1     # features, then one label byte
+        # CEILING via bytes_per_feature, not `// 8`: a 9-bit word is 2 bytes on the wire,
+        # and floor division here would expect a 785-byte MNIST record instead of 1,569.
+        expect_len = len(q[i]) * bytes_per_feature(word) + 1   # features, then one label byte
         if len(rec) != expect_len:
             print(f'  MISMATCH record {i}: {len(rec)} bytes, expected {expect_len}')
             errors += 1
@@ -396,11 +403,14 @@ def selftest(checkpoint):
         print('  MISMATCH status decode')
         errors += 1
 
-    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy())
+    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), frac)
+    nfeat = q.shape[1]
     print()
+    print(f'  dataset         : {ds.name}')
     print(f'  records checked : {n_check} (against tb/gen_vectors.py output)')
-    print(f'  record size     : 33 bytes (32 feature + 1 label)')
-    print(f'  format          : Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} signed, '
+    print(f'  record size     : {nfeat * bytes_per_feature(word) + 1} bytes '
+          f'({nfeat * bytes_per_feature(word)} feature + 1 label)')
+    print(f'  format          : Q{word-1-frac}.{frac} signed, '
           f'threshold range [{thr_q.min()}, {thr_q.max()}]')
     print(f'  mismatches      : {errors}')
     print(f'  RESULT          : {"PASS" if errors == 0 else "FAIL"}')
@@ -463,14 +473,18 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     cfg = ck['config']
     layers = [(extract_tables(ck['state_dict'], i), *extract_wiring(ck['state_dict'], i, cfg['n']))
               for i in layer_indices(ck['state_dict'])]
-    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), FRAC_BITS)
-    q = quantize_features(x_raw, thr_q)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word, frac = ds.word_bits, ds.frac_bits
+    print(f'  dataset  : {ds.name} ({ds.fixed_point}, {ds.record_bytes()}-byte record)')
+    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), frac)
+    q = quantize_features(x_raw, frac, word, thr_q)
 
-    saturated = int((np.abs(np.floor(x_raw.astype(np.float64) * 2**FRAC_BITS))
-                     > 2**(WORD_BITS-1) - 1).sum())
+    saturated = int((np.abs(np.floor(x_raw.astype(np.float64) * 2**frac))
+                     > 2**(word-1) - 1).sum())
     if saturated:
         print(f'  saturated: {saturated} feature value(s) clamped to the Q'
-              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} range -- lossless, every threshold is '
+              f'{word-1-frac}.{frac} range -- lossless, every threshold is '
               'well inside it')
 
     chunks = []
@@ -479,7 +493,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     y_ref = np.concatenate(chunks)
 
     diverge = int((y_ref != y_float).sum())
-    print(f'  reference: Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} golden model '
+    print(f'  reference: Q{word-1-frac}.{frac} golden model '
           f'(the spec the hardware implements)')
     print(f'             differs from the float32 model on {diverge}/{total} samples '
           f'({100*diverge/total:.4f}%)')
@@ -492,7 +506,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     for start in range(0, total, batch):
         stop = min(start + batch, total)
         n = stop - start
-        board.load_bytes(pack_batch(q[start:stop], y_ref[start:stop]), n)
+        board.load_bytes(pack_batch(q[start:stop], y_ref[start:stop], word), n)
         board.run(n)
         cycles, correct = board.status_when_idle()
         agree += correct
@@ -523,7 +537,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
         print()
 
     print(f'  accuracy, float32 model      : {100*(y_float == y_true).mean():.4f}%')
-    print(f'  accuracy, Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} (on hardware)  : '
+    print(f'  accuracy, Q{word-1-frac}.{frac} (on hardware)  : '
           f'{100*(y_ref == y_true).mean():.4f}%')
     print(f'  cost of fixed point          : '
           f'{100*((y_ref == y_true).mean() - (y_float == y_true).mean()):+.4f} pp')
@@ -532,7 +546,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
         print('  RESULT: PASS -- hardware reproduces the golden model to the sample')
     else:
         print(f'  RESULT: FAIL -- {total-agree} disagreements against the Q'
-              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} reference.')
+              f'{word-1-frac}.{frac} reference.')
         print('  This is a real hardware/software divergence: the reference already accounts')
         print('  for quantization, so it cannot be explained away by precision.')
     return 0 if agree == total else 1

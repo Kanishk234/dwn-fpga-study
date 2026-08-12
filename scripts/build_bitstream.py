@@ -25,7 +25,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exporter'))
 from run_gate1 import DEFAULT_CHECKPOINT, REPO, find_vivado_bin  # noqa: E402
-from extract import WORD_BITS, load_checkpoint  # noqa: E402
+from extract import load_checkpoint  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
 from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
                        parse_utilization, parse_wns, run_one)
 
@@ -72,8 +74,9 @@ def main():
     # records and written garbage.
     ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT,
                     help='sets DATA_W / LABEL_W from the model (default: the Phase 1 config)')
-    ap.add_argument('--word-bits', type=int, default=WORD_BITS,
-                    help='input word width; must match what emit_encoder was given')
+    ap.add_argument('--word-bits', type=int, default=None,
+                    help='input word width; must match what emit_encoder was given '
+                         '(default: the dataset descriptor)')
     ap.add_argument('--bram-budget', type=float, default=0.15,
                     help='fraction of block RAM the vector store may use (default %(default)s, '
                          'which is what JSC used at DEPTH=1024)')
@@ -98,9 +101,14 @@ def main():
 
     # ---- harness dimensions, derived from the model ----
     ck = load_checkpoint(args.checkpoint)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    if args.word_bits is None:
+        args.word_bits = ds.word_bits
     n_features = ck['thermometer']['thresholds'].numpy().shape[0]
     n_classes = ck['config']['num_classes']
     per_feat = -(-args.word_bits // 8)          # ceiling: a 9-bit word travels as 2 bytes
+    print(f'dataset: {ds.name}  ({ds.fixed_point} by descriptor)')
     data_w = n_features * per_feat * 8
     label_w = max(1, math.ceil(math.log2(n_classes)))
     bits_per_vec = data_w + label_w
