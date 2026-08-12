@@ -120,6 +120,28 @@ class Dataset:
     group_b_rungs: tuple = ()
     corners: tuple = ()
 
+    # ---- where this dataset's sweep artifacts live ----
+    # Explicit strings rather than a rule derived from `name`, because JSC's are HISTORICAL:
+    # docs/results/ and training/artifacts/sweeps/ are referenced by REPORT.md, README.md and the
+    # `jsc-complete` tag, and build/dse/results.json holds 54 measured configs that would be
+    # re-run from scratch if the path moved. CLAUDE.md forbids moving an existing JSC artifact,
+    # so the exception is recorded here as data instead of as a special case in dse/.
+    #
+    # `build_subdir` empty means directly under build/dse/, which is JSC's layout.
+    # Filename prefix the training notebooks put on `<slug>_checkpoint.pt`. JSC's grid predates
+    # multi-dataset work and writes bare slugs; MNIST's writes `mnist_...`, which is the better
+    # convention now that one artifacts tree holds both. Recorded rather than normalised because
+    # renaming trained checkpoints is exactly the kind of churn that breaks recorded numbers.
+    slug_prefix: str = ''
+
+    results_dir: str = ''          # under docs/
+    sweeps_dir: str = ''           # under training/artifacts/
+    build_subdir: str = ''         # under build/dse/
+
+    # Slugs whose checkpoint predates the slug convention: ((slug, filename), ...). Renaming the
+    # file would break every recorded number that refers to it, so it is mapped instead.
+    checkpoint_aliases: tuple = ()
+
     notes: str = ''
 
     def tau_for(self, width) -> float:
@@ -211,6 +233,12 @@ JSC = Dataset(
     tau_basis='total',        # see the field comment -- preserved, not endorsed
     training=TrainingRecipe(batch_size=100, epochs=32, lr=1e-2, lr_step=14, lr_gamma=0.1,
                             seed=20260802),
+    slug_prefix='',                # JSC's grid writes bare slugs
+    results_dir='results',
+    sweeps_dir='sweeps',
+    build_subdir='',               # build/dse/results.json -- 54 measured configs live here
+    checkpoint_aliases=(('n6_z200_distributive_w50',
+                         'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt'),),
     ofat_rungs=(200, 360),
     group_b_rungs=(50, 360, 600, 1600),
     corners=(((800,), 50), ((1200,), 50), ((1600,), 100),
@@ -256,6 +284,10 @@ MNIST = Dataset(
     tau_basis='final',        # GroupSum's logit range is set by the FINAL layer, not the sum
     training=TrainingRecipe(batch_size=100, epochs=30, lr=1e-2, lr_step=14, lr_gamma=0.1,
                             seed=20260811),
+    slug_prefix='mnist_',
+    results_dir='results-mnist',
+    sweeps_dir='sweeps-mnist',
+    build_subdir='mnist',
     ofat_rungs=(1000,),       # the tau anchor; every off-anchor rung needs its own tau
     group_b_rungs=(300, 1000, 2000),
     corners=(((2000, 1000), 3), ((1000,), 1)),

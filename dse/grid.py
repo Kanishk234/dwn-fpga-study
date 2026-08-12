@@ -180,6 +180,18 @@ def _model(layers, n=None, z=None, enc=None):
                        tau=DS.tau_for(DS.tau_width(layers)))
 
 
+def _hw(**kw):
+    """A HardwareConfig at THIS dataset's precision.
+
+    Config()'s default HardwareConfig carries JSC's Q3.12, so building an MNIST config without
+    this emitted it at 16 bits -- visible only as `q16.12` in the config name, and otherwise a
+    silently oversized encoder. Caught by dse/run.py printing the name.
+    """
+    kw.setdefault('word_bits', DS.word_bits)
+    kw.setdefault('frac_bits', DS.frac_bits)
+    return HardwareConfig(**kw)
+
+
 def _split(width, parts):
     """A `parts`-layer stack of roughly `width` total nodes, every layer divisible by classes.
 
@@ -195,26 +207,26 @@ def build():
     out = []  # (group, label, Config, needs_training)
 
     for w in DS.size_ladder:
-        out.append(('ladder', f'1x{w}', Config(model=_model([w])), True))
+        out.append(('ladder', f'1x{w}', Config(model=_model([w]), hw=_hw()), True))
 
     for rung in DS.ofat_rungs:
         for z in [z for z in DS.z_values if z != DS.default_z]:
-            out.append(('ofat-z', f'1x{rung} z={z}', Config(model=_model([rung], z=z)), True))
+            out.append(('ofat-z', f'1x{rung} z={z}', Config(model=_model([rung], z=z), hw=_hw()), True))
         for enc in OFAT['encoding']:
             out.append(('ofat-enc', f'1x{rung} {enc}',
-                        Config(model=_model([rung], enc=enc)), True))
+                        Config(model=_model([rung], enc=enc), hw=_hw()), True))
         for n in OFAT['n']:
-            out.append(('ofat-n', f'1x{rung} n={n}', Config(model=_model([rung], n=n)), True))
+            out.append(('ofat-n', f'1x{rung} n={n}', Config(model=_model([rung], n=n), hw=_hw()), True))
         for depth, parts in (('two', 2), ('three', 3)):
             layers = _split(rung, parts)
-            out.append(('ofat-L', f'{parts}x{layers[0]}', Config(model=_model(layers)), True))
+            out.append(('ofat-L', f'{parts}x{layers[0]}', Config(model=_model(layers), hw=_hw()), True))
 
     # Group B rides on the baseline rung's already-trained model: same ModelConfig, different
     # HardwareConfig. That is the whole reason the two are separate objects.
     for layers, z in DS.corners:
         w = 'x'.join(str(x) for x in layers)
         out.append(('corner', f'{len(layers)}x{layers[0]} z={z}',
-                    Config(model=_model(layers, z=z)), True))
+                    Config(model=_model(layers, z=z), hw=_hw()), True))
 
     for rung in DS.group_b_rungs:
         base = _model([rung])
@@ -228,7 +240,7 @@ def build():
             if rung != DS.ofat_rungs[-1] and 'clock' in label:
                 continue
             out.append(('group-b', f'1x{rung} {label}',
-                        Config(model=base, hw=HardwareConfig(**hw_kw)), False))
+                        Config(model=base, hw=_hw(**hw_kw)), False))
 
     return out
 

@@ -44,20 +44,25 @@ from run_synth import (DEVICE_LUTS, parse_utilization, parse_wns,  # noqa: E402
 import grid as grid_mod  # noqa: E402
 from area_model import is_extrapolated, predict  # noqa: E402
 
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# The dataset being swept. Rebound by main() from --dataset; grid_mod.DS is kept in step with it,
+# because build() reads that global. Everything below is DERIVED from DS -- see use_dataset().
+DS = datasets.JSC
+
 RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 ARTIFACTS = os.path.join(REPO, 'training', 'artifacts')
 # Sweep checkpoints live in a subfolder: 37 configs x 2 files would bury the handful of Phase 1
 # artifacts, and those must NOT move -- scripts/verify_phase1.py, host.py, run_tb.py and
 # run_gate1.py all locate them by a hardcoded path. Worst of all, verify_phase1.py finds the
 # 166k test set that way, and if it moved, Gate 1b would silently SKIP rather than fail.
-SWEEPS = os.path.join(ARTIFACTS, 'sweeps')
+SWEEPS = os.path.join(ARTIFACTS, DS.sweeps_dir)
 
 # Phase 1's checkpoint predates the slug convention. Rather than rename a file every recorded
 # number refers to, map it. Step 2c's training notebook writes `<slug>_checkpoint.pt` directly,
 # so this table should gain no further entries.
-ALIASES = {
-    'n6_z200_distributive_w50': 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt',
-}
+ALIASES = dict(DS.checkpoint_aliases)
 
 
 def resolve_checkpoint(cfg):
@@ -81,14 +86,40 @@ def resolve_checkpoint(cfg):
         p = os.path.join(ARTIFACTS, alias)
         if os.path.exists(p):
             return p
+    # Both spellings, because the two grids disagree: JSC's notebook writes bare `<slug>_...`
+    # and MNIST's writes `mnist_<slug>_...`. The prefix is a dataset fact (datasets/), not a
+    # rule to normalise by renaming trained checkpoints -- that would break recorded numbers.
+    names = [f'{DS.slug_prefix}{slug}_checkpoint.pt']
+    if DS.slug_prefix:
+        names.append(f'{slug}_checkpoint.pt')
     for root in (SWEEPS, ARTIFACTS):
-        p = os.path.join(root, f'{slug}_checkpoint.pt')
-        if os.path.exists(p):
-            return p
+        for nm in names:
+            p = os.path.join(root, nm)
+            if os.path.exists(p):
+                return p
     return None
 
 
-SNAPSHOT = os.path.join(REPO, 'docs', 'results', 'sweep-results.json')
+SNAPSHOT = os.path.join(REPO, 'docs', DS.results_dir, 'sweep-results.json')
+
+
+def use_dataset(name):
+    """Point every sweep path at `name`'s artifacts. Call before anything reads them.
+
+    JSC's paths are its historical ones and must stay put: docs/results/ and
+    training/artifacts/sweeps/ are referenced by REPORT.md, README.md and the `jsc-complete` tag,
+    and build/dse/results.json holds 54 measured configs that a moved path would silently re-run
+    from scratch. The layout is recorded per dataset in `datasets/` rather than special-cased
+    here.
+    """
+    global DS, RESULTS, SWEEPS, ALIASES, SNAPSHOT
+    DS = datasets.get(name)
+    grid_mod.DS = DS                      # build() reads the grid module's global
+    RESULTS = os.path.join(REPO, 'build', 'dse', DS.build_subdir, 'results.json')
+    SWEEPS = os.path.join(ARTIFACTS, DS.sweeps_dir)
+    ALIASES = dict(DS.checkpoint_aliases)
+    SNAPSHOT = os.path.join(REPO, 'docs', DS.results_dir, 'sweep-results.json')
+    return DS
 
 
 def load_results():
@@ -339,6 +370,8 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
 
 def main() -> int:
     ap = argparse.ArgumentParser(description='Run sweep configs through Gate 1 + synthesis.')
+    ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
+                    help='which dataset to sweep (default %(default)s)')
     ap.add_argument('--checkpoint', help='trained checkpoint for the config(s) being run')
     ap.add_argument('--config', help='run one config by name (or its grid label)')
     ap.add_argument('--all', action='store_true', help='run every config in the grid')
@@ -353,6 +386,11 @@ def main() -> int:
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--verbose', action='store_true', help='stream Gate 1 output')
     args = ap.parse_args()
+
+    # Before anything reads a path. grid_mod.build() below reads grid's DS, which this sets.
+    use_dataset(args.dataset)
+    print(f'dataset: {DS.name}  (results {os.path.relpath(RESULTS, REPO)}, '
+          f'checkpoints {os.path.relpath(SWEEPS, REPO)})')
 
     entries = grid_mod.build()
     done = load_results()
