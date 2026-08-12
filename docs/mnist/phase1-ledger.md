@@ -27,7 +27,7 @@ point.
 |---|---|---|
 | M1a | Derive the feature count; add `datasets/` descriptors | ✅ done 2026-08-11 — JSC identical |
 | M1b | Thread configurable precision through the flow | ✅ done 2026-08-11 — JSC identical, Gate 1 passes at 11-bit |
-| M1c | Train a small MNIST model (Kaggle, off-machine) | ✅ done 2026-08-11 — **96.14%** (best 96.28%) |
+| M1c | Train a small MNIST model (Kaggle, off-machine) | ✅ done 2026-08-11 — ~~96.14% (best 96.28%)~~ → **96.77%** (best 96.88%) after the `tau` correction, see open questions |
 | M1d | Export and pass Gate 1 bit-exact | ✅ done 2026-08-11 — **PASS on the trained model**, and Q0.8 is lossless |
 | M1e | Synthesize; measure core / encoder / top separately | ✅ done 2026-08-11 — **1,548 LUTs (7.4%), 108.0 MHz** after the argmax fix |
 | M1f | Harness record format and vector-store capacity | ✅ done 2026-08-11 — ⚠️ **simulation-verified only**, not yet on silicon |
@@ -258,6 +258,12 @@ when the thresholds per feature are few, whatever the feature count.
 
 **Same accuracy, 35–45x fewer lookup tables.** That is a far stronger position than JSC, where we
 were not competitive on area at all.
+
+⚠️ **The accuracy row is superseded: `1x300` retrains to 96.77% at the corrected `tau`.** The
+1,557 LUTs was measured on the 96.14% checkpoint, and `tau` cannot change the topology, so the
+area is expected to be identical — but **expected is not measured**, and this project does not
+quote unverified pairs. Re-export the corrected checkpoint, re-run Gate 1, re-synthesize, and only
+then update the row as a matched pair.
 
 ⚠️ **Before anyone quotes it**, four things have to be checked, and none is done:
 - **The published rows come from brief §8, which was stale for JSC** and needed a full refresh.
@@ -738,4 +744,4 @@ latency figure that goes in the report, so measure before quoting.
 | ~~Does the **tool** ship a harness?~~ | ✅ **Closed 2026-08-11: no, generator-only.** Users bring their own, as hls4ml does. The encoder still ships — intrinsic to a DWN and most of the area, so omitting it would repeat the reporting failure `REPORT.md` §5.2 criticises |
 | ~~Does MNIST run on our board in this repo?~~ | ✅ **Closed 2026-08-11: yes.** M1f and M1g are in scope. Separate from the tool question — the tool still ships generator-only; the board demo is this project's own deliverable, and a second dataset on real silicon is a far stronger result than a second dataset in simulation |
 | How many MNIST vectors fit in the vector store? | ⬜ Open, and only matters if the board answer is yes. ~48× wider per vector than JSC, so `DEPTH` falls to order 100 |
-| **Is `1x300`'s 96.14% understated by `tau`?** | ⬜ Open, and probably a small effect. `GroupSum` divides by `tau`, so `tau=3.3333` at group 30 gives a logit range of 9 against the anchor's 30 — this rung trained ~2× hot, and `1x100`/`1x200` far worse (see `docs/mnist/reduction-ledger.md`). But `1x300`'s cross-entropy floor is only 0.0011 against an observed final loss of 0.1433, so it was **not** floor-limited the way the narrow rungs were. **Gate 1 and every area/timing number are unaffected** — `tau` never reaches hardware. The B-ladder group of the reduction grid measures it |
+| ~~Is `1x300`'s 96.14% understated by `tau`?~~ | ✅ **Closed 2026-08-11: yes, by +0.63 pp — the bring-up model is 96.77%, not 96.14%.** `GroupSum` divides by `tau`, and `tau=3.3333` at group 30 gives a logit range of 9 against the anchor's 30, so this rung trained ~2× hot. Retrained at `tau=1.678`: **96.77%** (best 96.88%), checkpoint `mnist_n6_z3_distributive_w300_tau1p678`. **Gate 1 and every area and timing number are unaffected** — `tau` is a training-time constant that never reaches hardware — but the accuracy quoted for this design should be the corrected one. Full analysis, including why the narrow rungs moved 5× as much: `docs/mnist/reduction-ledger.md` |
