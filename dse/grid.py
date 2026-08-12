@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import dataclasses
 import json
 import math
 import os
@@ -34,14 +35,24 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+
+import datasets                                        # noqa: E402
 
 from config import Config, HardwareConfig, ModelConfig  # noqa: E402
 from area_model import DEVICE_LUTS, is_extrapolated, predict  # noqa: E402
 
-NUM_CLASSES = 5
-BASE_N = 6
-BASE_Z = 200
-BASE_ENC = 'distributive'
+# ---------------------------------------------------------------------------------------------
+# THE DATASET. Every fact below that used to be a module constant -- classes, the ladder, the z
+# values, the tau schedule, the training recipe, the OFAT rungs, the corners -- now comes from
+# `datasets/`. Nothing in this file may name a dataset's dimensions again; adding a third dataset
+# means adding a descriptor there and passing --dataset here.
+#
+# Module-level DS is the default (JSC), so `python dse/grid.py` behaves exactly as before. main()
+# rebinds it when --dataset is given, which is why build() reads the global rather than closing
+# over it.
+# ---------------------------------------------------------------------------------------------
+DS = datasets.JSC
 
 # Minutes of serial Vivado per sweep point (all three targets, place-and-route).
 #
@@ -56,32 +67,10 @@ MINUTES_PER_SYNTH = 12
 # tau tracks layer width -- it is NOT a constant to copy from `sm`.
 # The paper's JSC values, by total node count (docs/paper-configs.md).
 # ---------------------------------------------------------------------------------------------
-TAU_ANCHORS = [(10, 1 / 0.7), (50, 1 / 0.3), (360, 1 / 0.1), (2400, 1 / 0.03)]
-
-
-def tau_for(nodes):
-    """Interpolate the paper's tau schedule GEOMETRICALLY -- log(tau) linear in log(width).
-
-    The paper's tau is a power law in width, not a linear function of it. Its four JSC anchors
-    have log-log slopes of 0.526, 0.557 and 0.635 -- near-constant, i.e. tau ~ width**0.57.
-
-    Interpolating linearly in tau (as this did until 2026-08-08) overshoots every intermediate
-    width by 10-19%. That is worse than a uniform offset: 50 and 360 are exact anchors and would
-    get the paper's value while every other ladder rung ran hot, putting a kink in the
-    accuracy-vs-width curve that is an artifact of the schedule rather than of the architecture.
-
-    Getting this wrong does not fail loudly -- it just trains a worse model, and the sweep point
-    then reports an accuracy that says more about tau than about the architecture.
-    """
-    if nodes <= TAU_ANCHORS[0][0]:
-        return TAU_ANCHORS[0][1]
-    if nodes >= TAU_ANCHORS[-1][0]:
-        return TAU_ANCHORS[-1][1]
-    for (w0, t0), (w1, t1) in zip(TAU_ANCHORS, TAU_ANCHORS[1:]):
-        if w0 <= nodes <= w1:
-            f = (math.log(nodes) - math.log(w0)) / (math.log(w1) - math.log(w0))
-            return math.exp(math.log(t0) + f * (math.log(t1) - math.log(t0)))
-    return TAU_ANCHORS[-1][1]
+# tau_for and its anchors moved to `datasets.Dataset.tau_for`. The interpolation is unchanged
+# and verified to reproduce this function exactly over widths 5..3000. What is new is that a
+# dataset with ONE published anchor (MNIST) can supply an exponent instead, which four-anchor
+# interpolation could not express.
 
 
 # ---------------------------------------------------------------------------------------------
@@ -92,7 +81,7 @@ def tau_for(nodes):
 # saturation point near W~800 and the fit boundary near W~550-600, so the top rungs are
 # expected to fail. That is the point: a config that does not fit locates the frontier's edge.
 # ---------------------------------------------------------------------------------------------
-SIZE_LADDER = [50, 100, 200, 360, 500, 600, 800, 1200, 1600, 2000]
+# SIZE_LADDER, OFAT_RUNGS, GROUP_B_RUNGS and CORNERS now live in the dataset descriptor.
 
 # 1600 and 2000 added 2026-08-09, after the sweep found NOTHING that failed to fit -- the
 # largest config tried (`1x600`) used 51% of the device, so the frontier had no measured edge
@@ -109,7 +98,6 @@ SIZE_LADDER = [50, 100, 200, 360, 500, 600, 800, 1200, 1600, 2000]
 
 # Rungs used for one-factor-at-a-time. Mid-ladder on purpose: at 50 nodes everything fits and
 # nothing discriminates; at 1200 nothing fits and nothing discriminates.
-OFAT_RUNGS = [200, 360]
 
 # The axes varied one at a time. `z` leads because it is the one the paper never sweeps, and
 # it sets the saturation ceiling on encoder area -- which dominates (phase2-ledger).
@@ -152,14 +140,6 @@ OFAT = {
 # Ranked against the alternatives before choosing: multi-layer at scale is dominated (the layer
 # penalty is -0.75 pp, far more than z=100's -0.10 pp) and n=4 likewise (-0.38 pp). Width x z is
 # the only pair where both terms are close to free.
-CORNERS = [
-    ([800], 50),     # the VALUE end: predicted 35.1% dev at ~75.96%
-    ([1200], 50),    # predicted 42.7% dev at ~76.06%
-    ([1600], 100),   # predicted 69.1% at ~76.25%
-    ([2400], 100),   # THE PAPER'S lg -- predicted 84.6%, Phase 1 said it could not fit
-    ([2400], 50),    # same width, cheaper: predicted 62.6%
-    ([3000], 50),    # larger than the paper's largest: predicted 71.1%
-]
 # `1x800 z=50` covers the cheap end, which the other five leave open: it is ~19% smaller than
 # the cheapest of them for an estimated 0.10 pp -- inside the 0.15 pp noise floor. `1x600 z=50`
 # was considered and left out: at -0.24 pp below the plateau it starts costing real accuracy.
@@ -175,7 +155,6 @@ CORNERS = [
 # So the one-point claim was being stated as a general result, and the config it matters most
 # for -- the largest that fits -- had never been tested. Each variant is ~5 min of Vivado and
 # needs no training, since Group B reuses its rung's checkpoint.
-GROUP_B_RUNGS = [50, 360, 600, 1600]
 
 # 3. Group B -- no retraining, synthesis only. (label, HardwareConfig kwargs)
 GROUP_B = [
@@ -190,15 +169,15 @@ GROUP_B = [
 # Training hyperparameters. NOT swept -- they do not change the hardware, and the paper's JSC
 # schedule is what Phase 1 reproduced to 73.84%. Exported so the notebook cannot drift from it.
 # Paper: BS=100, LR 1e-2(14) / 1e-3(14) / 1e-4(4) = 32 epochs, i.e. StepLR(14, 0.1).
-TRAINING = {
-    'batch_size': 100, 'epochs': 32, 'lr': 1e-2,
-    'lr_step': 14, 'lr_gamma': 0.1, 'seed': 20260802,
-}
+# TRAINING moved to `datasets.Dataset.training`; see TrainingRecipe there.
 
 
-def _model(layers, n=BASE_N, z=BASE_Z, enc=BASE_ENC):
-    return ModelConfig(n=n, thermometer_bits=z, thermometer=enc, layers=tuple(layers),
-                       num_classes=NUM_CLASSES, tau=tau_for(sum(layers)))
+def _model(layers, n=None, z=None, enc=None):
+    return ModelConfig(n=DS.base_n if n is None else n,
+                       thermometer_bits=DS.default_z if z is None else z,
+                       thermometer=DS.base_encoding if enc is None else enc,
+                       layers=tuple(layers), num_classes=DS.classes,
+                       tau=DS.tau_for(DS.tau_width(layers)))
 
 
 def _split(width, parts):
@@ -207,7 +186,7 @@ def _split(width, parts):
     The FINAL layer is what GroupSum reduces, so it is the one that must divide exactly; the
     others are kept aligned anyway so a config reads consistently.
     """
-    per = max(NUM_CLASSES, round(width / parts / NUM_CLASSES) * NUM_CLASSES)
+    per = max(DS.classes, round(width / parts / DS.classes) * DS.classes)
     return [per] * parts
 
 
@@ -215,11 +194,11 @@ def build():
     """Every config in the sweep, tagged by which part of the strategy produced it."""
     out = []  # (group, label, Config, needs_training)
 
-    for w in SIZE_LADDER:
+    for w in DS.size_ladder:
         out.append(('ladder', f'1x{w}', Config(model=_model([w])), True))
 
-    for rung in OFAT_RUNGS:
-        for z in OFAT['z']:
+    for rung in DS.ofat_rungs:
+        for z in [z for z in DS.z_values if z != DS.default_z]:
             out.append(('ofat-z', f'1x{rung} z={z}', Config(model=_model([rung], z=z)), True))
         for enc in OFAT['encoding']:
             out.append(('ofat-enc', f'1x{rung} {enc}',
@@ -232,18 +211,21 @@ def build():
 
     # Group B rides on the baseline rung's already-trained model: same ModelConfig, different
     # HardwareConfig. That is the whole reason the two are separate objects.
-    for layers, z in CORNERS:
+    for layers, z in DS.corners:
         w = 'x'.join(str(x) for x in layers)
         out.append(('corner', f'{len(layers)}x{layers[0]} z={z}',
                     Config(model=_model(layers, z=z)), True))
 
-    for rung in GROUP_B_RUNGS:
+    for rung in DS.group_b_rungs:
         base = _model([rung])
         for label, hw_kw in GROUP_B:
             # Clock variants only on the baseline rung: they answer "what does asking for a
             # different clock do", which does not need repeating per width. PIPELINE DEPTH does,
             # because the answer depends entirely on how much slack a width has left.
-            if rung != OFAT_RUNGS[-1] and 'clock' in label:
+            # NOTE the gate is the last OFAT rung, not the last Group B rung -- those are
+            # different lists (JSC: 360 vs 1600). Reading group_b_rungs[-1] here would
+            # silently move every clock variant to a different width.
+            if rung != DS.ofat_rungs[-1] and 'clock' in label:
                 continue
             out.append(('group-b', f'1x{rung} {label}',
                         Config(model=base, hw=HardwareConfig(**hw_kw)), False))
@@ -253,7 +235,7 @@ def build():
 
 def area_of(cfg):
     return predict(list(cfg.model.layers), cfg.model.n, cfg.model.thermometer_bits,
-                   cfg.model.num_classes, word_bits=cfg.hw.word_bits)
+                   cfg.model.num_classes, word_bits=cfg.hw.word_bits, ds=DS)
 
 
 # A config predicted between the fit threshold and this ceiling gets synthesized ANYWAY.
@@ -287,11 +269,21 @@ def should_synthesize(cfg):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description='The Phase 2 sweep grid.')
+    ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
+                    help='which dataset to build the grid for (default %(default)s)')
     ap.add_argument('--list', action='store_true', help='every config with predicted area')
     ap.add_argument('--group-a', action='store_true', help='only configs needing training')
     ap.add_argument('--json', metavar='PATH', nargs='?', const='-',
                     help='export the Group A training set as JSON (for the 2c notebook)')
     args = ap.parse_args()
+
+    # build() and _model() read the module-level DS, so rebind before building. A parameter
+    # would be cleaner, but every helper in this file would have to thread it and the sweep
+    # only ever builds one dataset per invocation.
+    global DS
+    DS = datasets.get(args.dataset)
+    print(f'dataset: {DS.name}  ({DS.features} features, {DS.classes} classes, '
+          f'{DS.fixed_point}, base n={DS.base_n} z={DS.default_z})')
 
     grid = build()
 
@@ -314,7 +306,7 @@ def main() -> int:
                 'thermometer': m.thermometer, 'layers': list(m.layers),
                 'mapping': ['learnable'] * len(m.layers),
                 'num_classes': m.num_classes, 'tau': m.tau,
-                **TRAINING,
+                **dataclasses.asdict(DS.training),
             })
         payload = {'training_set': out, 'count': len(out)}
         text = json.dumps(payload, indent=2)
