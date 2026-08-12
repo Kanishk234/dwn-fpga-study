@@ -29,8 +29,19 @@ import torch
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
 sys.path.insert(0, REPO)
-from extract import (FRAC_BITS, encode, extract_tables, extract_wiring,  # noqa: E402
+from extract import (encode, extract_tables, extract_wiring,  # noqa: E402
                      forward, layer_indices, quantize, quantize_thresholds)
+
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# These are JSC ANALYSES, not part of the shipped flow -- `experiments/` is deliberately
+# outside the dataset-agnostic contract in datasets/__init__.py (which covers exporter/,
+# rtlgen/, rtl/, tb/, scripts/ and harness/). Several bake in JSC measurements outright,
+# e.g. LUT_PER_BIT = 1519 / 202. So the JSC binding is stated HERE, explicitly, rather
+# than inherited from a module constant that pretended to be universal.
+FRAC_BITS = datasets.JSC.frac_bits
+WORD_BITS = datasets.JSC.word_bits
 
 # Real feature vectors, so quantization and the thermometer see realistic ranges. Random
 # features would still exercise the logic, but thresholds fitted to real data would then sit
@@ -143,7 +154,7 @@ def main():
                *extract_wiring(ck['state_dict'], i, args.n))
               for i in layer_indices(ck['state_dict'])]
     thr_q = quantize_thresholds(thresholds, FRAC_BITS)
-    xq = quantize(x_raw, FRAC_BITS)
+    xq = quantize(x_raw, FRAC_BITS, WORD_BITS)
     bits = encode(xq, thr_q)
     pred, _ = forward(bits, layers, classes)
 
