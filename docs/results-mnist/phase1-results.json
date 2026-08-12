@@ -39,6 +39,20 @@
   "dwn_top_fmax_mhz": 108.0,
   "device_pct": 7.44,
   "meets_timing": true,
-  "gate1": "PASS"
+  "gate1": "PASS",
+  "board_luts": 4586,
+  "board_ff": 10746,
+  "board_bram": 0,
+  "board_dsp": 0,
+  "board_wns": 0.292,
+  "board_fmax_mhz": 103.0,
+  "board_device_pct": 22.05,
+  "board_meets_timing": true,
+  "harness_luts": 3038,
+  "gate1b_agree": 10000,
+  "gate1b_total": 10000,
+  "gate1b": "PASS",
+  "fixed_point_diverges": 0,
+  "saturated_values": 56835
  }
 ]

@@ -12,6 +12,7 @@ transcribing a measurement by hand is how a digit changes between a report and a
 import argparse
 import json
 import os
+import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,6 +34,16 @@ def main(argv=None):
     ap.add_argument('--word-bits', type=int, required=True)
     ap.add_argument('--frac-bits', type=int, required=True)
     ap.add_argument('--clock-ns', type=float, default=10.0)
+    # The whole board design -- model plus UART, store and benchmark FSM. Separate from
+    # --synth-dir because brief 6 requires core/encoder/top reported separately from the
+    # harness they are wrapped in, and because they come from different Vivado runs.
+    ap.add_argument('--board-dir',
+                    help='a build_bitstream.py output dir (…/basys3), for the board-level row')
+    # Gate 1b is a HARDWARE result and cannot be read out of a Vivado report, so it comes from
+    # host.py's own output -- parsed, not typed. Transcribing 10000/10000 by hand is exactly how
+    # a digit changes between a run and a document.
+    ap.add_argument('--gate1b-log',
+                    help='saved stdout of `host.py --gate1b`, parsed for the silicon result')
     args = ap.parse_args(argv)
 
     ck = load_checkpoint(args.checkpoint)
@@ -77,6 +88,44 @@ def main(argv=None):
     # alongside the numbers rather than in a separate place that can drift from them.
     rec['gate1'] = 'PASS'
 
+    # ---- the whole board design ----
+    if args.board_dir:
+        util = parse_utilization(os.path.join(args.board_dir, 'utilization_routed.rpt'))
+        wns = parse_wns(os.path.join(args.board_dir, 'timing_summary_routed.rpt'))
+        for f in ('luts', 'ff', 'bram', 'dsp'):
+            rec[f'board_{f}'] = util.get(f)
+        rec['board_wns'] = wns
+        rec['board_fmax_mhz'] = round(1000.0 / (args.clock_ns - wns), 1)
+        rec['board_device_pct'] = round(rec['board_luts'] / DEVICE_LUTS * 100, 2)
+        rec['board_meets_timing'] = wns >= 0
+        # The harness is the difference, and it is NOT fixed: it scales with record width. That
+        # assumption held while JSC was the only dataset and broke immediately at 784 features.
+        rec['harness_luts'] = rec['board_luts'] - rec['dwn_top_luts']
+
+    # ---- Gate 1b, from hardware ----
+    if args.gate1b_log:
+        with open(args.gate1b_log, encoding='utf-8', errors='replace') as fh:
+            log = fh.read()
+        m = re.search(r'hardware == software\s*:\s*(\d+)/(\d+)', log)
+        if not m:
+            raise SystemExit(f'{args.gate1b_log}: no "hardware == software : N/M" line. That is '
+                             f'the only line this reads; pass the real host.py --gate1b output.')
+        agree, total = int(m.group(1)), int(m.group(2))
+        # A subset run is not Gate 1b, and host.py says so in its own output. Refuse to record a
+        # PASS that a partial run cannot support -- the whole point of the gate is the "whole
+        # test set" claim, and a snapshot that blurs that is worse than no snapshot.
+        if 'not a full test set' in log:
+            raise SystemExit(f'{args.gate1b_log} is a subset run, not Gate 1b. Dump the full '
+                             f'test set (scripts/dump_testset.py) and rerun.')
+        rec['gate1b_agree'] = agree
+        rec['gate1b_total'] = total
+        rec['gate1b'] = 'PASS' if agree == total else 'FAIL'
+        d = re.search(r'differs from the float32 model on (\d+)/(\d+)', log)
+        if d:
+            rec['fixed_point_diverges'] = int(d.group(1))
+        s = re.search(r'saturated:\s*(\d+)', log)
+        rec['saturated_values'] = int(s.group(1)) if s else 0
+
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, 'phase1-results.json')
     with open(path, 'w', encoding='utf-8') as fh:
@@ -88,6 +137,13 @@ def main(argv=None):
           f"{'meets' if rec['meets_timing'] else 'MISSES'} {1000/args.clock_ns:.0f} MHz")
     print(f"  core {rec['dwn_core_luts']}  encoder {rec['thermometer_encoder_luts']}  "
           f"DSP {rec['dwn_top_dsp']}  BRAM {rec['dwn_top_bram']}")
+    if 'board_luts' in rec:
+        print(f"  board {rec['board_luts']:,} LUTs ({rec['board_device_pct']}%)  "
+              f"{rec['board_ff']:,} FF  {rec['board_bram']} BRAM  "
+              f"{rec['board_fmax_mhz']} MHz  harness {rec['harness_luts']:,} LUTs")
+    if 'gate1b' in rec:
+        print(f"  Gate 1b {rec['gate1b']}  {rec['gate1b_agree']:,}/{rec['gate1b_total']:,} "
+              f"on silicon  (fixed point diverges on {rec.get('fixed_point_diverges', '?')})")
     print('wrote', os.path.relpath(path, REPO))
     return 0
 
