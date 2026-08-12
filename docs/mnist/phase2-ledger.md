@@ -17,9 +17,9 @@ conclusions this way and every one was caught by measuring at a second point.
 
 | Step | What | Status |
 |---|---|---|
-| M2a | Machine parity — prove this box reproduces Phase 1 | ⬜ **do this first, before anything else** |
+| M2a | Machine parity — prove this box reproduces Phase 1 | ✅ **done 2026-08-12 — 12/12**, areas exact at 110 / 1,519 / 1,621. ⚠️ no-board half only; run `--with-board` before M2f |
 | M2·0 | **Noise floor** — run `mnist_noise_floor_kaggle.ipynb` | 🟡 notebook built, needs a Kaggle GPU session. Not strictly blocking, but it decides whether several reduction-study findings survive |
-| M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally** |
+| M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally**. ⚠️ 13 of 14 exist — `2x[1000,500]` needs one 4-min retrain, §1.3 |
 | M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
 | M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
 | M2e | Gate 1 across the grid | ⬜ |
@@ -100,6 +100,23 @@ train below. `1x1000` is the anchor (group 100, range 30) and was never affected
 
 **The checkpoints to export are `training/mnist_reduction_tau_kaggle.ipynb`'s**, whose `_tau*` slug
 suffix keeps them beside the confounded originals. Full analysis: `docs/mnist/reduction-ledger.md`.
+
+⚠️ **`2x[1000,500]` is confounded too, and no corrected checkpoint exists — 13 of 14, not 14.**
+The rule is *the final layer's width sets the group*, so the paper's config has group **50** and
+wanted `tau = 2.246`, not 3.333 — the same ~48% error `1x500` had. It was missed because the
+correction was framed as a *ladder* fix and this config is in the multilayer group. Everything else
+is genuinely fine: the z-sweep, the n-sweep, `1x1000` and `2x[2000,1000]` all end at a 1000-wide
+layer, group 100, which **is** the anchor.
+
+| | count | source |
+|---|---|---|
+| ends at width 1000 → `tau` correct as trained | 8 | `mnist_grid_kaggle.ipynb` |
+| ladder rungs 100/200/300/500/2000 | 5 | `mnist_reduction_tau_kaggle.ipynb` (`_tau*`) |
+| **`2x[1000,500]`** | **1** | ⬜ **needs one retrain at τ=2.246, ~4 min** |
+
+Expect roughly +0.27 pp from it, by analogy with `1x500` — small, and probably inside the noise
+floor. Retrain anyway: 4 minutes buys a grid where every point was trained the same way, and the
+alternative is a footnote on one row of the published frontier forever.
 
 **Area, timing and Gate 1 are entirely unaffected** — `tau` is a training-time constant that never
 reaches hardware. Only the accuracy column moves. But it moves the *shape* of the ladder, not just
@@ -371,3 +388,35 @@ before sweeping many z.**
 timing would bind before area for MNIST, against the JSC frontier's shape. **First evidence in, and
 it holds.** Pipeline depth is the lever and needs no retraining — Group B rungs for MNIST are
 already 300 / 1000 / 2000 in the descriptor.
+
+### 2026-08-12 — M2a: this machine reproduces Phase 1, 12/12
+
+```
+dwn_core              110 LUTs,  73 FF      (expected 110 / 73)
+thermometer_encoder  1519 LUTs,   0 FF      (expected 1519 / 0)
+dwn_top              1621 LUTs, 269 FF      (expected 1621 / 269)
+Gate 1               1504 core / 1518 top vectors, PASS
+harness unit tests   PASS
+```
+
+Exact on every area, and on the **post-argmax-tree** values rather than the `jsc-complete` tag's
+108 / 1,619 — so §1.1's corrected table is the right one to check against, confirmed by
+measurement rather than by reading.
+
+**What this establishes is narrower than "the code works":** this machine's Vivado produces
+bit-identical areas to the machine that recorded Phase 1. That is the precondition for an MNIST
+sweep point being comparable to a JSC one. A drift of even one LUT would have made every
+cross-dataset comparison in the eventual report unattributable — which is the failure this check
+exists to prevent, and it is cheap precisely because it is run before anything depends on it.
+
+⚠️ **Simulation and synthesis only.** The board half — `--with-board`, 22/22, Gate 1b
+166,000/166,000 — has not been run in this session and needs a Basys 3 attached. Nothing in M2b–M2g
+requires it, but **M2f's board builds do**, and it should be run before the first one rather than
+after a failure.
+
+#### A gap found while reading the handoff, not by running anything
+
+`2x[1000,500]` is `tau`-confounded and has no corrected checkpoint — 13 of 14, not 14. Its final
+layer is 500, so group 50, so it wanted τ=2.246 like `1x500` did. It was missed because the
+correction was framed as a *ladder* fix and this config sits in the multilayer group. Recorded in
+§1.3 with the full per-config table; costs one ~4-minute Kaggle run.
