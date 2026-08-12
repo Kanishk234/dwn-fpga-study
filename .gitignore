@@ -23,6 +23,9 @@ training/artifacts/*_testset_full.npz
 # across. Phase 1's artifacts stay committed and stay where they are; verify_phase1.py,
 # host.py, run_tb.py and run_gate1.py all locate those by hardcoded path.
 training/artifacts/sweeps/
+# Same rule, per dataset. `sweeps-mnist/` is 1.1 GB on its own -- the pattern above did not
+# match it, so a `git add .` would have tried to push the whole grid.
+training/artifacts/sweeps-*/
 
 # Generated build products (Vivado reports, netlists, bitstreams).
 # Everything under build/ is regenerable by re-running the flow that made it.
