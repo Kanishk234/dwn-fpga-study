@@ -13,9 +13,12 @@ worth building on MNIST**, because every taper measured sits strictly inside the
 frontier. `1x500` reaches **97.70%** with 500 nodes and the identical 500-bit popcount that
 `3x[2000,300,500]` spends **2,800** nodes to reach 97.43% with.
 
-The one exception is a *mild* taper: **`2x[2000,1000]` at 98.32% is the best model in the entire
-study**, with a 2× smaller adder tree than `1x2000`. Everything at 4:1 compression or worse is
-over-compression.
+~~The one exception is a *mild* taper: `2x[2000,1000]` at 98.32% is the best model in the entire
+study.~~ ⚠️ **WITHDRAWN 2026-08-12 by the noise floor.** Over four seeds it averages 98.19% against
+`1x2000`'s 98.29% — it **loses** by 0.10 pp, and the 98.32 was one lucky draw. **There is no
+exception: `1x2000` is the best model, at 2,000 nodes instead of 3,000, and no taper is on the
+frontier.** Everything at 4:1 compression or worse is over-compression, and 2:1 is not worth it
+either.
 
 ---
 
@@ -27,13 +30,77 @@ over-compression.
 | R2 | Reduction grid — 7 tapers appended to trained baselines | ✅ trained 2026-08-11 |
 | R3 | Read the result | ⚠️ **retracted** — confounded by `tau`, see below |
 | R4 | Corrected grid at a `tau` that is not 10× hot | ✅ done 2026-08-11 — **confirmed: it was `tau`.** +3.6 to +5.3 pp on every floor-limited config |
-| R5 | Gate 1 + synthesis on whichever taper survives | ⬜ **de-prioritised** — no taper is on the projected frontier, so there is nothing whose area is worth measuring first. `2x[2000,1000]` is the only candidate |
-| R6 | Measure an MNIST run-to-run noise floor | 🟡 **notebook built 2026-08-12, not yet run** — `training/mnist_noise_floor_kaggle.ipynb`, 4 configs × 4 seeds, ~2 h. **Nothing here is safely readable until it lands** |
+| R5 | Gate 1 + synthesis on whichever taper survives | ❌ **closed 2026-08-12 — nothing survives.** `2x[2000,1000]` was the only candidate and the noise floor withdrew it. No taper's area is worth measuring |
+| R6 | Measure an MNIST run-to-run noise floor | ✅ **done 2026-08-12 — 0.24 pp.** Withdrew 3 claims including R5's premise. Same-seed reruns differ by up to 0.17 pp |
 | R7 | `2x[2000,500]` — the missing monotone taper | ⬜ `3x[2000,300,500]` is an hourglass, not a taper (below) |
 
 ---
 
 ## Log
+
+### 2026-08-12 — ✅ RESULT: the floor is 0.24 pp, and the study's best model is withdrawn
+
+16 runs, four configurations × four seeds. **MNIST's floor is larger than JSC's 0.15 pp.**
+
+| config | min | max | **spread** | mean | sd | stored | rerun @ seed 0 | Δ |
+|---|---|---|---|---|---|---|---|---|
+| `1x300` | 96.70 | 96.94 | **0.24** | 96.800 | 0.101 | 96.77 | 96.70 | −0.07 |
+| `1x1000` | 97.98 | 98.12 | **0.14** | 98.023 | 0.066 | 97.97 | 98.00 | +0.03 |
+| `1x2000` | 98.20 | 98.41 | **0.21** | 98.290 | 0.088 | 98.26 | 98.27 | +0.01 |
+| `2x[2000,1000]` | 98.15 | 98.22 | **0.07** | 98.190 | 0.029 | 98.32 | 98.15 | **−0.17** |
+
+**Use 0.24 pp as the floor.** No width dependence is detectable — 0.24 / 0.14 / 0.21 / 0.07 is not
+monotone in size — so the hypothesis that it would scale with width is **not supported**, and four
+seeds cannot resolve whether a real dependence hides under this scatter. Quote one number.
+
+#### ⚠️ WITHDRAWN: "`2x[2000,1000]` — 98.32%, the best model in all 35 configs"
+
+| | mean over 4 seeds | range |
+|---|---|---|
+| `1x2000` | **98.290** | [98.20, 98.41] |
+| `2x[2000,1000]` | **98.190** | [98.15, 98.22] |
+
+**`1x2000` is ahead by 0.10 pp.** The claimed +0.06 pp advantage does not merely fail to clear the
+floor — **it reverses.** The 98.32% came from a single seed, and re-running that same seed gave
+98.15%. All four new runs sit below the stored figure.
+
+The consequence is not small: `2x[2000,1000]` was the only taper on the projected frontier and the
+study's headline. **It is not the best model, and it is not on the frontier.** `1x2000` reaches at
+least the same accuracy with 2,000 nodes instead of 3,000. This *strengthens* the study's other
+conclusion — depth does not pay — while removing its single counterexample.
+
+#### ⚠️ The same seed does not reproduce, by up to 0.17 pp
+
+The reproduction check the notebook was built around **failed its stated purpose**: seed 20260811
+was supposed to return the stored number within a rounding error, and on `2x[2000,1000]` it came
+back 0.17 pp low. Three of four are within 0.07; that one is not.
+
+The cause is almost certainly GPU nondeterminism — `torch_dwn`'s CUDA kernels use atomics, and
+Kaggle does not guarantee the same accelerator between sessions. **That does not invalidate the
+floor; it is part of it.** The quantity wanted is "how much does this number move when nothing
+meaningful changes", and a same-seed rerun on a different GPU qualifies. It does mean seed spread
+and run-to-run spread cannot be separated with this data, and that **no MNIST accuracy in this
+study should be quoted to more than one decimal.**
+
+#### What survives, what does not
+
+| claim | margin | verdict at 0.24 pp |
+|---|---|---|
+| taper beats a narrow layer @ 100 | +3.69 pp | ✅ survives comfortably |
+| taper beats a narrow layer @ 200 | +1.04 pp | ✅ survives |
+| ladder 300 → 500 | +0.93 pp | ✅ survives |
+| ladder 500 → 2000 | +0.56 pp | ✅ survives |
+| `n=4` vs `n=6` | −0.40 pp | ✅ survives |
+| **z=1 vs z=25** | **0.32 pp** | ⚠️ **barely clears it.** Strengthens "z is nearly free" — the whole 25× encoder axis is worth ~1.3 floors |
+| ladder 1000 → 2000 | +0.29 pp | ⚠️ marginal |
+| taper @ 500 | −0.27 pp | ⚠️ marginal, treat as unresolved |
+| `1x2000` `tau` gain | +0.09 pp | ❌ **withdrawn** — inside the floor |
+| taper @ 500, second measure | −0.13 pp | ❌ **withdrawn** |
+| **`2x[2000,1000]` beats `1x2000`** | **+0.06 pp** | ❌ **withdrawn, and reversed** |
+| `2x[1000,500]` vs `1x1000` | −0.04 pp | ❌ withdrawn — but "depth does not pay" is unaffected, since the two are now simply indistinguishable at 50% more nodes |
+
+**Nothing in the hardware results moves.** `tau` and the seed are training-time only; every area,
+timing and Gate 1 number stands exactly as measured.
 
 ### 2026-08-12 — The noise-floor grid, and which sentences here depend on it
 
@@ -322,7 +389,7 @@ taper is judged against:
 
 | | |
 |---|---|
-| **best model in the study** | **`2x[2000,1000]` — 98.32%**, a 2:1 taper, group 100, **2× smaller adder tree** than `1x2000` |
+| ~~best model in the study~~ | ⚠️ **WITHDRAWN 2026-08-12.** `2x[2000,1000]` averages **98.19%** over 4 seeds against `1x2000`'s **98.29%** — it loses by 0.10 pp. The 98.32 was one lucky seed; that seed re-run gave 98.15. **`1x2000` is the best model**, at 2,000 nodes not 3,000 |
 | **best explicit taper** | `3x[2000,300,500]` — 97.43%, **−0.83 pp vs `1x2000`** for +800 nodes |
 | **the domination** | `1x500` **97.70% / 500 nodes** beats it, at the **same 500-bit popcount** |
 | **taper vs plain narrow layer** | **+3.69 pp @ 100**, +1.04 @ 200, −0.27 @ 500 — the mechanism is real, and it fades |
@@ -345,7 +412,7 @@ taper is judged against:
 | ~~Does a trained taper hold accuracy at a correct `tau`?~~ | ✅ **Closed 2026-08-11: yes, and it still does not pay.** Group-10 tapers gained +3.6 to +5.3 pp, confirming the confound. They then lost to a *narrower single layer* at the same popcount width. See the R4 entry. |
 | ~~Which `tau` schedule does MNIST follow?~~ | ✅ **Closed 2026-08-11: the power law**, by 1.62 and 0.76 pp on two architectures. And it is an interior optimum — flat-range has **zero** CE floor and still loses, so removing the floor was never sufficient. |
 | ~~Is the low end of the ladder wrong as published?~~ | ✅ **Closed 2026-08-11: yes, and now corrected.** `1x100` +4.61, `1x200` +2.02, `1x300` **+0.63 → 96.77%**. Gate 1, area and timing are all unaffected — `tau` never reaches hardware — but every accuracy in the baseline grid below width 1000 is superseded. |
-| **No MNIST noise floor exists** ⚠️ 🟡 **notebook built 2026-08-12: `training/mnist_noise_floor_kaggle.ipynb`, 4 configs × 4 seeds, ~2 h. Not yet run.** | JSC measured 0.15 pp by training one config twice. **Nothing here has an equivalent**, and it is now the binding limit: `2x[2000,1000]`'s +0.06 pp over `1x2000`, the −0.13 and −0.27 pp taper deltas, and `1x2000`'s +0.09 pp `tau` gain are all **unresolved, not small**. ⚠️ Neither endpoint of the −0.27 pp taper gap is in the grid, so that one is bounded by extrapolation from wider configurations rather than measured at its own group size. |
+| ~~No MNIST noise floor exists~~ | ✅ **Closed 2026-08-12: 0.24 pp**, larger than JSC's 0.15. No width dependence detectable. It withdrew three claims including the study's headline. Same-seed reruns differ by up to 0.17 pp (GPU nondeterminism), so **quote no MNIST accuracy to more than one decimal** | JSC measured 0.15 pp by training one config twice. **Nothing here has an equivalent**, and it is now the binding limit: `2x[2000,1000]`'s +0.06 pp over `1x2000`, the −0.13 and −0.27 pp taper deltas, and `1x2000`'s +0.09 pp `tau` gain are all **unresolved, not small**. ⚠️ Neither endpoint of the −0.27 pp taper gap is in the grid, so that one is bounded by extrapolation from wider configurations rather than measured at its own group size. |
 | **The area projection is a projection** ⚠️ | ~1.3 LUTs/bit comes from JSC's **5-class** fragment sweep read onto a **10-class** model, and nothing here has been synthesized. The domination margins (3× on `1x300` vs `2x[2000,100]`) are far too wide for that to flip, but the exact frontier is not measured. |
 | **Is `2x[2000,1000]` worth building?** | It is the only taper on the projected frontier — best accuracy in the study, 2× smaller adder tree. But it is 3,000 nodes against `1x300`'s 300 for +1.55 pp, so whether it fits the board at all is the first question, not whether it is Pareto-optimal. R5. |
 | **`2x[2000,500]` is missing** | `3x[2000,300,500]` widens at the end — an hourglass through a 300-wide bottleneck — so its 97.43% is a **lower bound** on a 500-wide floor. R7. Cheap: one config, ~8 min. |

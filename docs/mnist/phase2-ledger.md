@@ -18,7 +18,7 @@ conclusions this way and every one was caught by measuring at a second point.
 | Step | What | Status |
 |---|---|---|
 | M2a | Machine parity — prove this box reproduces Phase 1 | ✅ **done 2026-08-12 — 12/12**, areas exact at 110 / 1,519 / 1,621. ⚠️ no-board half only; run `--with-board` before M2f |
-| M2·0 | **Noise floor** — run `mnist_noise_floor_kaggle.ipynb` | 🟡 notebook built, needs a Kaggle GPU session. Not strictly blocking, but it decides whether several reduction-study findings survive |
+| M2·0 | **Noise floor** | ✅ **done 2026-08-12 — 0.24 pp.** Withdrew 3 reduction-study claims incl. the headline; `1x2000` replaces `2x[2000,1000]` as best model. See `reduction-ledger.md` |
 | M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally**. ⚠️ 13 of 14 exist — `2x[1000,500]` needs one 4-min retrain, §1.3 |
 | M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
 | M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
