@@ -278,6 +278,89 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 
 ## Log
 
+### 2026-08-12 — word width is now derived per config, and it found two dead JSC sweep points
+
+`z=25` could not be swept: the grid emits at the descriptor's Q0.8 and that config needs Q1.8.
+`dse/run.py` now calls `widen_for_checkpoint()` before building — it reads the checkpoint, derives
+the floor with `required_int_bits()`, and widens the word if the descriptor's default is too
+narrow. It **only ever widens**, never narrows, so a config that fits keeps the descriptor's width.
+Fractional bits are untouched, because they are not derivable from a checkpoint and silently
+trading an exact representation for a smaller one is the failure mode `required_int_bits` warns
+about.
+
+The config name carries the result (`q10.8` vs `q9.8`), which is right — it is a different design.
+
+Also fixed while in there: `run_config` was calling `gate1()` **without** passing
+`cfg.hw.word_bits`, so the emitter re-resolved precision from the descriptor on its own. The name
+and the RTL agreed only by coincidence, and would have diverged the moment anything overrode the
+default — which is exactly what widening does.
+
+#### ⚠️ This revealed that the JSC study has no `linear` encoding data at all
+
+Running the check across JSC's grid, **two configs would widen**: `1x200 linear` and `1x360 linear`,
+whose thresholds span ±8.906 and need 4 integer bits against Q3.12's 3.
+
+Both are recorded in `docs/results/sweep-results.json` as **`gate1-failed`, "emit_encoder.py
+failed"** — and they are the *only* 2 failures in all 54 JSC configs. The `gaussian` pair at the
+same rungs succeeded. So the entire `linear` axis of the JSC one-factor-at-a-time study is missing,
+**and the cause was the fixed Q3.12 word, not anything about the hardware or the encoding.**
+
+**Nothing has been re-run and no committed JSC number has changed** — `dse/run.py` skips
+already-done configs, so the two rows stay `gate1-failed` until someone deliberately forces them.
+Doing so is a real decision with a real payoff (it would fill in a missing sweep axis) and it
+belongs to whoever owns the JSC study, not to a side effect of MNIST work. Flagged, not taken.
+
+### 2026-08-12 — `run.py` and `report.py` too, and the sweep runner caught the `tau` confound itself
+
+All four of `grid.py`, `area_model.py`, `run.py`, `report.py` now take `--dataset`. Sweep paths are
+descriptor fields rather than special cases in code:
+
+| | JSC (unchanged) | MNIST |
+|---|---|---|
+| results | `build/dse/results.json` | `build/dse/mnist/results.json` |
+| snapshot | `docs/results/` | `docs/results-mnist/` |
+| checkpoints | `training/artifacts/sweeps/` | `.../sweeps-mnist/` |
+
+JSC's are recorded as data with a comment saying they are historical: `docs/results/` is
+referenced by `REPORT.md`, `README.md` and the `jsc-complete` tag, and `build/dse/results.json`
+holds 54 measured configs that a moved path would silently re-run from scratch. Verified
+unchanged — `--list` byte-identical, 54/54 results found, 40/40 checkpoints resolve.
+
+#### ✅ `dse/run.py` detects the `tau` confound without being told
+
+Running `1x100`:
+
+```
+CHECKPOINT MISMATCH: tau: checkpoint has 3.3333, grid expects 0.8972
+-- this checkpoint predates a schedule change and is a DIFFERENT model
+```
+
+The grid computes `tau` from the descriptor's power law, so every confounded ladder checkpoint is
+**rejected automatically**. That is strictly better than §1.3's warning, which relies on someone
+reading it. The config is recorded as `checkpoint-mismatch` rather than dropped.
+
+#### Two defects found, one of them mine
+
+- **Slug convention mismatch.** JSC's notebook writes `n6_z200_..._checkpoint.pt`, MNIST's writes
+  `mnist_n6_z3_...`. Added `slug_prefix` to the descriptor and made resolution try both, rather
+  than renaming trained checkpoints — renaming breaks every recorded number that refers to them.
+  14 of 18 MNIST training configs now resolve; the 4 missing (gaussian, linear, and the equal-split
+  multilayers) were never trained.
+- ⚠️ **MNIST was being built at JSC's Q3.12.** `Config`'s default `HardwareConfig` carries
+  `word_bits=16, frac_bits=12`, and the grid was not overriding it — so every MNIST config would
+  have emitted a silently oversized 16-bit encoder. Visible **only** as `q16.12` in the config
+  name that `dse/run.py` prints. Fixed with a `_hw()` helper that fills precision from the
+  descriptor. JSC is unaffected because its descriptor values equal the old defaults, which is
+  exactly why nothing caught this earlier.
+
+#### Cross-check: the sweep path and the hand path agree
+
+`1x1000 z=1` through `dse/run.py --impl` gives 2,272 / 846 / 3,118 LUTs and WNS −0.487 ns —
+**identical** to the same config run by hand through `scripts/run_synth.py`. The hand measurements
+taken while the refactor was in progress can therefore be discarded rather than reconciled.
+
+`dse/plot.py` is **not** converted. One config is not a frontier, so there is nothing to plot yet.
+
 ### 2026-08-12 — M2c done: `dse/` is dataset-aware. M2d is worse than it looked.
 
 **`dse/grid.py` and `dse/area_model.py` now read `datasets/`.** Option 1 from §3 — `dse/` is under

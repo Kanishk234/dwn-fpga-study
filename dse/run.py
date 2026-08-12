@@ -32,12 +32,17 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
+
+import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
+sys.path.insert(0, os.path.join(REPO, 'exporter'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from extract import load_checkpoint, required_int_bits  # noqa: E402
 from run_gate1 import find_vivado_bin, gate1, python_exe, run  # noqa: E402
 from run_synth import (DEVICE_LUTS, parse_utilization, parse_wns,  # noqa: E402
                        run_one, targets)
@@ -264,9 +269,41 @@ def measure_only(cfg, checkpoint, vivado_bin):
     return out
 
 
+def widen_for_checkpoint(cfg, checkpoint):
+    """Widen the word if this checkpoint's thresholds do not fit the dataset's default.
+
+    The descriptor's `word_bits` is a DEFAULT, not an invariant. MNIST is Q0.8 for z<=8 and
+    needs Q1.8 at z=25, where one quantile threshold lands on exactly 1.0 and Q0.8 represents
+    [-1, 1). Same dataset, same features, different config -- so a per-dataset width cannot be
+    right for every point in a sweep that varies z.
+
+    `required_int_bits()` derives the floor exactly, so this widens rather than guessing, and
+    only ever widens: a config whose thresholds fit keeps the descriptor's width, which is what
+    makes JSC untouched. The result is a genuinely different hardware config and its name says
+    so (`q10.8` vs `q9.8`), which is correct -- it is not the same design.
+
+    Fractional bits are NOT touched. They are not derivable from the checkpoint (see
+    required_int_bits' docstring), and narrowing them to keep the word width would trade an
+    exact representation for a smaller one silently.
+    """
+    ck = load_checkpoint(checkpoint)
+    thr = ck['thermometer']['thresholds'].numpy()
+    need = required_int_bits(thr)
+    have = cfg.hw.word_bits - 1 - cfg.hw.frac_bits
+    if need <= have:
+        return cfg, None
+    word = 1 + need + cfg.hw.frac_bits
+    note = (f'widened Q{have}.{cfg.hw.frac_bits} -> Q{need}.{cfg.hw.frac_bits} '
+            f'({cfg.hw.word_bits} -> {word} bits): thresholds span '
+            f'+/-{float(np.abs(thr).max()):.6g} and need {need} integer bits')
+    return replace(cfg, hw=replace(cfg.hw, word_bits=word)), note
+
+
 def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
+    # BEFORE the record is built, so cfg.name carries the real precision.
+    cfg, widen_note = widen_for_checkpoint(cfg, checkpoint)
     est = predict(list(cfg.model.layers), cfg.model.n, cfg.model.thermometer_bits,
                   cfg.model.num_classes, word_bits=cfg.hw.word_bits)
     rec = {
@@ -286,8 +323,12 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
         'status': 'pending',
     }
     rec.update(accuracy_of(checkpoint))
+    if widen_note:
+        rec['word_bits_widened'] = widen_note
 
     print(f'--- {cfg.name} ---')
+    if widen_note:
+        print(f'    {widen_note}')
     print(f'    predicted {est.board_luts:.0f} LUTs '
           f'({est.device_pct:.1f}% of device)'
           f'{"  [extrapolated]" if rec["predicted_extrapolated"] else ""}')
@@ -306,6 +347,10 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
                      work=os.path.join(cfg.build_dir, 'gate1'),
                      pipe={'lut': cfg.hw.pipe_lut, 'pop': cfg.hw.pipe_pop,
                            'out': cfg.hw.pipe_out, 'enc': cfg.hw.pipe_enc},
+                     # Explicit, not left to the emitter's own descriptor lookup: the config
+                     # name claims a precision and the RTL must actually be built at it. They
+                     # agreed only by coincidence while nothing overrode the default.
+                     word_bits=cfg.hw.word_bits, frac_bits=cfg.hw.frac_bits,
                      quiet=quiet)
     rec['latency'] = info.get('latency')
     rec['gate1_core_vectors'] = info.get('dwn_core_tb_vectors')
