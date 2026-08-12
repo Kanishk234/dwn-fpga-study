@@ -18,6 +18,7 @@ conclusions this way and every one was caught by measuring at a second point.
 | Step | What | Status |
 |---|---|---|
 | M2a | Machine parity — prove this box reproduces Phase 1 | ⬜ **do this first, before anything else** |
+| M2·0 | **Noise floor** — run `mnist_noise_floor_kaggle.ipynb` | 🟡 notebook built, needs a Kaggle GPU session. Not strictly blocking, but it decides whether several reduction-study findings survive |
 | M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally** |
 | M2c | Make `dse/` dataset-aware (it is JSC-shaped today) | ⬜ blocking; see §3 |
 | M2d | Fix the two known-wrong constants in `dse/area_model.py` | ⬜ blocking for any *prediction*, not for measurement |
@@ -244,7 +245,7 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 |---|---|
 | ~~Does the `tau` correction change the frontier?~~ | ✅ **Closed 2026-08-11, before Phase 2 started** — and yes, it changes the ladder's *shape*, not just its offset. Corrected grid trained (35 configs), analysis in `docs/mnist/reduction-ledger.md`. **Consequence for Phase 2: sweep the `_tau*` checkpoints, not the baselines.** §1.3 |
 | Does `dse/` come under the dataset-agnostic contract? | ⬜ **Open, and blocking M2c.** See §3 |
-| **No MNIST noise floor exists** ⚠️ | ⬜ **Open, and the cheapest outstanding item in the whole study.** JSC measured 0.15 pp by training one config twice; MNIST has no equivalent, so `2x[2000,1000]`'s +0.06 pp over `1x2000` and the −0.13 / −0.27 pp taper deltas are **unresolved, not small**. One config under a second seed buys it |
+| **No MNIST noise floor exists** ⚠️ | 🟡 **Notebook built, not yet run** — `training/mnist_noise_floor_kaggle.ipynb`, 16 runs (4 configs × 4 seeds), ~2 h on a Kaggle GPU. Until it lands, `2x[2000,1000]`'s +0.06 pp over `1x2000` and the −0.13 / −0.27 pp taper deltas are **unresolved, not small**. Deliberately four *widths*, since JSC took its 0.15 pp from one config and applied it everywhere |
 | Does the paper's `2x[1000,500]` fit at any precision? | ⬜ Open. Phase 1 projected yes at 11-bit (38.0% of device), never built. ⚠️ Also **97.93% against `1x1000`'s 97.97** — 50% more nodes for nothing, so it is a fit question, not a frontier one |
 | Does `2x[2000,1000]` fit? | ⬜ Open, and **the most interesting single build in Phase 2.** Best model in the study at **98.32%**, the only taper on the projected frontier, with a 2× smaller adder tree than `1x2000` — but 3,000 nodes against `1x300`'s 300, projected ~4,620 LUTs. Whether it fits at all is the first question |
 | Why is LUTs-per-comparator lower on real data than synthetic? | ⬜ Open, hypothesis untested. §3.1 |
