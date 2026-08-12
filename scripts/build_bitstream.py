@@ -118,7 +118,8 @@ def main():
               f'load/run batches. That is throughput, not correctness.')
     print()
 
-    generics = [f'DATA_W={data_w}', f'LABEL_W={label_w}',
+    generics = [f'FEATURES={n_features}', f'WORD_BITS={args.word_bits}',
+                f'DATA_W={data_w}', f'LABEL_W={label_w}',
                 f'DEPTH={depth}', f'ADDR_W={addr_w}']
     if args.baud:
         generics.append(f'BAUD={args.baud}')

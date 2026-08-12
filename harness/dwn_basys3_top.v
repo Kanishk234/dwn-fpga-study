@@ -43,7 +43,9 @@ module dwn_basys3_top #(
     //     scripts/build_bitstream.py --baud 2000000
     // The host must match; a mismatch presents as a failed ping rather than corrupt data.
     parameter integer BAUD         = 5_000_000,
-    parameter integer DATA_W       = 256,      // 16 features x 16-bit Q3.12
+    parameter integer FEATURES     = 16,       // input features, from the model
+    parameter integer WORD_BITS    = 16,      // bits per feature INSIDE the model
+    parameter integer DATA_W       = 256,      // FEATURES * 8 * ceil(WORD_BITS/8), byte lanes
     parameter integer LABEL_W      = 3,
     parameter integer DEPTH        = 1024,
     parameter integer ADDR_W       = 10,
@@ -124,7 +126,26 @@ module dwn_basys3_top #(
     // ---- the model ----
     wire [LABEL_W-1:0] class_idx;
 
-    dwn_top u_dwn (.clk(clk), .x_flat(rd_data), .class_idx(class_idx));
+    // UNPACK the store's byte-padded lanes into the packed word the model expects.
+    //
+    // A feature travels over UART in whole bytes, so a 9-bit word occupies 16 bits on the wire
+    // and in the store: DATA_W = FEATURES * 8 * ceil(WORD_BITS/8). `dwn_top` packs at exactly
+    // WORD_BITS, so its x_flat is FEATURES * WORD_BITS wide. For JSC the two coincide -- a
+    // 16-bit word is exactly two bytes -- which is why this never existed before and why
+    // wiring rd_data straight through elaborated for years.
+    //
+    // Taking the low WORD_BITS of each lane is correct because the host packs little-endian and
+    // pads with the sign extension, so the discarded bits carry no information.
+    localparam integer LANE_W = 8 * ((WORD_BITS + 7) / 8);   // wire lane, whole bytes
+    wire [FEATURES*WORD_BITS-1:0] x_packed;
+    genvar fi;
+    generate
+        for (fi = 0; fi < FEATURES; fi = fi + 1) begin : g_unpack
+            assign x_packed[fi*WORD_BITS +: WORD_BITS] = rd_data[fi*LANE_W +: WORD_BITS];
+        end
+    endgenerate
+
+    dwn_top u_dwn (.clk(clk), .x_flat(x_packed), .class_idx(class_idx));
 
     // ---- benchmark runner ----
     benchmark_fsm #(.ADDR_W(ADDR_W), .LABEL_W(LABEL_W), .LATENCY(LATENCY)) u_bench (
@@ -181,9 +202,15 @@ module dwn_basys3_top #(
     assign led[3]    = sw[0];             // display selector, echoed so the mode is visible
     assign led[4]    = sw[1];
     assign led[7:5]  = 3'd0;
-    // Low byte only, so this wraps: a perfect 1024-sample batch reads 0x00. Use sw=10 on the
+    // Low bits only, so this wraps: a perfect full batch reads 0x00. Use sw=10 on the
     // seven-segment for the real value; this is a coarse "something is happening" indicator.
-    assign led[15:8] = correct_count[7:0];
+    //
+    // Zero-extended rather than sliced [7:0]: correct_count is ADDR_W+1 wide, and a store small
+    // enough to need only 6 address bits makes that 7 -- narrower than the 8 LEDs. JSC's
+    // ADDR_W=10 hid this. A part-select past the end of a vector is an ERROR in synthesis, not
+    // a truncation, so this failed the build outright rather than quietly.
+    assign led[15:8] = (ADDR_W + 1 >= 8) ? correct_count[7:0]
+                                         : {{(8 - (ADDR_W + 1)){1'b0}}, correct_count};
 
 endmodule
 
