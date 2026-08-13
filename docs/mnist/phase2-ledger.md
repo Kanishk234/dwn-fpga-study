@@ -4,7 +4,7 @@
 `docs/results-mnist/`. The frontier is **bounded by what was trained (33.06% of device), not by
 the device** — a deliberate stopping point, see the closing log entry. Two Phase 1 predictions
 were retracted along the way. Figures in `docs/results-mnist/`. Open: the area model (do not
-quote it) and 🔴 **M2h — neither dataset's Gate 1b covers the current tree.**
+quote it). **M2h is closed 2026-08-12 — both datasets verified on silicon post-refactor.**
 
 Running log for the MNIST DSE. Phase 1 is complete and written up in
 `docs/mnist/phase1-report.md`; its running log is `docs/mnist/phase1-ledger.md`.
@@ -23,26 +23,65 @@ conclusions this way and every one was caught by measuring at a second point.
 
 | Step | What | Status |
 |---|---|---|
-| M2a | Machine parity — prove this box reproduces Phase 1 | ✅ 12/12 simulation, areas exact at 110 / 1,519 / 1,621. 🔴 **see M2h — the silicon half is STALE** |
+| M2a | Machine parity — prove this box reproduces Phase 1 | ✅ **22/22 including silicon, 2026-08-12.** Areas exact at 110 / 1,519 / 1,621; board 1,893 / 864 / 8; Gate 1b 166,000/166,000 |
 | M2·0 | **Noise floor** | ✅ **done 2026-08-12 — 0.24 pp.** Withdrew 3 reduction-study claims incl. the headline; `1x2000` replaces `2x[2000,1000]` as best model. See `reduction-ledger.md` |
 | M2b | Get the checkpoints onto the machine | ✅ **done 2026-08-12 — all 14 local**, including the `_tau*` ladder and the `2x[1000,500]` retrain. 4 grid entries remain untrained (gaussian, linear, `2x500`, `3x330`) — no notebook produces them |
 | M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
 | M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
 | M2e | Gate 1 across the grid | ✅ **done 2026-08-12 — 25/25 pass**, every built config bit-exact |
 | M2f | Synthesis + place-and-route sweep | ✅ **done 2026-08-12 — 25 configs, 0 failures.** ⚠️ nothing failed to fit, so the frontier has no measured edge |
-| M2h | 🔴 **JSC Gate 1b on silicon, post-refactor** | ⬜ **OUTSTANDING — needs the board plugged in.** See below; this is a `CLAUDE.md` rule, not a nicety |
+| M2h | **Gate 1b on silicon, post-refactor** | ✅ **CLOSED 2026-08-12 — JSC 166,000/166,000, MNIST 10,000/10,000.** Two silent defects found and fixed on the way; see the log |
 | M2i | Write `docs/mnist/phase2-report.md` | ✅ **done 2026-08-12.** Every LUT figure in it checked against `docs/results-mnist/sweep-results.json` programmatically, not by eye |
 | M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Figures done (`dse/plot.py --dataset mnist --snapshot`) |
 
 ---
 
-## 🔴 M2h — OUTSTANDING: JSC has not been re-verified on silicon since the descriptor refactor
+## ✅ M2h — CLOSED 2026-08-12. Both datasets verified on silicon, post-refactor.
+
+| | result | board | slack |
+|---|---|---|---|
+| **JSC** | **166,000 / 166,000** | 1,893 LUTs, 864 FF, 8 BRAM | +2.014 ns |
+| **MNIST** | **10,000 / 10,000** | 4,586 LUTs, 10,746 FF, 0 BRAM | +0.292 ns |
+
+**Both board builds reproduce their Phase 1 records exactly** — MNIST to the LUT, the flip-flop
+*and* the same +0.292 ns of slack. Q0.8 remains lossless on the full set: 0 of 10,000 predictions
+differ from float32.
+
+⚠️ **The first MNIST attempt FAILED at 1,035/10,000 — chance for ten classes — and the cause was
+operator error that the tooling should have caught.** Written up below, because it produced two
+real defects and one retracted diagnosis.
 
 ```
-.venv\Scripts\python.exe scripts\verify_phase1.py --with-board   # expect 22/22
+.venv\Scripts\python.exe scripts\verify_phase1.py --with-board   # 22/22 on 2026-08-12
 ```
 
-**Needs the Basys 3 plugged in.** Deferred 2026-08-12 because the board was not connected.
+**JSC passed, post-refactor, every value exact:**
+
+```
+board            1893 LUTs, 864 FF, 8 BRAM, 0 DSP    slack +2.014 ns
+Gate 1b          166,000 / 166,000
+core cycles      166,815  (II=1)
+accuracy         73.8361% float32 / 73.8349% Q3.12
+```
+
+`core_cycles` landing exactly on 166,815 is the load-bearing one: it is 166,000 samples plus
+pipeline fill and batch overhead, so an exact match means **II=1 and the latency alignment both
+survived the refactor**. A drifted latency would score every sample against the wrong label and
+still complete. The only figure that moved is routing slack, which is allowed to — placement is
+stochastic.
+
+MNIST's Gate 1b ✅ **passed 10,000/10,000**, run on the
+**uncorrected-`tau`** `mnist_n6_z3_distributive_w300` checkpoint — deliberately, because that is
+the one whose 10,000/10,000 is on record. Using the `_tau1p678` retrain would change the model and
+the code in the same step, and a disagreement could not then be attributed.
+
+`training/artifacts/mnist_n6_z3_distributive_w300_testset_full.npz` was rebuilt locally by
+`scripts/dump_testset.py` (3.0 MB, no Kaggle). It self-validated: the first 1,000 rows reproduce
+the committed `_testvectors.npz` **exactly**, on features and predictions, and the float32 model
+scores **96.1400%** — an independent numpy reconstruction agreeing to four decimals with a figure
+that originally came off a Kaggle GPU.
+
+*(Original entry follows, for the reasoning.)*
 
 **Why this is a rule and not a nicety.** `CLAUDE.md`: *after every generalisation change, JSC must
 still reproduce exactly.* The descriptor refactor (`b728ab0`) touched `exporter/extract.py`,
@@ -59,15 +98,20 @@ tree.
 | Gate 1, simulation, JSC two-layer `300-100` | ✅ post-refactor |
 | Gate 1, simulation, MNIST | ✅ post-refactor |
 | Areas 110 / 1,519 / 1,621 | ✅ post-refactor |
-| **JSC Gate 1b, 166,000 on hardware** | 🔴 **pre-refactor only** |
-| **MNIST Gate 1b, 10,000 on hardware** | 🔴 **pre-refactor only** |
+| **JSC Gate 1b, 166,000 on hardware** | ~~🔴 pre-refactor only~~ → ✅ **22/22 post-refactor, 2026-08-12** |
+| **MNIST Gate 1b, 10,000 on hardware** | ~~🔴 pre-refactor only~~ → ✅ **10,000/10,000 post-refactor, 2026-08-12** |
 
-Neither dataset's silicon result covers the current tree. The refactor was verified byte-identical
-in simulation and the emitted RTL was proven unchanged by diff, so the expectation is 22/22 — but
-expectation is not verification, which is the entire point of the rule.
+~~Neither dataset's silicon result covers the current tree.~~ **Both now do.**
 
-⚠️ **Do not write a Phase 2 report that claims a hardware result without running this first**, or
-say plainly that the silicon numbers were measured at a commit before the refactor.
+The reasoning that made this a rule is worth keeping: the refactor was verified byte-identical in
+simulation and the emitted RTL was proven unchanged by diff, so the *expectation* was 22/22 —
+**and expectation is not verification.** That was the entire point, and it was vindicated: the
+first MNIST attempt failed outright, on a defect neither simulation nor an RTL diff could see,
+because it lived in how the bitstream was assembled rather than in what was emitted.
+
+~~⚠️ **Do not write a Phase 2 report that claims a hardware result without running this first.**~~
+✅ Satisfied — `docs/mnist/phase2-report.md` was written before this ran but claims no MNIST
+hardware result; its silicon references are Phase 1's, and those are now re-confirmed.
 
 ---
 
@@ -323,6 +367,83 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 ---
 
 ## Log
+
+### 2026-08-12 — M2h: both datasets pass Gate 1b on silicon. A false failure first, and two fixes.
+
+JSC **166,000/166,000** (22/22 overall), MNIST **10,000/10,000**. `core_cycles` landed exactly on
+JSC's recorded 166,815, which is the load-bearing check: it is 166,000 samples plus pipeline fill,
+so an exact match proves **II=1 and the label alignment both survived the descriptor refactor**. A
+drifted latency scores every sample against the wrong label and still completes.
+
+#### ⚠️ The first MNIST run failed at 1,035/10,000, and it was my error
+
+`build_bitstream.py` derives the *harness* — record size, store width, label width — from the
+checkpoint, and does **not** emit the network; that comes from `build/rtl`. Running
+`verify_phase1.py --with-board` first regenerated **JSC's** RTL there. The MNIST bitstream built
+minutes later therefore wrapped an MNIST-shaped 1,569-byte loader around **JSC's 256-bit core**.
+
+**Verilog truncates a too-wide connection rather than erroring.** The build succeeded, met timing
+at +1.416 ns, programmed, ran, and agreed on 10.35% of samples — chance. The core was reading the
+low 256 bits of each MNIST record.
+
+The evidence that settled it was hierarchical utilization:
+
+```
+u_dwn    dwn_top    1621 LUTs     <- exactly JSC's dwn_top. MNIST's is 1,597.
+```
+
+#### ⚠️ RETRACTED: "the vector store moved from distributed RAM to block RAM"
+
+Before running, I noticed the build reported **2,237 LUTs / 7 BRAM** against the Phase 1 record's
+**4,586 / 0 BRAM**, and theorised that this machine's Vivado inferred block RAM where the Phase 1
+machine had not — which would have contradicted the standing claim that a 12,544-bit-wide store
+cannot map to BRAM at all.
+
+**Wrong.** The area difference was entirely that the design contained JSC's network. The rebuild
+came back at **4,586 / 10,746 / 0 BRAM / +0.292 ns**, identical to Phase 1. The distributed-RAM
+claim stands.
+
+**The lesson is the order of doubt.** A number disagreed with the record, and I reached for a
+tool-behaviour explanation before checking what was actually in the directory being built from —
+`grep -c "lut_node #" build/rtl/dwn_core.v` would have answered it in one second. Same shape as
+the `device_pct` denominator retraction three entries above: an anomaly explained by hypothesis
+instead of by inspection.
+
+#### Two defects fixed, both of the project's characteristic shape — silent, and reassuring
+
+**1. `build_bitstream.py` reported a model it was not building.** It printed
+`dataset: mnist / 784 features x 9-bit, 10 classes / record 1569 bytes` while building JSC's
+network, with no check that the two agreed. Now `check_rtl_matches()` verifies three things
+against the checkpoint before Vivado launches:
+
+| check | catches |
+|---|---|
+| `x_flat` width == `features × word_bits` | a different **dataset** — the failure above |
+| `class_idx` width == `ceil(log2(classes))` | a different **class count**, which truncates the answer rather than the input |
+| `lut_node` count == `sum(layers)` | a different **model at the same dimensions** — two MNIST checkpoints have identical port widths, so widths alone would build either happily |
+
+⚠️ `x_flat` is `features × word_bits` (7,056 for MNIST), **not** the store's `DATA_W` (12,544),
+which pads every feature to a whole byte. Conflating them fails on every correct MNIST build.
+
+Verified both ways: MNIST RTL + MNIST checkpoint passes; MNIST RTL + JSC checkpoint is refused
+with `x_flat is 7056 bits, checkpoint implies 256 (16 features x 16-bit)`. `verify_phase1.py` is
+unaffected — it runs `run_gate1.py` first, so the pair always matches by the time it builds.
+
+**2. `host.py` printed the software reference's accuracy under the label "on hardware".** `y_ref`
+is the golden model, not the board. On a passing run the two are identical so it never shows; on
+the failing run it displayed **`accuracy, Q0.8 (on hardware): 96.1400%`** from a board that agreed
+on 1,035 of 10,000 samples. That is the single most misleading line the script could produce, and
+together with a plausible-looking build it nearly cost more than the debugging did. The label is
+now conditional: `reference (== hardware)` on a pass, `reference -- SOFTWARE ONLY, hardware
+disagreed` on a fail.
+
+#### What the false failure was worth
+
+It exercised a path nothing else does. **JSC structurally cannot detect either defect**: its
+16-bit word is exactly 2 bytes, so `bytes_per_feature` gives the same answer whether it ceilings
+or floors, and its record is 33 bytes against MNIST's 1,569. Both fixes are dataset-agnostic by
+construction — they compare *agreement* between checkpoint and RTL, not specific values — so they
+work for a dataset nobody has thought of, which is the test `CLAUDE.md` actually asks for.
 
 ### 2026-08-12 — 🏁 Phase 2 closed. The MNIST frontier is bounded by training, not by the device.
 
