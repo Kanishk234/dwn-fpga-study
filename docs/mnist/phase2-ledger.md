@@ -1,12 +1,10 @@
 # MNIST Phase 2 ledger — design-space exploration on the second dataset
 
 **🏁 CLOSED 2026-08-12.** 25 configurations built and place-and-routed, 0 failures, snapshot in
-`docs/results-mnist/`. The frontier is **bounded by what was trained, not by the device** — a
-deliberate stopping point, see the closing log entry. ⚠️ `device_pct` throughout both studies is
-computed against a **marketing LUT cap, not the fabric**; the part has 32,600 LUT sites, not
-20,800. Two Phase 1 predictions
-were retracted along the way. Open: MNIST figures (`dse/plot.py` is not dataset-aware) and the
-area model, which should not be quoted.
+`docs/results-mnist/`. The frontier is **bounded by what was trained (33.06% of device), not by
+the device** — a deliberate stopping point, see the closing log entry. Two Phase 1 predictions
+were retracted along the way. Figures in `docs/results-mnist/`. Open: the area model (do not
+quote it) and 🔴 **M2h — neither dataset's Gate 1b covers the current tree.**
 
 Running log for the MNIST DSE. Phase 1 is complete and written up in
 `docs/mnist/phase1-report.md`; its running log is `docs/mnist/phase1-ledger.md`.
@@ -25,14 +23,51 @@ conclusions this way and every one was caught by measuring at a second point.
 
 | Step | What | Status |
 |---|---|---|
-| M2a | Machine parity — prove this box reproduces Phase 1 | ✅ **done 2026-08-12 — 12/12**, areas exact at 110 / 1,519 / 1,621. ⚠️ no-board half only; run `--with-board` before M2f |
+| M2a | Machine parity — prove this box reproduces Phase 1 | ✅ 12/12 simulation, areas exact at 110 / 1,519 / 1,621. 🔴 **see M2h — the silicon half is STALE** |
 | M2·0 | **Noise floor** | ✅ **done 2026-08-12 — 0.24 pp.** Withdrew 3 reduction-study claims incl. the headline; `1x2000` replaces `2x[2000,1000]` as best model. See `reduction-ledger.md` |
 | M2b | Get the checkpoints onto the machine | ✅ **done 2026-08-12 — all 14 local**, including the `_tau*` ladder and the `2x[1000,500]` retrain. 4 grid entries remain untrained (gaussian, linear, `2x500`, `3x330`) — no notebook produces them |
 | M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
 | M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
 | M2e | Gate 1 across the grid | ✅ **done 2026-08-12 — 25/25 pass**, every built config bit-exact |
 | M2f | Synthesis + place-and-route sweep | ✅ **done 2026-08-12 — 25 configs, 0 failures.** ⚠️ nothing failed to fit, so the frontier has no measured edge |
-| M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Plots pending: `dse/plot.py` has no `--dataset` |
+| M2h | 🔴 **JSC Gate 1b on silicon, post-refactor** | ⬜ **OUTSTANDING — needs the board plugged in.** See below; this is a `CLAUDE.md` rule, not a nicety |
+| M2i | Write `docs/mnist/phase2-report.md` | ⬜ JSC has a report per phase; MNIST has one for Phase 1 only |
+| M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Figures done (`dse/plot.py --dataset mnist --snapshot`) |
+
+---
+
+## 🔴 M2h — OUTSTANDING: JSC has not been re-verified on silicon since the descriptor refactor
+
+```
+.venv\Scripts\python.exe scripts\verify_phase1.py --with-board   # expect 22/22
+```
+
+**Needs the Basys 3 plugged in.** Deferred 2026-08-12 because the board was not connected.
+
+**Why this is a rule and not a nicety.** `CLAUDE.md`: *after every generalisation change, JSC must
+still reproduce exactly.* The descriptor refactor (`b728ab0`) touched `exporter/extract.py`,
+`rtlgen/`, `tb/` and `scripts/` — including the quantisation path that `host.py` uses to build the
+reference Gate 1b compares against. The last passing `--with-board` run built its bitstream at
+**09:32**; the refactor landed at **09:52**. So the 22/22 on record predates the code now in the
+tree.
+
+**What is and is not covered right now:**
+
+| | status |
+|---|---|
+| Gate 1, simulation, JSC single-layer | ✅ 12/12 post-refactor |
+| Gate 1, simulation, JSC two-layer `300-100` | ✅ post-refactor |
+| Gate 1, simulation, MNIST | ✅ post-refactor |
+| Areas 110 / 1,519 / 1,621 | ✅ post-refactor |
+| **JSC Gate 1b, 166,000 on hardware** | 🔴 **pre-refactor only** |
+| **MNIST Gate 1b, 10,000 on hardware** | 🔴 **pre-refactor only** |
+
+Neither dataset's silicon result covers the current tree. The refactor was verified byte-identical
+in simulation and the emitted RTL was proven unchanged by diff, so the expectation is 22/22 — but
+expectation is not verification, which is the entire point of the rule.
+
+⚠️ **Do not write a Phase 2 report that claims a hardware result without running this first**, or
+say plainly that the silicon numbers were measured at a commit before the refactor.
 
 ---
 
@@ -294,11 +329,15 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 **Decision, taken deliberately: the ladder stops at 2,000 nodes and the frontier's edge is not
 measured.** Recording it as a stated limit rather than leaving it as an unexamined gap.
 
-The largest MNIST design built is **6,877 LUTs**. Nothing came close to failing. ⚠️ That is
-**33.06% of Vivado's quoted 20,800-LUT cap but only ~21% of the 32,600 physical LUT sites** — see
-the denominator finding below; the wall is further out than the reported percentage suggests, and
-the node estimate that used to sit here was too low by ~1.57x and has been removed. Reaching it costs ~1 h of Kaggle GPU, **1.2 GB** of checkpoints to download, and ~1.5 h of
+The largest MNIST design built is **6,877 LUTs, 33.06% of the device.** Nothing came close to
+failing. From the measured marginal core cost (2.549 LUT/node between the two widest rungs) plus a
+saturated ~1,315-LUT encoder, the wall is at roughly **6,800–7,600 nodes** — 3.5× beyond the top
+rung. Reaching it costs ~1 h of Kaggle GPU, **1.2 GB** of checkpoints to download, and ~1.5 h of
 place-and-route that scales worse than linearly near high occupancy.
+
+⚠️ Judge "does it fit" on **routed** area, not on the tool exiting cleanly — `docs/phase2-report.md`
+§5.2. JSC's `1x2000` fit at post-synthesis (96.76%) and was pushed past the device to 102.80% by
+physical optimisation replicating logic for timing.
 
 **Why it is not worth it now.** The frontier edge answers *"how large can a DWN get on a Basys 3
 before routing fails"* — a device-characterisation question. It is not an MNIST question, and it is
@@ -320,7 +359,7 @@ They are not comparable, and a combined Pareto plot would mislead:
 | features / classes | 16 / 5 | 784 / 10 |
 | word format | Q3.12 (16-bit) | Q0.8 (9-bit) |
 | accuracy scale | ~73–76% | ~93–98% |
-| widest single layer built | `1x3000 z=50`, 13,972 LUTs (**67.2%**\*) | `1x2000`, 6,294 LUTs (**30.3%**\*) |
+| widest single layer built | `1x3000 z=50`, 13,972 LUTs, **67.2%** | `1x2000`, 6,294 LUTs, **30.3%** |
 | cost per node there | **4.66 LUT/node** | **3.15 LUT/node** |
 | encoder share there | **42%** | **21%** |
 
@@ -330,10 +369,6 @@ large fraction of the design at every width. MNIST has 784 narrow features and a
 mapping saturates early, and the encoder flattens at ~1,315 LUTs — 21% of the design at 2,000
 nodes and falling. **So JSC reaches high occupancy at a fraction of MNIST's node count**, which is
 exactly why JSC is the cheaper vehicle for probing the routing limit and MNIST is not.
-
-\* Percentages are of Vivado's quoted 20,800-LUT cap, which is **not the fabric size** — see the
-denominator finding below. Against the 32,600 physical LUT sites these are ~42.9% and ~19.3%. The
-comparison between the two columns is unaffected, since both use the same (wrong) denominator.
 
 Accuracy scales differ by 20 points, so even a shared axis would be meaningless. Keep
 `docs/results/` and `docs/results-mnist/` separate, and plot them separately.
@@ -346,59 +381,37 @@ Accuracy scales differ by 20 points, so even a shared axis would be meaningless.
   (LUTs per node, or accuracy relative to each dataset's ceiling) and the reasoning above stated
   alongside it.
 
-#### ⚠️⚠️ `device_pct` is measured against the WRONG DENOMINATOR, in both studies
+#### ⚠️ RETRACTED: "`device_pct` is measured against the wrong denominator"
 
-Chased down after JSC's `1x2000` appeared at **102.80% of device, routed, 0 errors**. That looked
-impossible. It is not — the percentage is wrong, not the build.
+**Wrong, and already answered by `docs/phase2-report.md` §5.2 before this was ever written.**
 
-| | Vivado's "available" for `xc7a35tcpg236-1` |
-|---|---|
-| Slice LUTs | 20,800 |
-| **Slices** | **8,150** → 8,150 x 4 = **32,600 LUT sites** |
+The chain of reasoning was: JSC's `1x2000` reports 102.80% *and* completed place-and-route, a
+design cannot route into 102.8% of a part, therefore the denominator must be wrong. The Slice row
+reporting 8,150 (a 50T number) against 20,800 LUTs looked like the confirmation.
 
-**The observation is solid; the mechanism is a hypothesis. Keep them apart.**
+**The actual explanation, measured in the JSC study:**
 
-*Observed, and not in doubt:* the build is real — Placer Task ran, `route_design` completed,
-`post_route.dcp` was written, 0 errors, clean DRC — and it used **5,532 of 8,150 slices = 67.88%**.
-So **20,800 LUTs is not a hard ceiling on this part**, whatever the reason.
+```
+post-synthesis : 20,126 LUTs  (96.76%)   <- fits, so placement proceeded
+post-route     : 21,382 LUTs (102.80%)   <- physical optimization pushed it over
+```
 
-*Hypothesised:* 8,150 slices is the **XC7A50T's** count, and the 35T is a capacity-binned 50T
-sharing the same die, so the physical grid is larger than the licensed LUT figure.
+Placement starts from the post-synthesis netlist, which fit. Physical optimization then replicated
+logic chasing timing and drove the *routed* design past the device. **The design does not fit.**
+`DEVICE_LUTS = 20800` is correct and `device_pct` means what it says.
 
-⚠️ **That hypothesis does not fully fit the report, and the gap is worth stating.** If Vivado were
-simply modelling 50T fabric, flip-flops would read 65,200 (8,150 x 8). They read **41,600**, which
-is the 35T's number:
+**What I got wrong, and the lesson:** the flow completing was treated as proof the design fit, so
+the contradiction was resolved by doubting the denominator rather than by doubting that inference.
+JSC's report states the rule directly — *"did it fit" has to be judged on measured routed area and
+timing, never on tool exit status* — and `dse/report.py` was already changed to do that. **Reading
+the prior study's report would have cost two minutes and saved a wrong conclusion in this one.**
 
-| | LUT | FF | Slices |
-|---|---|---|---|
-| XC7A35T datasheet | 20,800 | 41,600 | 5,200 |
-| XC7A50T datasheet | 32,600 | 65,200 | 8,150 |
-| **this report** | **20,800** | **41,600** | **8,150** |
+The 8,150-slice figure is still unexplained and is now simply a curiosity: whatever it counts, the
+LUT total is real and it exceeds the part. Nothing in either study needs it resolved.
 
-So the report mixes 35T LUT/FF availables with a 50T slice count. The consistent reading is that
-the LUT and FF "available" columns are licensed caps while the Slice row reports the physical grid
-— but that is inference from one report, not something verified against the part database. **Do not
-state the 50T-die explanation as established.** What is established is the observation above.
-
-**Consequences, and they touch every area number in both studies:**
-
-- `DEVICE_LUTS = 20800` in `run_synth.py` / `area_model.py` makes `device_pct` a **fraction of a
-  marketing number**, not of the fabric. Above roughly 64% it reads over 100% while the part is
-  half empty.
-- **Slice occupancy is the real placement constraint**, and it is not proportional to LUT count:
-  MNIST's board design is 22.05% by LUTs but **28.87% by slices** (sparse packing at low
-  utilisation), while JSC's `1x2000` is 102.80% by LUTs and **67.88% by slices** (dense packing
-  when it has to). LUT % is neither an upper nor a lower bound.
-- **JSC's frontier edge is not measured either.** Its largest build reached 67.88% slice occupancy
-  without failing, so "the largest JSC model that fits" is also unsupported. Both studies stop
-  short of the wall; JSC merely stops closer to it.
-- The MNIST wall estimate below (~6,800-7,600 nodes) was derived against 20,800 and is therefore
-  **too low by roughly 1.57x**. Do not quote it.
-
-⚠️ **Not fixed here.** Changing `DEVICE_LUTS` would move `device_pct` in every committed JSC and
-MNIST result, including the published snapshot. That is a deliberate, separate change for whoever
-owns both studies — and it needs a decision on what the denominator should be (32,600 LUT sites, or
-8,150 slices with LUT% reported alongside). **Recorded, not actioned.**
+⚠️ **Nothing was changed on the strength of the retracted claim.** No `DEVICE_LUTS` edit was made.
+The only artifact that reached disk was a figure label reading "20,800 LUT cap (not the fabric
+limit)", which is now wrong and is corrected below.
 
 ### 2026-08-12 — ✅ M2e/M2f: the MNIST sweep is complete. 25 configs, 0 failures.
 
@@ -447,7 +460,7 @@ single-layer model and the optimum.** There is no pipeline lever to pull.
 **What does move timing is the clock constraint itself.** Asking Vivado for 8 ns gives `1x1000`
 **97.4 MHz**; asking for 10 ns gives 93.1. Over-constraining buys 4.3 MHz for 128 LUTs.
 
-#### ✅ NEW: depth pays — for timing, not accuracy
+#### ✅ CONFIRMED on a second dataset: depth pays — for timing, not accuracy
 
 The five configs that actually meet the 100 MHz board clock:
 
@@ -466,6 +479,15 @@ pipeline stage for free** and hits 103.8 MHz where the single-layer manages 93.1
 **At the board's real clock, the deep one is usable and the flat one is not.** This does not
 contradict the reduction study's "depth does not pay" — that was an accuracy claim and it stands.
 It adds an axis the accuracy study could not see.
+
+⚠️ **Not a new finding — JSC found it first and this entry originally claimed otherwise.**
+`docs/phase2-report.md` §4.4: *"`2x100` reached 155.5 MHz and `3x120` 152.3 — the fastest designs
+in the sweep, against 113.9 MHz for `1x200`. `PIPE_LUT` inserts a register per layer, so depth buys
+pipelining for free."* Same mechanism, same conclusion, different dataset.
+
+That makes it **more** valuable, not less: it is one of the few JSC conclusions that has now been
+reproduced at a second dataset rather than generalised from one. The two Phase 1 predictions
+retracted above are what happens when that check is skipped.
 
 #### The encoder saturates; `n` is not a lever
 
