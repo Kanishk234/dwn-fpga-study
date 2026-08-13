@@ -13,7 +13,8 @@
    "encoder_included": "true = LUT count includes the input encoding stage. false = core only. n/a = the design consumes quantized inputs directly and has no separate encoder. unknown = not stated.",
    "confidence": "verified = read from the cited paper's own table by us, directly, not via a summarizer. reported = from a secondary source quoting it. unverified = not yet seen."
   },
-  "warning_4_weightless": "The weightless family reports DIFFERENT METRICS. BTHOWeN gives real FPGA LUT counts on xc7z020clg400-1 -- same 7-series family and same -1 speed grade as our XC7A35T, so it is the closest silicon match in the whole table. ULEEN is ASIC (mm^2) plus model size (KiB) and has NO FPGA LUT number for MNIST. Accuracy is comparable for both; area is comparable only for BTHOWeN."
+  "warning_4_weightless": "The weightless family reports DIFFERENT METRICS. BTHOWeN gives real FPGA LUT counts on xc7z020clg400-1 -- same 7-series family and same -1 speed grade as our XC7A35T, so it is the closest silicon match in the whole table. ULEEN is ASIC (mm^2) plus model size (KiB) and has NO FPGA LUT number for MNIST. Accuracy is comparable for both; area is comparable only for BTHOWeN.",
+  "warning_5_dwn_paper": "The DWN paper's own MNIST rows are CORE-ONLY (encoder excluded). Ours are reported both ways in docs/results-mnist/sweep-results.json (dwn_core_luts vs dwn_top_luts). Comparing our dwn_top against their LUT column overstates our area by 1.4-2.5x and is the single easiest mistake to make in this table."
  },
  "datasets": {
   "mnist": "The canonical MNIST split: 60,000 train / 10,000 test, from mnist_784 in train-then-test order. Every published MNIST number uses this, so rows are directly comparable on accuracy."
@@ -203,6 +204,78 @@
    "source": "arXiv:2304.10618 Table III",
    "confidence": "verified",
    "notes": "\u26a0\ufe0f ASIC ONLY. Table III reports area in mm^2 (5.22) against Bit Fusion/LeNet-5, not FPGA LUTs. Table IV reports MODEL SIZE in KiB (262). ULN-S 96.20%, ULN-M 97.79%, ULN-L 98.46%. So ULEEN can be compared on ACCURACY and MODEL SIZE but NOT on FPGA area. Do not put it in a LUT-count column."
+  },
+  {
+   "method": "DWN (paper)",
+   "model": "n=6 sm",
+   "dataset": "mnist",
+   "accuracy_pct": 97.1,
+   "accuracy_precision": "one_dp",
+   "lut": 692,
+   "ff": 422,
+   "dsp": 0,
+   "bram": 0,
+   "fmax_mhz": 827,
+   "latency_ns": 2.4,
+   "part": "xcvu9p-flgb2104-2-i",
+   "encoder_included": false,
+   "source": "arXiv:2410.11112 Table 2 (DWN, the paper this project implements)",
+   "confidence": "verified",
+   "notes": "Part xcvu9p-flgb2104-2-i, Vivado Flow_PerfOptimized_high, out-of-context -- the paper follows NeuraLUT's methodology exactly so its rows sit beside theirs. CORE-ONLY: the thermometer encoder is excluded from these LUT counts (brief sec 6, REPORT.md 5.2)."
+  },
+  {
+   "method": "DWN (paper)",
+   "model": "n=6 md",
+   "dataset": "mnist",
+   "accuracy_pct": 97.8,
+   "accuracy_precision": "one_dp",
+   "lut": 2055,
+   "ff": 1675,
+   "dsp": 0,
+   "bram": 0,
+   "fmax_mhz": 873,
+   "latency_ns": 4.6,
+   "part": "xcvu9p-flgb2104-2-i",
+   "encoder_included": false,
+   "source": "arXiv:2410.11112 Table 2 (DWN, the paper this project implements)",
+   "confidence": "verified",
+   "notes": "Part xcvu9p-flgb2104-2-i, Vivado Flow_PerfOptimized_high, out-of-context -- the paper follows NeuraLUT's methodology exactly so its rows sit beside theirs. CORE-ONLY: the thermometer encoder is excluded from these LUT counts (brief sec 6, REPORT.md 5.2)."
+  },
+  {
+   "method": "DWN (paper)",
+   "model": "n=6 md",
+   "dataset": "mnist",
+   "accuracy_pct": 97.9,
+   "accuracy_precision": "one_dp",
+   "lut": 1413,
+   "ff": 1143,
+   "dsp": 0,
+   "bram": 0,
+   "fmax_mhz": 827,
+   "latency_ns": 3.6,
+   "part": "xcvu9p-flgb2104-2-i",
+   "encoder_included": false,
+   "source": "arXiv:2410.11112 Table 2 (DWN, the paper this project implements)",
+   "confidence": "verified",
+   "notes": "Part xcvu9p-flgb2104-2-i, Vivado Flow_PerfOptimized_high, out-of-context -- the paper follows NeuraLUT's methodology exactly so its rows sit beside theirs. CORE-ONLY: the thermometer encoder is excluded from these LUT counts (brief sec 6, REPORT.md 5.2)."
+  },
+  {
+   "method": "DWN (paper)",
+   "model": "n=6 lg",
+   "dataset": "mnist",
+   "accuracy_pct": 98.3,
+   "accuracy_precision": "one_dp",
+   "lut": 4082,
+   "ff": 3385,
+   "dsp": 0,
+   "bram": 0,
+   "fmax_mhz": 827,
+   "latency_ns": 6.0,
+   "part": "xcvu9p-flgb2104-2-i",
+   "encoder_included": false,
+   "source": "arXiv:2410.11112 Table 2 (DWN, the paper this project implements)",
+   "confidence": "verified",
+   "notes": "Part xcvu9p-flgb2104-2-i, Vivado Flow_PerfOptimized_high, out-of-context -- the paper follows NeuraLUT's methodology exactly so its rows sit beside theirs. CORE-ONLY: the thermometer encoder is excluded from these LUT counts (brief sec 6, REPORT.md 5.2)."
   }
  ],
  "pending": [
@@ -218,10 +291,6 @@
   {
    "method": "LogicNets",
    "why": "NeuraLUT states LogicNets does not benchmark MNIST. Confirm, then record as a documented absence rather than a gap."
-  },
-  {
-   "method": "DWN (the paper)",
-   "why": "The paper this project implements must appear in its own comparison table. Find its MNIST row and the part it used."
   },
   {
    "method": "PolyLUT-Add / ReducedLUT / SparseLUT / TreeLUT / AmigoLUT",

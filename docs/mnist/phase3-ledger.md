@@ -148,6 +148,55 @@ Suggested order for the literature half, matching what worked for JSC:
 
 ## Log
 
+### 2026-08-13 — [literature] ✅ the paper's own MNIST rows, and our implementation reproduces them
+
+**14 verified rows.** DWN's Table 2 read directly — the reference the whole project is built
+against, and it is the most consequential comparison in the study.
+
+| DWN paper (xcvu9p-2, **core-only**) | acc | LUT | Fmax | latency |
+|---|---|---|---|---|
+| `n=6 sm` | 97.1% | **692** | 827 MHz | 2.4 ns |
+| `n=6 md` | 97.9% | 1,413 | 827 MHz | 3.6 ns |
+| `n=6 md` | 97.8% | 2,055 | 873 MHz | 4.6 ns |
+| `n=6 lg` | **98.3%** | 4,082 | 827 MHz | 6.0 ns |
+
+#### ⚠️ Read against the wrong convention this says we are 2.3× too big. We are not.
+
+Our `1x300` is **1,597 LUTs** against the paper's `sm` at **692** — a 2.3× gap that would be the
+headline of a careless table. **The paper's rows exclude the thermometer encoder** (brief §6,
+`REPORT.md` §5.2); ours include it. Compared like for like, on core only:
+
+| | ours | DWN paper | ratio | Δ acc |
+|---|---|---|---|---|
+| `1x300` vs `sm` | 96.77% / **630** | 97.1% / 692 | **0.91×** | −0.33 pp |
+| `1x2000` vs `lg` | 98.26% / **4,821** | 98.3% / 4,082 | 1.18× | −0.04 pp |
+
+**Our implementation reproduces the paper's area–accuracy trade-off.** At the small end we are
+*9% smaller* for 0.33 pp less accuracy; at the large end 18% larger at the same accuracy (−0.04 pp,
+well inside the 0.24 pp floor — i.e. identical).
+
+This is the strongest available evidence that the exporter and RTL generator are correct in a way
+Gate 1 cannot show: Gate 1 proves our RTL matches *our* golden model, and this shows our whole
+pipeline lands where the authors' independent implementation lands.
+
+⚠️ **The 0.33 pp gap at the small end is just above the noise floor**, so it is probably real
+rather than seed scatter. Worth one line in the report, not a paragraph — candidate causes are the
+`tau` schedule and the encoder's `z=3` choice, neither investigated.
+
+#### Consequence for the report: every row must state its convention
+
+Comparing our `dwn_top` against a core-only column **overstates our area by 1.4–2.5×** depending on
+width, because the encoder share falls from 72.3% at `1x100` to 20.9% at `1x2000`. It is the
+easiest mistake in this table and it is one this project has already criticised others for making.
+`sweep-results.json` carries both columns; the table must use the one that matches each row.
+
+#### Also from Table 2 — a JSC cross-check that validates the method
+
+The same table has JSC rows: `DWN n=6 sm` at **71.1% / 20 LUTs** and **74.0% / 110 LUTs**. Our
+Phase 1 measured **110 LUTs** for the 1x50 core at 73.84%. Same config, same core-only convention,
+**same LUT count**. That is an independent confirmation that our reading of the convention is right
+— and it is why the `1x300` comparison above can be trusted.
+
 ### 2026-08-13 — [literature] the weightless comparison lands, and it is the strongest row in the study
 
 **10 verified rows.** BTHOWeN and ULEEN read directly from their own PDFs.
