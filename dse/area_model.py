@@ -1,5 +1,49 @@
 """Predict a config's LUT area without launching Vivado.
 
+⚠️⚠️ **THIS MODEL SOLVES A PROBLEM THAT TURNED OUT NOT TO EXIST. Do not quote a projected area
+from it.** Running it prints FAIL, and that is correct rather than a regression.
+
+**Its one job was never exercised.** `should_synthesize()` exists to skip configs too large to be
+worth building, and across both completed studies it has skipped **zero**: JSC synthesized 54 of
+54, MNIST 30 of 30, and no sweep result carries a `filtered` status. Both studies turned out to be
+bounded by **what got trained**, not by what fit — the largest JSC design reached 61% of the device
+and the largest MNIST one 33%. Nothing ever came close enough to the ceiling to need predicting.
+
+That is not an accident of calibration. The filter was deliberately built to err toward building —
+it skips only what is *confidently* too big, with a 115% probe band so anything near the threshold
+gets measured anyway. A model that under-predicts and a filter that prefers to build push the same
+direction, so it will essentially never fire.
+
+**What in here IS load-bearing, and is fine:** `DEVICE_LUTS` (a constant, imported by `grid.py`,
+`report.py` and `plot.py`) and `is_extrapolated()` (honest metadata marking rows predicted away
+from the calibration point). Only `predict()` is unreliable, and nothing depends on its output.
+
+**What it gets wrong, for whoever picks it up:**
+
+  * Its self-test misses **its own calibration point by 10.9%** (JSC `1x50` encoder).
+  * On MNIST it under-predicts `dwn_top` by **8-19%** across the ladder, and mis-predicts the
+    comparator count by up to **+108%** at z=3 -- `predict_comparators` is fitted on ONE JSC
+    configuration and does not transfer. See docs/mnist/phase2-ledger.md.
+  * `HARNESS_LUTS` below is stale for JSC as well: 2058 - 1619 = 439 was measured before the
+    uart_loader shift register, after which the board is 1893 against a dwn_top of 1621, i.e.
+    **272**. And it is not a constant across datasets at all -- MNIST's harness is **3,038 LUTs**,
+    because the vector store scales with record width.
+  * MEASURED / MEASURED_BOARD below are `jsc-complete`-era figures (core 108, top 1619, board
+    2058). Current values are 110 / 1621 / 1893.
+
+**Why it was not fixed:** every measurement in both studies is real, and this file only ever fed
+`should_synthesize`, which skips configs predicted far too large. Nothing was filtered on MNIST,
+so no measurement depends on it. Changing the constants would move that filter without a way to
+verify the consequences short of re-running a sweep. Fixing it properly needs a z-dependent
+comparator model and a per-dataset harness term; the ~77 measured configurations across both
+studies are the calibration set for whoever does it.
+
+**A better approach than fixing it:** run a real synthesis. yosys is open-source and vendor-neutral
+and would give a measured cell count in seconds, though its LUT mapping differs from Vivado's and
+it cannot see place-and-route (JSC's `1x2000` fit at post-synthesis and was pushed over the device
+by physical optimisation afterwards).
+
+
 This is step 2b. It exists because step 2d filters configs on predicted area BEFORE spending
 serial Vivado time on them, and `docs/dse-plan.md` §5's original formula assumed the encoder
 costs "up to 3.2x the core" (brief §12 risk #3, from Mecik & Kumm). Phase 1 measured **14.06x**.
@@ -262,6 +306,12 @@ def _selftest() -> int:
     # for FILTERING, which only has to separate "fits" from "does not fit by 4x".
     if worst > 5.0:
         print('FAIL: the model does not reproduce the config we actually measured.')
+        print()
+        print('      ^ EXPECTED, not a regression you just caused. See this file\'s header.')
+        print('        This model was built to filter configs too big to be worth building,')
+        print('        and across both completed studies it has filtered ZERO: JSC built 54 of')
+        print('        54, MNIST 30 of 30. Both were bounded by what got trained, not by what')
+        print('        fit. No measurement anywhere depends on this file\'s predictions.')
         return 1
     print('OK: reproduces the calibrated point within tolerance.')
     if worst_extrap > 5.0:

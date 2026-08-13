@@ -346,6 +346,13 @@ def main() -> int:
         print('-' * 78)
         print('~ = predicted away from the one config the selection ratio was measured at')
         print('    (n=6, z=200). These estimates are extrapolations -- do NOT filter on them.')
+        print()
+        # ASCII only: this goes to stdout, and a Windows console at cp1252 raises on emoji.
+        print('!! THE AREA COLUMNS ARE INDICATIVE ONLY, and are wrong by more than they look:')
+        print('   the model misses its own JSC calibration point by 10.9%, under-predicts MNIST')
+        print('   dwn_top by 8-19%, and mis-predicts comparator counts by up to +108%. Use them')
+        print('   to sense scale when planning a grid; never quote one. Measured areas live in')
+        print('   docs/results*/sweep-results.json. See dse/area_model.py for why.')
 
     runs = [g for g in grid if should_synthesize(g[2])[0]]
     extrap = [g for g in grid if is_extrapolated(g[2].model.n, g[2].model.thermometer_bits)]
