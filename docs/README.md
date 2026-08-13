@@ -71,5 +71,6 @@ Dataset-independent. Established once, relied on by both studies.
 | [`checkpoint-format.md`](./reference/checkpoint-format.md) | What the exporter reads, verified against the pinned upstream commit, including the traps |
 | [`paper-configs.md`](./reference/paper-configs.md) | The original paper's configurations, and what they corrected |
 | [`probe-results.md`](./reference/probe-results.md) | Does `TABLE[addr]` map to a single LUT6? The evidence the area claim rests on |
-| [`tool-roadmap.md`](./reference/tool-roadmap.md) | What packaging the generator as a usable tool would take |
+| [**`tool-handoff.md`**](./reference/tool-handoff.md) | **Starting the tool** — a cold-start handoff: what is settled, what is open, and the file inventory |
+| [`tool-roadmap.md`](./reference/tool-roadmap.md) | The audited work list behind it — defects, generality gaps, packaging, order |
 | [`reusable-generator.md`](./reference/reusable-generator.md) | Earlier scoping of the same question, kept for the reasoning |

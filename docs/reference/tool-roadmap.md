@@ -105,8 +105,8 @@ These cannot be decided by inspection. Attempting them earlier means guessing.
 | ~~How many thermometer thresholds per pixel?~~ | ✅ **z=3**, which is what upstream uses. And the premise was wrong: `784 × z` is *not* the area problem, because the learned mapping builds comparators only for bits it selects (720 of 2,352). **Word width is** — see F1 |
 | ~~Are MNIST pixels standard-scaled or min-max?~~ | ✅ **min-max, [0,1]**, via `transforms.ToTensor()`. No scaler in the pipeline |
 | ~~Does the upstream MNIST recipe binarise differently?~~ | ✅ **No.** Same `DistributiveThermometer`, `feature_wise=True` |
-| ~~Does the paper's `1000, 500` fit at any precision?~~ | ✅ **Projected yes at 11-bit (38.0%), over at 16-bit (102.5%).** ⚠️ Projected, never built — and worth building, because it is the only remaining "does it fit" question |
-| **Why is LUTs-per-comparator lower on real data than synthetic?** | ⬜ **Open** — the one that did not survive. Hypothesis: what matters is threshold *values*, not counts, because real MNIST pixels are mostly zero so quantile thresholds cluster near zero and collapse to narrow compares. **This is R3** |
+| ~~Does the paper's `1000, 500` fit at any precision?~~ | ✅ **BUILT 2026-08-12, and it fits at 9-bit.** `2x[1000,500]`: 97.76%, **3,464 LUTs (16.65%)**, 103.8 MHz — the best MNIST design that meets the board clock. The 11-bit projection was unnecessarily pessimistic |
+| ~~Why is LUTs-per-comparator lower on real data than synthetic?~~ | ✅ **Settled 2026-08-13: TWO mechanisms, previously conflated.** *Within* a dataset it is logic sharing — cost per comparator falls monotonically as comparators-per-feature rises (0.218 → 0.086 LUT/bit over three measured points). *Between* datasets that fails to explain it, since JSC has the most comparators per feature and is still dearest, leaving threshold **values** as the cross-dataset mechanism. See `docs/mnist/phase2-ledger.md` |
 
 **The most valuable output of MNIST is a list of bugs**, not an accuracy number — and it delivered.
 Beyond the four JSC-shaped assumptions Phase 2 and 3 found, MNIST produced **seven more** in one
@@ -252,6 +252,42 @@ Free to answer, and each one narrows what the work above actually is.
 | ~~**Q2**~~ | ✅ **RESOLVED 2026-08-11: yes, Gate 1 ships.** A generator whose output nobody can check is worth much less, and this repo has the evidence — the emitter's own read-back check reported 20/20 correct while the design was wrong on 958 of 1,504 vectors |
 | **Q3** | **Which upstream DWN versions?** (P6) | One pinned commit is honest and cheap; a range needs a compatibility layer plus silent-drift detection |
 | **Q4** | **Name, and where it lives** | `mnist/plan.md` §1.6 forbids branch- or person-named files; the same discipline should apply to the fork |
+| ~~**Q5**~~ | ✅ **RESOLVED 2026-08-13: new repository, not a fork.** The tool is ~2,300 of this repo's ~19,600 lines — **12%**. A fork's first commit would delete 88%, and its history would be 90+ commits of study retractions irrelevant to using it. The knowledge lives in the code comments, which travel with a copy; the ledgers should not travel at all. **This repo stays the tool's evidence** and the tool's README links to it |
+| ~~**Q6**~~ | ✅ **RESOLVED 2026-08-13: vendor-neutral, with an optional estimate tier.** No Vivado dependency. Verified by inspection: the emitted RTL instantiates **no vendor primitives** and is Verilog-2001 (`timescale`, `default_nettype`, `generate`, `$readmemh`) — the only `logic` in the tree is the English word, in a comment. Estimates, if wanted, shell out to **yosys** when present. ⚠️ Not yet *tested* under a non-Xilinx simulator; see the new blocker below |
+| ~~**Q7**~~ | ✅ **RESOLVED 2026-08-13: do not ship the area model.** It was built to filter configs too big to build and across both completed studies filtered **zero**, because both were bounded by training rather than by area. hls4ml does not ship one either — it reports what a vendor tool says. See `dse/area_model.py`'s header |
+
+### ⚠️ Q8 — the one genuine blocker, discovered 2026-08-13
+
+**Upstream DWN saves no checkpoint at all.** `examples/mnist.py` trains, prints accuracy, and
+exits — there is no `torch.save` anywhere in it. The `{config, state_dict, thermometer, scaler,
+results}` dict this project reads is **our own invention**, written by our Kaggle notebooks.
+
+It cannot simply be `state_dict`, either: a DWN is **two objects**, and the thermometer's
+thresholds live outside the model. Measured on a real checkpoint — `state_dict` holds
+`['0._LUTLayer__dummy_mapping', '0.luts', '0.mapping.weights']` and **no thresholds**. So the
+obvious `torch.save(model.state_dict())` silently loses the encoder.
+
+**Consequences for the tool:**
+
+1. **It must define the format**, and own both ends: `dwn2rtl.save(model, thermometer, path)` and
+   `dwn2rtl build <path>`. The CLI is the interface; the save step exists because there is nothing
+   else to build from. `docs/reference/checkpoint-format.md` already specifies the schema against
+   the pinned commit and is most of the work.
+2. **It should also accept live objects** — `from_model(model, thermometer)` — because that is what
+   a user has the moment training finishes, and it is what hls4ml does.
+3. **It must fail loudly on a bare `state_dict`**, naming the missing thermometer rather than
+   emitting a broken encoder.
+
+### ⚠️ Q9 — fractional bits are not derivable, and the CLI shape depends on the answer
+
+Integer width **is** derivable exactly (`required_int_bits()`), and per-config: MNIST needs Q0.8 at
+z≤8 and **Q1.8 at z=25**, where one quantile threshold lands on exactly 1.0. `widen_for_checkpoint()`
+in `dse/run.py` already does this.
+
+**Fractional width is not derivable from a checkpoint at all** — it depends on whether quantisation
+changes predictions, which depends on data the tool does not have. So the tool must **ask**,
+**default and say so loudly**, or **measure against user-supplied data**. All three are defensible;
+they produce different CLIs, so decide before writing one.
 
 **Q1 was the highest-leverage question in this document, and it is now answered: generator-only.**
 That removes B2, B3 and the whole MNIST harness rework in one stroke.
