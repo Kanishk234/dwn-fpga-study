@@ -35,7 +35,7 @@ module dwn_basys3_top #(
     // MEASURED CEILING, not a guess. 1 M, 2 M, 4 M and 5 M all work; 10 M does not respond at
     // all, even though both ends divide it exactly (100/10 and 120/12) -- so the limit is the
     // FTDI Windows VCP driver, not this design. Chasing higher would mean FTDI's D2XX API
-    // instead of a COM port. See the sweep table in docs/phase1-ledger.md.
+    // instead of a COM port. See the sweep table in docs/jsc/phase1-ledger.md.
     //
     // Full 166k Gate 1b run: 480 s at 115200 -> 55 s at 1 M -> 11.2 s here.
     //

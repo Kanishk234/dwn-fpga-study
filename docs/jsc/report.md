@@ -222,7 +222,7 @@ wherever it matters.
 
 ### 4.2 Results
 
-![Accuracy against area across the sweep](./docs/results/frontier.png)
+![Accuracy against area across the sweep](./results/frontier.png)
 
 **Figure 1.** Accuracy against area for the configurations measured on our device. Each point is a
 complete design, placed and routed, including the input encoder. The frontier is the set of
@@ -252,7 +252,7 @@ measured.
 ratio falls from 14.1× at 50 neurons to 2.8× at 2,400. Conclusions drawn at one model size do not
 transfer, which is a pattern we hit repeatedly (Section 8).
 
-![Encoder against network area across model sizes](./docs/results/area_split.png)
+![Encoder against network area across model sizes](./results/area_split.png)
 
 **Figure 2.** Where the area goes. At 50 neurons the input encoder costs fourteen times the network
 it feeds; by 2,000 neurons the ratio has fallen to 2.8×. Any statement about the encoder being a
@@ -295,7 +295,7 @@ argue about. Yet the standard comparison table lists both kinds of row together.
 original DWN paper, in the follow-up encoder analysis, and in a 2025 survey of the field [6], which
 divides the benchmark by accuracy band and never mentions that two data sources exist.
 
-![Published results on the CERNBox distribution](./docs/results-cc/jsc-cernbox.png)
+![Published results on the CERNBox distribution](./results-cc/jsc-cernbox.png)
 
 **Figure 3.** Published results on the CERNBox distribution. None of our measurements appear here,
 and that is deliberate: we train on the OpenML distribution, and placing our points on this axis
@@ -483,7 +483,7 @@ conventions exist.
 | Boosted tree (this work) | 74.88% | 15,363 | n/a | XC7A35T |
 | hls4ml shrunk to fit (this work) | 75.67%\* | 8,749 | n/a | XC7A35T |
 
-![Accuracy against area, OpenML distribution](./docs/results-cc/jsc-openml.png)
+![Accuracy against area, OpenML distribution](./results-cc/jsc-openml.png)
 
 **Figure 4.** Everything measured on our device against everything published on the same
 distribution. Marker fill separates designs whose area includes the input encoder from those
@@ -541,7 +541,7 @@ evaluated on all 166,000 test samples, not a subset.
 | 10 bits | 891 | 6.46× | −0.219 pp | no |
 | 8 bits | 655 | 8.78× | −1.092 pp | no |
 
-![Encoder area and accuracy against input word width](./docs/results/encoder-width.png)
+![Encoder area and accuracy against input word width](./results/encoder-width.png)
 
 **Figure 5.** Area and accuracy as the input word narrows, measured separately and plotted on a
 shared horizontal axis rather than against two vertical scales. The point of the figure is where

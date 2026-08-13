@@ -122,7 +122,7 @@ class Dataset:
 
     # ---- where this dataset's sweep artifacts live ----
     # Explicit strings rather than a rule derived from `name`, because JSC's are HISTORICAL:
-    # docs/results/ and training/artifacts/sweeps/ are referenced by docs/jsc-report.md, README.md and the
+    # docs/jsc/results/ and training/artifacts/sweeps/ are referenced by docs/jsc/report.md, README.md and the
     # `jsc-complete` tag, and build/dse/results.json holds 54 measured configs that would be
     # re-run from scratch if the path moved. CLAUDE.md forbids moving an existing JSC artifact,
     # so the exception is recorded here as data instead of as a special case in dse/.
@@ -144,7 +144,7 @@ class Dataset:
 
     # ---- Phase 3, the controlled comparison ----
     # Where cc/ writes. Split from `results_dir` because the CC snapshot is its own artifact:
-    # docs/results-cc/ is named in docs/jsc-report.md and docs/phase3-handoff.md §2.6 and must not move.
+    # docs/jsc/results-cc/ is named in docs/jsc/report.md and docs/jsc/phase3-handoff.md §2.6 and must not move.
     cc_results_dir: str = ''       # under docs/
 
     # The conifer GBDT sweep, as data. NOT transferable between datasets, because xgboost builds
@@ -244,15 +244,15 @@ JSC = Dataset(
     default_z=200,
     base_n=6,
     base_encoding='distributive',
-    # The paper's four JSC anchors (docs/paper-configs.md). Their log-log slopes are 0.526,
+    # The paper's four JSC anchors (docs/reference/paper-configs.md). Their log-log slopes are 0.526,
     # 0.557 and 0.635 -- near-constant, which is where the 0.57 exponent comes from.
     tau_anchors=((10, 1 / 0.7), (50, 1 / 0.3), (360, 1 / 0.1), (2400, 1 / 0.03)),
     tau_basis='total',        # see the field comment -- preserved, not endorsed
     training=TrainingRecipe(batch_size=100, epochs=32, lr=1e-2, lr_step=14, lr_gamma=0.1,
                             seed=20260802),
     slug_prefix='',                # JSC's grid writes bare slugs
-    results_dir='results',
-    cc_results_dir='results-cc',   # named in docs/jsc-report.md and phase3-handoff.md -- do not move
+    results_dir='jsc/results',
+    cc_results_dir='jsc/results-cc',   # named in docs/jsc/report.md and phase3-handoff.md -- do not move
     # 14 configs, measured 2026-08-10. Reproduces cc/conifer/run_conifer.py's original SWEEP
     # exactly; the ordering (cheapest-first by total trees) is applied in cc/, not here.
     cc_gbdt_grid=((3, 10), (3, 20), (3, 40), (3, 80),
@@ -269,7 +269,7 @@ JSC = Dataset(
              ((2400,), 100), ((2400,), 50), ((3000,), 50)),
     notes=('Jet substructure classification, the OpenML distribution (dataset 42468) -- NOT the '
            'CERNBox one, which scores about 1.05 pp lower and is what the LogicNets/PolyLUT/'
-           'NeuraLUT line of work uses. See docs/jsc-report.md section 5.1.'),
+           'NeuraLUT line of work uses. See docs/jsc/report.md section 5.1.'),
 )
 
 MNIST = Dataset(
@@ -309,8 +309,8 @@ MNIST = Dataset(
     training=TrainingRecipe(batch_size=100, epochs=30, lr=1e-2, lr_step=14, lr_gamma=0.1,
                             seed=20260811),
     slug_prefix='mnist_',
-    results_dir='results-mnist',
-    cc_results_dir='results-cc-mnist',
+    results_dir='mnist/results',
+    cc_results_dir='mnist/results-cc',
     # `n_estimators` HALVED against JSC's, because ten classes means xgboost builds twice the
     # trees per round. Total tree count therefore brackets the same region: JSC's (4, 20) is 100
     # trees and MNIST's (4, 10) is also 100. Floor of 3 rounds -- fewer is not a usable ensemble.

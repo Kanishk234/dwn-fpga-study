@@ -4,7 +4,7 @@ A Differentiable Weightless Neural Network running on a Digilent Basys 3, in han
 Verilog, verified bit-exact against the software model on every one of the 166,000 JSC test
 samples.
 
-This is the written-up account. `docs/phase1-ledger.md` is the running log it was written from —
+This is the written-up account. `docs/jsc/phase1-ledger.md` is the running log it was written from —
 dated, with the dead ends. `releases/phase1/MANIFEST.md` describes the frozen artifact.
 
 ---
@@ -76,7 +76,7 @@ starved one.**
 
 ### 3.2 The checkpoint format is full of traps
 
-Read out of the pinned submodule, never inferred (`docs/checkpoint-format.md`):
+Read out of the pinned submodule, never inferred (`docs/reference/checkpoint-format.md`):
 
 - **`_LUTLayer__dummy_mapping` is a decoy.** It sits in `state_dict` with the *same shape and
   dtype* as a real wiring tensor, but is only `arange()` reshaped. Exporting it yields a

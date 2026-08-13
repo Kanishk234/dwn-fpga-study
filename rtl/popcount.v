@@ -1,6 +1,6 @@
 // Popcount for one class group.
 //
-// This is GroupSum from the software model (docs/checkpoint-format.md §4): the final layer's
+// This is GroupSum from the software model (docs/reference/checkpoint-format.md §4): the final layer's
 // outputs are split into `num_classes` CONTIGUOUS, in-order slices and each slice is summed.
 //
 // The software divides each sum by `tau`, but tau is a single uniform constant applied to
@@ -9,7 +9,7 @@
 //
 // Note the paper replaces this with a "Learnable Reduction" pyramid for tiny models, on the
 // grounds that the popcount circuit can be as large as the network itself. That is a Phase 2
-// sweep axis (docs/dse-plan.md, Group A); this is the plain-popcount baseline it gets
+// sweep axis (docs/jsc/dse-plan.md, Group A); this is the plain-popcount baseline it gets
 // measured against.
 
 `timescale 1ns / 1ps

@@ -57,7 +57,7 @@ def min_frac_bits(x_col, thresholds, max_frac=FRAC_BITS):
     """Fewest fractional bits that reproduce every comparison this feature makes.
 
     Reference is the Q3.12 encoding the design already uses, not float -- Q3.12 is the spec
-    (docs/phase1-ledger.md), so anything matching it is bit-exact by definition.
+    (docs/jsc/phase1-ledger.md), so anything matching it is bit-exact by definition.
     """
     ref = np.array([(np.floor(x_col * 2**FRAC_BITS) > np.floor(t * 2**FRAC_BITS))
                     for t in thresholds])
@@ -158,7 +158,7 @@ def main():
     print()
     print('It becomes the deciding factor at larger configs. Comparator count grows with node')
     print('count and saturates at features x z, so a big model pays for nearly the whole')
-    print('thermometer -- see the projection in docs/phase1-ledger.md.')
+    print('thermometer -- see the projection in docs/jsc/phase1-ledger.md.')
 
     biggest = max(rows, key=lambda r: r[5] - r[6])
     print()

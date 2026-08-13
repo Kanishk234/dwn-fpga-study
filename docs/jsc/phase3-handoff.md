@@ -1,6 +1,6 @@
 # Handoff: running Phase 3 on a different machine
 
-Phase 3 is the Controlled Comparison (`docs/phase3-plan.md`). This covers what a second machine
+Phase 3 is the Controlled Comparison (`docs/jsc/phase3-plan.md`). This covers what a second machine
 needs before starting, what to check while developing, and the rules that keep the comparison
 *controlled* rather than a table of numbers from different flows.
 
@@ -55,7 +55,7 @@ this machine and say so in the writeup. Do not mix them in one table.
 | | why | check |
 |---|---|---|
 | **Vivado 2025.2** | must match the DWN measurements | `verify_phase1.py` |
-| **Vitis HLS** | hls4ml compiles to HLS C++ first — Vivado alone is not enough | ✅ **Present and working at 2025.2 — verified 2026-08-10 by synthesizing a design.** No second Vivado install is needed. **Drive it as `vitis-run --mode hls --tcl <script>`** — `--mode hls` alone errors, and the positional form the `--help` advertises does not satisfy it. AMD did remove HLS *Classic* in 2025.1+, so the plain `vitis_hls` command that hls4ml and conifer expect is not on `PATH`; the `vitis_hls.exe` under `Vitis/bin/unwrapped/win64.o/` is not usable as a CLI. Driving HLS ourselves is the method anyway (§2.1 forbids the vendor project flow), so conifer's own `build()` not working here costs nothing. See `docs/phase3-ledger.md`, 2026-08-10. |
+| **Vitis HLS** | hls4ml compiles to HLS C++ first — Vivado alone is not enough | ✅ **Present and working at 2025.2 — verified 2026-08-10 by synthesizing a design.** No second Vivado install is needed. **Drive it as `vitis-run --mode hls --tcl <script>`** — `--mode hls` alone errors, and the positional form the `--help` advertises does not satisfy it. AMD did remove HLS *Classic* in 2025.1+, so the plain `vitis_hls` command that hls4ml and conifer expect is not on `PATH`; the `vitis_hls.exe` under `Vitis/bin/unwrapped/win64.o/` is not usable as a CLI. Driving HLS ourselves is the method anyway (§2.1 forbids the vendor project flow), so conifer's own `build()` not working here costs nothing. See `docs/jsc/phase3-ledger.md`, 2026-08-10. |
 | **conifer** | `pip install conifer` | build a trivial 2-tree model and synthesize it before touching JSC |
 | **hls4ml** | `pip install hls4ml` | same — smallest possible model through the flow first |
 
@@ -71,11 +71,11 @@ reproducibility check for everyone. Use a separate `cc/requirements-cc.txt`.
 **Travels (all committed):**
 - `training/artifacts/dwn_jsc_t200_distributive_50_l_b100_*` — the Phase 1 reference, which is
   all `verify_phase1.py` needs
-- `docs/results/` — all 54 measured DWN configs, both figures, the trained grid
+- `docs/jsc/results/` — all 54 measured DWN configs, both figures, the trained grid
 
 **Does not travel, and Phase 3 does not need it:**
 - `training/artifacts/sweeps/` — ~933 MB of sweep checkpoints, gitignored. Only needed to
-  *re-emit* a DWN config's RTL. The measured numbers are in `docs/results/`.
+  *re-emit* a DWN config's RTL. The measured numbers are in `docs/jsc/results/`.
 - `training/artifacts/*_testset_full.npz` — the 166k set, gitignored, `--with-board` only
 - A Basys 3 — not required for Phase 3
 
@@ -126,7 +126,7 @@ two apparent Phase 2 findings; do not let it manufacture a Phase 3 one.
 
 ### 2.5 Keep a ledger
 
-`docs/phase3-ledger.md`, updated **in the same pass as the work** (CLAUDE.md). Status table,
+`docs/jsc/phase3-ledger.md`, updated **in the same pass as the work** (CLAUDE.md). Status table,
 dated log, numbers worth quoting, open questions. When a result overturns an earlier conclusion,
 **correct it and say what was retracted** — Phase 2's most useful entries are the ones recording
 what turned out to be wrong.
@@ -138,7 +138,7 @@ cc/conifer/     the GBDT, its conifer project, generated HDL
 cc/hls4ml/      the MLP, its hls4ml project, generated HDL
 cc/requirements-cc.txt
 build/cc/       all synthesis output -- gitignored, like everything under build/
-docs/results-cc/  the committed comparison numbers, via a snapshot like dse/report.py --snapshot
+docs/jsc/results-cc/  the committed comparison numbers, via a snapshot like dse/report.py --snapshot
 ```
 
 Generated HDL is a build product. It belongs in `build/`, not in git — the same rule that
@@ -167,7 +167,7 @@ applies to them too — report core and encoder separately for DWN in every tabl
 
 **The literature half.** Pulling published JSC numbers into a combined table and plot needs no
 toolchain, no GPU, no synthesis — only our final numbers, which are committed in
-`docs/results/`. It is the highest value-per-hour item in Phase 3 and has zero setup cost.
+`docs/jsc/results/`. It is the highest value-per-hour item in Phase 3 and has zero setup cost.
 
 ⚠️ **Check for newer entries than brief §8's list.** It was written earlier in the project; a
 search in August 2026 already turned up *WARP Logic Neural Networks* (arXiv 2602.03527) and a

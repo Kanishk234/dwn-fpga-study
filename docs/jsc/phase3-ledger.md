@@ -1,6 +1,6 @@
 # Phase 3 ledger — the Controlled Comparison (Study 2)
 
-Running log for Phase 3. Plan: `docs/phase3-plan.md`. Handoff: `docs/phase3-handoff.md`.
+Running log for Phase 3. Plan: `docs/jsc/phase3-plan.md`. Handoff: `docs/jsc/phase3-handoff.md`.
 
 **Split:** the *hands-on half* (conifer, hls4ml — plan §2) runs on the machine with the Phase 1/2
 toolchain; the *literature half* (plan §3–§4) needs no board, no Vivado and no synthesis and runs
@@ -17,11 +17,11 @@ it says so rather than editing it away.
 | 3L-a | Refresh the literature list — brief §8 is stale (plan §3 ⚠️) | ✅ done 2026-08-10 |
 | 3L-b | Settle the encoder-convention trap (plan §4.1) | ✅ done 2026-08-10 |
 | 3L-c | Pull per-paper JSC numbers into a machine-readable table | ✅ done 2026-08-10 — `cc/literature/` |
-| 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ✅ done 2026-08-11 — `cc/literature/plot.py`, figures in `docs/results-cc/` |
+| 3L-d | Combined comparison table + Pareto plot with our 15 frontier points | ✅ done 2026-08-11 — `cc/literature/plot.py`, figures in `docs/jsc/results-cc/` |
 | 3X-a | Encoder input-word width: accuracy floor + area curve | ✅ done 2026-08-10 — **5.9x smaller encoder** |
 | 3X-b | Re-run 3X-a at `1x2400 z=50` before quoting anything | ✅ done 2026-08-10 — **the width limit moved; the saving held** |
-| 3L-e | Phase 3 report | ✅ done 2026-08-11 — `docs/phase3-report.md`, covers both halves |
-| 3M-a | conifer (GBDT) — *hands-on machine* | ✅ done 2026-08-10 — **14 configs, `docs/results-cc/`** |
+| 3L-e | Phase 3 report | ✅ done 2026-08-11 — `docs/jsc/phase3-report.md`, covers both halves |
+| 3M-a | conifer (GBDT) — *hands-on machine* | ✅ done 2026-08-10 — **14 configs, `docs/jsc/results-cc/`** |
 | 3M-b | hls4ml (quantized MLP) — *hands-on machine* | ✅ done 2026-08-10 — **6 configs, it fits at 16/8/8** |
 
 **Both halves now have entries in this ledger.** The literature half (3L-\*) runs on the machine
@@ -156,7 +156,7 @@ entirely on the published hls4ml numbers.
 ### 2026-08-10 — 3M-a COMPLETE: 14 conifer configs, and a GBDT does not reach DWN on this part
 
 *(hands-on machine)* Full sweep through `cc/conifer/run_conifer.py --sweep`. Snapshot committed
-to `docs/results-cc/` — `build/` is gitignored and these are most of a day of HLS + place-and-route.
+to `docs/jsc/results-cc/` — `build/` is gitignored and these are most of a day of HLS + place-and-route.
 
 **10 of 14 fit; 4 exceed the device.** All post-route, `xc7a35tcpg236-1`, 10 ns, out-of-context.
 
@@ -253,7 +253,7 @@ do not survive contact:
 
 What is true is that conifer's own `build()` cannot work here — it detects the tool with
 `os.system('type X > /dev/null')`, a POSIX builtin, then invokes `vitis_hls`. That does not
-matter, because `docs/phase3-handoff.md` §2.1 forbids the vendor's default project flow anyway.
+matter, because `docs/jsc/phase3-handoff.md` §2.1 forbids the vendor's default project flow anyway.
 **Driving HLS ourselves is the method, not a workaround.**
 
 #### Four more things that had to be fixed, all silent
@@ -268,7 +268,7 @@ matter, because `docs/phase3-handoff.md` §2.1 forbids the vendor's default proj
   80 rounds would be ~8× worse. The sources are concatenated into one `.v` before synthesis
   rather than changing `build.tcl`, which every Phase 1/2 number depends on. Verified safe: no
   `include` directives, no duplicate module names.
-- **`HistGradientBoostingClassifier` cannot be used**, though `docs/phase3-plan.md` §2.1 names it.
+- **`HistGradientBoostingClassifier` cannot be used**, though `docs/jsc/phase3-plan.md` §2.1 names it.
   conifer dispatches on `'GradientBoosting' in class name`, which it matches — so it is accepted
   and *then* dies on `n_estimators`, because it stores `_predictors`/`TreePredictor` rather than
   `estimators_`/`tree_`. Use xgboost (fast) or classic `GradientBoostingClassifier` (slow at 830k).
@@ -371,7 +371,7 @@ and what the `encoder_included` field exists for.
 
 ### 2026-08-10 — toolchain: which HLS command the comparison tools expect
 
-`docs/phase3-plan.md` and `phase3-handoff.md` listed the toolchain as "Vivado 2025.2 **and Vitis
+`docs/jsc/phase3-plan.md` and `phase3-handoff.md` listed the toolchain as "Vivado 2025.2 **and Vitis
 HLS**". Corrected, because the second half is not a thing you can simply install alongside 2025.2.
 
 **Observed on this machine:** no `vitis_hls` or `vivado_hls` executable exists anywhere under
@@ -472,7 +472,7 @@ different silicon raises confidence that they are architectural, not artifacts o
 2. **The reduction (popcount + argmax) dominates at scale.** Their future-work item (iv) is
    "optimizing the classification logic, since for large models such as DWN (lg-2400), the popcount
    and LUT layers dominate hardware utilization at smaller input bit-widths." That is the same
-   conclusion as our Learnable Reduction retraction of 2026-08-10 (`docs/phase2-ledger.md`), which
+   conclusion as our Learnable Reduction retraction of 2026-08-10 (`docs/jsc/phase2-ledger.md`), which
    measured the reduction at **34.9% of the headline design**.
 
 Their future-work item (i) — "reducing thermometer encoder outputs by decreasing the number of bits
@@ -532,7 +532,7 @@ even at full precision -- removable today, no downside.
 #### What it does and does not change about Phase 2
 
 **Measurements: nothing.** Every Phase 2 config is a real design at a recorded configuration --
-`q16.12` is in every config name. `docs/results/` stays valid as evidence.
+`q16.12` is in every config name. `docs/jsc/results/` stays valid as evidence.
 
 **The headline probably survives, and for a reason worth stating.** Every config that scored
 above `1x2400 z=50`'s 76.18% failed on **timing**, not area:
@@ -591,8 +591,8 @@ collapse at narrow widths -- likely *better* accuracy retention and slightly *mo
 
 ### 2026-08-11 — 3L-d: the comparison figures, and DWN vs conifer on identical silicon
 
-`cc/literature/plot.py` -> `docs/results-cc/jsc-openml.png`, `jsc-cernbox.png`. `table.py` now
-also ingests `docs/results-cc/conifer-results.json`, so the combined table carries all three
+`cc/literature/plot.py` -> `docs/jsc/results-cc/jsc-openml.png`, `jsc-cernbox.png`. `table.py` now
+also ingests `docs/jsc/results-cc/conifer-results.json`, so the combined table carries all three
 sources: 41 DWN configs, 10 conifer configs, 32 published rows.
 
 **The head-to-head, both measured through `scripts/build.tcl` at `xc7a35tcpg236-1` / 10 ns.**
@@ -711,7 +711,7 @@ noticed, it is a defect running through the whole comparison chain.
 #### ⚠️ Version note: cite v5, not v1
 
 arXiv v1 and v5 report **different** JSC LUT counts -- v1 has DWN `sm` at 134 LUTs and `md` at
-2,144; v5 has **110** and **720**. `docs/paper-configs.md` was read from v5 and is correct, and v5
+2,144; v5 has **110** and **720**. `docs/reference/paper-configs.md` was read from v5 and is correct, and v5
 matches Mecik & Kumm's reproduction exactly. Anything scraped from `arxiv.org/html/2410.11112v1`
 is superseded -- pin the version when quoting.
 
@@ -809,7 +809,7 @@ compares a full 16-bit `WORD_BITS` word per threshold (`exporter/extract.py:118`
 threshold-constant folding gets below the carry chain.
 
 **This is a different lever from the one we tested.** Phase 1's per-feature *comparator narrowing*
-(−17.1%, and over-narrowed — see `docs/phase2-report.md` §5.6) trimmed comparator widths while
+(−17.1%, and over-narrowed — see `docs/jsc/phase2-report.md` §5.6) trimmed comparator widths while
 keeping the Q3.12 input. Quantising the shared input word is a change to the datapath's precision,
 which we have never swept: `q16.12` is fixed in every one of the 54 sweep configs.
 

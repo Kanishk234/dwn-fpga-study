@@ -1,7 +1,7 @@
 """Acceptance test: does Phase 1 reproduce on THIS machine?
 
 Run this on a new machine before doing any Phase 2 work. It re-runs the Phase 1 flow and checks
-the results against the values recorded in docs/phase1-report.md, so "it seems to work" becomes
+the results against the values recorded in docs/jsc/phase1-report.md, so "it seems to work" becomes
 a pass/fail.
 
 The reason this matters is not sentiment. **A Pareto frontier assembled from two Vivado versions
@@ -38,10 +38,10 @@ EXPECTED = {
     # at five classes and is what lets ten classes meet the board clock at all.
     #
     # The pre-change values are not lost: they are reproducible at the `jsc-complete` tag, which
-    # is what docs/jsc-report.md's JSC figures are measured at and now say so. Pinning a published result
+    # is what docs/jsc/report.md's JSC figures are measured at and now say so. Pinning a published result
     # to a tag is the right mechanism; freezing the RTL to protect a printed number is not.
     #
-    # docs/results/sweep-results.json still holds chain-era areas. Anything synthesized after
+    # docs/jsc/results/sweep-results.json still holds chain-era areas. Anything synthesized after
     # this change reads ~2 LUTs higher -- 0.12% at 1x50, 0.02% at the headline config, so no
     # frontier point or conclusion moves. Do not mix the two in one table without saying so.
     'core_luts': 110, 'core_ff': 73,

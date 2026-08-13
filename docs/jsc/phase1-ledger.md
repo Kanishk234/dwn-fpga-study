@@ -16,7 +16,7 @@ reported. **That is now done.**
 
 | Step | What | Status |
 |---|---|---|
-| **1a** | LUT6 mapping probe — does `TABLE[addr]` map to one LUT6? | ✅ risk #1 retired, `docs/probe-results.md` |
+| **1a** | LUT6 mapping probe — does `TABLE[addr]` map to one LUT6? | ✅ risk #1 retired, `docs/reference/probe-results.md` |
 | **1b** | Reproduce DWN training; JSC checkpoint we trust | ✅ 74.06% vs paper's 74.0% |
 | **1c** | Verilog templates, by hand, for one small real model | ✅ core + encoder |
 | **1d** | Golden software model + bit-exact testbench — **GATE 1** | ✅ **both levels pass** |
@@ -44,7 +44,7 @@ reported. **That is now done.**
 ### 2026-08-02
 
 - **1a probe** — `TABLE[addr]` maps to a single LUT6 as hoped. Risk #1 retired
-  (`docs/probe-results.md`). This was the branch point for the whole area model.
+  (`docs/reference/probe-results.md`). This was the branch point for the whole area model.
 - **Submodule pinned** at `9f887a0`. Upstream ships **PyTorch training only** — no RTL, no HLS,
   no FPGA flow. Confirms the gap the project exists to fill.
 - **Kaggle training brought up.** `torch_dwn` has no CPU path (`EFDFunction CPU not
@@ -55,8 +55,8 @@ reported. **That is now done.**
   z=4→8 bought +0.22pp; batch 256→32 bought +0.07pp; reading upstream showed lr/scheduler/
   epochs/tau/mapping already matched the authors' recipe exactly.
 - **Checkpoint format recorded** from the pinned submodule, not inferred —
-  `docs/checkpoint-format.md`. Closes risk #5.
-- **Read the paper.** Table 14 gave the real JSC configs (`docs/paper-configs.md`): **z=200**
+  `docs/reference/checkpoint-format.md`. Closes risk #5.
+- **Read the paper.** Table 14 gave the real JSC configs (`docs/reference/paper-configs.md`): **z=200**
   and **single-layer**. We had been at z≤8 with a random-wired second layer.
 - **Reproduced the paper's `sm` (1×50)**: 74.06% best / 73.84% final vs the paper's 74.0%.
   This is the Gate 1 reference checkpoint.
@@ -456,7 +456,7 @@ the vector store. Slack fell as expected once the clock network and pads were re
 
 ⚠️ **Correction (kept visible): this table previously read 2054 LUTs (9.88%) and +1.662 ns.**
 Those came from an intermediate bitstream build, not the one that was frozen. Every other record
-of this design — `docs/phase1-report.md`, `docs/phase2-handoff.md`,
+of this design — `docs/jsc/phase1-report.md`, `docs/jsc/phase2-handoff.md`,
 `releases/phase1/MANIFEST.md` and the `EXPECTED` table in `scripts/verify_phase1.py` — says
 **2058 (9.89%)**, and the frozen manifest records **+1.753 ns**. The reproduction run of
 2026-08-04 rebuilt the bitstream from committed defaults and measured exactly 2058 LUTs and
@@ -683,11 +683,11 @@ one that merely came out of the same directory.
 
 ## Pointers
 
-- `docs/phase1-report.md` — **the written-up account**: results, the five things that cost time,
+- `docs/jsc/phase1-report.md` — **the written-up account**: results, the five things that cost time,
   and full reproduction steps for another machine. This ledger is the raw log it was built from.
 - `releases/phase1/MANIFEST.md` — the frozen bitstream and its provenance
-- `docs/project-brief.md` — the full plan; §6 resource budgets, §11 phase breakdown, §12 risks
-- `docs/checkpoint-format.md` — what the exporter reads, verified against the pinned submodule
-- `docs/paper-configs.md` — the paper's JSC configs (Table 14 / Table 2) and what they changed
-- `docs/probe-results.md` — Phase 1a, risk #1 evidence
+- `docs/reference/project-brief.md` — the full plan; §6 resource budgets, §11 phase breakdown, §12 risks
+- `docs/reference/checkpoint-format.md` — what the exporter reads, verified against the pinned submodule
+- `docs/reference/paper-configs.md` — the paper's JSC configs (Table 14 / Table 2) and what they changed
+- `docs/reference/probe-results.md` — Phase 1a, risk #1 evidence
 - `training/README.md` — the run log and how to retrain

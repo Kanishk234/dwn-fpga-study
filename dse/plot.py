@@ -229,7 +229,7 @@ def main() -> int:
     args = ap.parse_args()
 
     # Paths come from the descriptor, exactly as in dse/run.py and dse/report.py. JSC's are its
-    # historical ones (docs/results/, build/dse/) and must not move -- docs/jsc-report.md, README.md and
+    # historical ones (docs/jsc/results/, build/dse/) and must not move -- docs/jsc/report.md, README.md and
     # the `jsc-complete` tag all reference them.
     ds = datasets.get(args.dataset)
     results = args.results or os.path.join(REPO, 'build', 'dse', ds.build_subdir, 'results.json')

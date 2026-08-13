@@ -125,8 +125,8 @@ SNAPSHOT = os.path.join(REPO, 'docs', DS.results_dir, 'sweep-results.json')
 def use_dataset(name):
     """Point every sweep path at `name`'s artifacts. Call before anything reads them.
 
-    JSC's paths are its historical ones and must stay put: docs/results/ and
-    training/artifacts/sweeps/ are referenced by docs/jsc-report.md, README.md and the `jsc-complete` tag,
+    JSC's paths are its historical ones and must stay put: docs/jsc/results/ and
+    training/artifacts/sweeps/ are referenced by docs/jsc/report.md, README.md and the `jsc-complete` tag,
     and build/dse/results.json holds 54 measured configs that a moved path would silently re-run
     from scratch. The layout is recorded per dataset in `datasets/` rather than special-cased
     here.
@@ -149,7 +149,7 @@ def load_results():
     made it", and this is not -- regenerating it costs a Kaggle GPU session plus hours of
     Vivado. That made `build/` unsafe to delete, which is the opposite of what the rule intends.
 
-    So the committed snapshot (`docs/results/sweep-results.json`, written by
+    So the committed snapshot (`docs/jsc/results/sweep-results.json`, written by
     `dse/report.py --snapshot`) doubles as the recovery source. Wiping `build/` now costs
     nothing but disk: the next run reloads what was already measured and only builds what is
     genuinely missing.
@@ -191,7 +191,7 @@ def accuracy_of(checkpoint):
 
     `final_acc` is the primary number: the saved weights are the final epoch, and there is no
     best-checkpoint tracking, so `best_acc` describes weights that were never saved
-    (docs/phase1-ledger.md). Quote final, keep best for context.
+    (docs/jsc/phase1-ledger.md). Quote final, keep best for context.
 
     UNITS: the checkpoint stores a FRACTION (0.7383614...), while every ledger, report and table
     in this project quotes PERCENT (73.84%). Converted here, once, and the field is named

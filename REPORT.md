@@ -6,7 +6,7 @@ The University of Texas at Austin
 ---
 
 > **Scope and versions.** This report covers both datasets. The per-dataset studies have the depth:
-> [`docs/jsc-report.md`](./docs/jsc-report.md) and [`docs/mnist/report.md`](./docs/mnist/report.md).
+> [`docs/jsc/report.md`](./docs/jsc/report.md) and [`docs/mnist/report.md`](./docs/mnist/report.md).
 > JSC figures are measured at the tag **`jsc-complete`**, MNIST figures at **`mnist-complete`**;
 > later work shifted some JSC areas by ≤0.12%, so the two sets describe different commits. Every
 > table below states which dataset it is about, and **no table mixes them**.
@@ -139,7 +139,7 @@ refuses to synthesize a configuration whose Gate 1 fails.
 
 ### 4.1 JSC — 52 configurations
 
-![JSC accuracy against area](./docs/results/frontier.png)
+![JSC accuracy against area](./docs/jsc/results/frontier.png)
 
 | | |
 |---|---|
@@ -154,7 +154,7 @@ gives up 0.24 points for 40% less silicon — and **what runs out first is the c
 
 ### 4.2 MNIST — 25 configurations
 
-![MNIST accuracy against area](./docs/results-mnist/frontier.png)
+![MNIST accuracy against area](./docs/mnist/results/frontier.png)
 
 | config | acc% | core | encoder | total | % device | Fmax | cycles |
 |---|---|---|---|---|---|---|---|
@@ -174,8 +174,8 @@ This section is the reason the combined report exists.
 
 ### 5.1 The encoder's share inverts, and that is why area models do not transfer
 
-![JSC core against encoder](./docs/results/area_split.png)
-![MNIST core against encoder](./docs/results-mnist/area_split.png)
+![JSC core against encoder](./docs/jsc/results/area_split.png)
+![MNIST core against encoder](./docs/mnist/results/area_split.png)
 
 | encoder as a share of the whole design | smallest | largest |
 |---|---|---|
@@ -198,7 +198,7 @@ unavoidable.
 JSC's 16-bit input word is **six bits wider than necessary**, and narrowing it costs accuracy that
 has to be measured on held-out data:
 
-![JSC encoder area against input word width](./docs/results/encoder-width.png)
+![JSC encoder area against input word width](./docs/jsc/results/encoder-width.png)
 
 MNIST's nine-bit word loses **nothing at all**: 56,835 feature values saturate at the word boundary
 and not one changes an encoder bit. The reason is structural — MNIST pixels are natively 8-bit, so
@@ -248,7 +248,7 @@ JSC Phase 3's largest correction was that **"JSC" names two different datasets**
 distribution (~830k samples) and a CERNBox one (~987k) — routinely listed in one table, with the
 same method scoring ~1.05 points higher on OpenML. That is seven times our measurement noise.
 
-![The same methods on the CERNBox JSC distribution](./docs/results-cc/jsc-cernbox.png)
+![The same methods on the CERNBox JSC distribution](./docs/jsc/results-cc/jsc-cernbox.png)
 
 The figure above is the *same comparison as §7.1* on the other JSC distribution. It is a separate
 figure rather than a second series on one axis for exactly the reason under discussion: the two are
@@ -265,7 +265,7 @@ conventions — enforced in code rather than in a footnote.
 
 ### 7.1 JSC
 
-![JSC accuracy against area, ours and published](./docs/results-cc/jsc-openml.png)
+![JSC accuracy against area, ours and published](./docs/jsc/results-cc/jsc-openml.png)
 
 Against **conifer** (gradient-boosted trees) on identical silicon, 14 configurations, 10 fitting:
 DWN is 1.5–1.7 points more accurate at any area budget, and uses 2.3–6.0× fewer lookup tables at
@@ -281,7 +281,7 @@ the encoder and runs on a $150 board.
 
 ### 7.2 MNIST
 
-![MNIST accuracy against area, ours and published](./docs/results-cc-mnist/mnist.png)
+![MNIST accuracy against area, ours and published](./docs/mnist/results-cc/mnist.png)
 
 26 rows, 21 read directly from the primary paper's own table.
 
@@ -488,10 +488,10 @@ thresholds. *Distributive* places thresholds at quantiles of the training data r
 
 | | |
 |---|---|
-| [`docs/jsc-report.md`](./docs/jsc-report.md) | the JSC study in full, with appendices and glossary |
+| [`docs/jsc/report.md`](./docs/jsc/report.md) | the JSC study in full, with appendices and glossary |
 | [`docs/mnist/report.md`](./docs/mnist/report.md) | the MNIST study in full |
-| [`docs/results/`](./docs/results/) · [`docs/results-cc/`](./docs/results-cc/) | JSC measurements and comparison figures |
-| [`docs/results-mnist/`](./docs/results-mnist/) · [`docs/results-cc-mnist/`](./docs/results-cc-mnist/) | MNIST measurements and comparison figures |
+| [`docs/jsc/results/`](./docs/jsc/results/) · [`docs/jsc/results-cc/`](./docs/jsc/results-cc/) | JSC measurements and comparison figures |
+| [`docs/mnist/results/`](./docs/mnist/results/) · [`docs/mnist/results-cc/`](./docs/mnist/results-cc/) | MNIST measurements and comparison figures |
 | [`cc/literature/`](./cc/literature/) | published results as machine-readable tables, with per-row provenance and confidence |
 | [`docs/`](./docs/) · [`docs/mnist/`](./docs/mnist/) | per-phase reports and the dated ledgers, which keep the wrong turns visible |
 

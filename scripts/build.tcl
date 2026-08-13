@@ -26,7 +26,7 @@ if {$argc < 8} {
 # results may differ between thread counts. This project's entire comparability argument is that
 # every sweep point comes from one machine and one flow, so a change that silently altered
 # placement would split the frontier in two. Overridable so the effect can be MEASURED against
-# an already-known config before being adopted; see docs/phase2-ledger.md.
+# an already-known config before being adopted; see docs/jsc/phase2-ledger.md.
 # VERIFIED IDENTICAL 2026-08-09: `1x600` re-synthesized at 8 threads reproduced 1312 / 9367 /
 # 10631 LUTs and WNS +0.400 exactly, matching the 2-thread run that is in the results. So
 # raising this does not split the frontier, and configs measured before and after the change

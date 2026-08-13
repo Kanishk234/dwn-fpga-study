@@ -42,7 +42,7 @@ def bits_to_hex(row, width):
 
     Mirrors how $readmemh loads a reg vector: rightmost hex digit is bits [3:0], so the value
     must be sum(row[i] << i) -- the same LSB-first convention the LUT address uses
-    (docs/checkpoint-format.md §2).
+    (docs/reference/checkpoint-format.md §2).
     """
     assert row.size == width
     return np.packbits(row[::-1].astype(np.uint8), bitorder='big').tobytes().hex()

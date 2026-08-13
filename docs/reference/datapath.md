@@ -4,8 +4,8 @@ A walkthrough of one jet passing through the design, stage by stage. Config is `
 nodes, n=6, z=200, 5 classes — the Phase 1 reference and the sweep's first ladder rung.
 
 This is the explanatory companion to the RTL. For *what was measured*, see
-`docs/phase2-report.md`; for the checkpoint fields each stage is built from, see
-`docs/checkpoint-format.md`.
+`docs/jsc/phase2-report.md`; for the checkpoint fields each stage is built from, see
+`docs/reference/checkpoint-format.md`.
 
 ---
 
@@ -121,7 +121,7 @@ fastest stage in the design by a wide margin, and the reason DWN is interesting 
 
 > ⚠️ One load-bearing detail: address bits are **LSB-first** — mapping slot 0 is address bit 0,
 > matching upstream's CUDA kernel. Reverse it and you get a design that elaborates, synthesizes,
-> and is wrong on most inputs (`docs/checkpoint-format.md` §2).
+> and is wrong on most inputs (`docs/reference/checkpoint-format.md` §2).
 
 **Output:** 50 bits, one per node.
 
@@ -238,7 +238,7 @@ exactly one way, chosen for one dataset.
 
 The middle block — the actual neural network — is the one that already generalizes. The
 plumbing on either side is where the assumptions live. That is the same asymmetry
-`docs/reusable-generator.md` §3 found from a different direction.
+`docs/reference/reusable-generator.md` §3 found from a different direction.
 
 ## Where each block would need variants
 
@@ -260,7 +260,7 @@ the whole input vector.
 the paper's **Learnable Reduction** replaces the adder tree with a pyramid of LUT nodes, on the
 grounds that for tiny models the popcount can be as large as the network. This project measured
 that at `sm`: reduction is 58 LUTs against 50 for the network, so the paper's concern is real —
-but it is **3.6% of the whole design**, so it stays deferred here (`docs/phase2-report.md` §7).
+but it is **3.6% of the whole design**, so it stays deferred here (`docs/jsc/phase2-report.md` §7).
 A general tool would still want both, because the ratio depends entirely on the dataset's
 encoder cost.
 
@@ -323,7 +323,7 @@ thermometer variants and z from 8 to 800.
 | **Harness generality** | 2–4 days | 33-byte records, 5 classes, `DEPTH=1024`. `uart_loader`'s `reg [5:0] byte_idx` would silently wrap on a wider record. |
 
 Note the ordering: **precision is the only one with a measured failure behind it.**
-`docs/reusable-generator.md` §4 lists it as ordinary packaging work alongside four other items;
+`docs/reference/reusable-generator.md` §4 lists it as ordinary packaging work alongside four other items;
 the Phase 2 sweep upgraded it to a correctness prerequisite, because without it one of three
 encodings cannot be built at all.
 

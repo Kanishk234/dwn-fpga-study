@@ -6,8 +6,8 @@ The University of Texas at Austin
 ---
 
 > **Version.** Every MNIST figure in this report was measured on the `mnist` branch after the
-> descriptor refactor, and is reproduced by `docs/results-mnist/sweep-results.json` and
-> `docs/results-cc-mnist/`. The companion JSC study is `docs/jsc-report.md`, whose figures are pinned to the
+> descriptor refactor, and is reproduced by `docs/mnist/results/sweep-results.json` and
+> `docs/mnist/results-cc/`. The companion JSC study is `docs/jsc/report.md`, whose figures are pinned to the
 > `jsc-complete` tag; the two sets of numbers describe different commits and must not be mixed in
 > one table. Where this report cites a JSC figure it uses the tagged value.
 
@@ -112,7 +112,7 @@ only in simulation is a refactor verified only in simulation.
 
 25 configurations, every one place-and-routed at `xc7a35tcpg236-1` with a 10 ns target.
 
-![Accuracy against area across the MNIST sweep](../results-mnist/frontier.png)
+![Accuracy against area across the MNIST sweep](./results/frontier.png)
 
 The curve climbs almost vertically to about 2,250 lookup tables and then flattens hard. `1x500`
 reaches 97.70% at 2,246; quadrupling to `1x2000` buys **+0.56 pp for 2.8× the area** — and does not
@@ -158,7 +158,7 @@ asking the tools for 8 ns yields 97.4 MHz where asking for 10 ns yields 93.1.
 
 ### 4.4 The encoder saturates, and the area story inverts
 
-![Core against encoder area across the MNIST ladder](../results-mnist/area_split.png)
+![Core against encoder area across the MNIST ladder](./results/area_split.png)
 
 Across a twenty-fold range of model size the encoder grows only **611 → 1,315** lookup tables, so
 its share of the design falls from **72.3%** at `1x100` to **20.9%** at `1x2000`. MNIST is
@@ -197,7 +197,7 @@ a gap below 0.24 pp.**
 
 ## 5. Comparison against published work
 
-![MNIST accuracy against area, ours and published](../results-cc-mnist/mnist.png)
+![MNIST accuracy against area, ours and published](./results-cc/mnist.png)
 
 26 rows, 21 read directly from the primary paper's own table. Marker fill carries the accounting
 convention, because that is the axis on which these numbers most easily mislead.
@@ -338,7 +338,7 @@ fit the board this one was verified on.
 ## Appendix A — Complete measurements
 
 All 25 configurations, place-and-routed at `xc7a35tcpg236-1`, 10 ns target unless stated.
-Machine-readable: `docs/results-mnist/sweep-results.json`.
+Machine-readable: `docs/mnist/results/sweep-results.json`.
 
 | group | config | acc% | core | enc | total | %dev | Fmax | cyc |
 |---|---|---|---|---|---|---|---|---|
@@ -362,7 +362,7 @@ snapshot; §4.3 gives the `1x2000` set.
 
 ## Appendix B — Reproducing this
 
-Assumes the first study's toolchain (`docs/jsc-report.md` Appendix C), plus `scikit-learn` and `pandas`.
+Assumes the first study's toolchain (`docs/jsc/report.md` Appendix C), plus `scikit-learn` and `pandas`.
 
 ```
 # Gate 1 — bit-exactness in simulation, no board needed. No precision flags:

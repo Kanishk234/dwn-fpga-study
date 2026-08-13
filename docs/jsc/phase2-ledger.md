@@ -5,12 +5,12 @@ chronological log, then the numbers worth quoting, then what is still open.
 
 **Status (2026-08-10): PHASE 2 COMPLETE.** 54 configurations measured, all Gate 1 verified and
 placed-and-routed. Headline: **`1x2400 z=50` — the paper's `lg` width — 76.18% at 61.3% of the
-device, 101.3 MHz.** Report: `docs/phase2-report.md`. Superseded status note follows.
+device, 101.3 MHz.** Report: `docs/jsc/phase2-report.md`. Superseded status note follows.
 
 **Status (2026-08-08): tooling complete, waiting on training.** 2a, 2b and 2d are done and
 validated against Phase 1's measured numbers; 2g's tooling is built. **2c is the critical path**
 — 32 Kaggle training runs, restarted after the tau fix below. 2e/2f/2g are then one command
-each. Phase 1 remains complete (`docs/phase1-report.md`), Gate 1b 166,000/166,000 on hardware.
+each. Phase 1 remains complete (`docs/jsc/phase1-report.md`), Gate 1b 166,000/166,000 on hardware.
 
 Phase 2's question (brief §10, Study 1): *what is the accuracy/area/latency Pareto frontier for
 DWN on a fixed small FPGA?* Its deliverables are Pareto plots plus one headline number — **the
@@ -21,8 +21,8 @@ separately, always** (brief §6).
 learnable-mapped layer of 50 nodes (the paper's `sm`), 73.84% at 1,619 LUTs. It is the sweep's
 first ladder rung and the only config ever run on hardware. Every Phase 2 axis varies from it.
 
-Read first: `docs/dse-plan.md` (what gets swept and why), `docs/phase2-handoff.md` (machine
-setup and the restructure decision), `docs/phase1-report.md` (what already works).
+Read first: `docs/jsc/dse-plan.md` (what gets swept and why), `docs/jsc/phase2-handoff.md` (machine
+setup and the restructure decision), `docs/jsc/phase1-report.md` (what already works).
 
 ---
 
@@ -52,7 +52,7 @@ setup and the restructure decision), `docs/phase1-report.md` (what already works
 
 ## Step 2a in detail — what "config-driven" actually means
 
-Roughly 20% file moves, 80% code. `docs/phase2-handoff.md` Part 2 has the directory decision;
+Roughly 20% file moves, 80% code. `docs/jsc/phase2-handoff.md` Part 2 has the directory decision;
 this is the work behind it.
 
 **The mechanical part** (minutes): `exporter/emit_core.py` and `emit_encoder.py` move to
@@ -93,7 +93,7 @@ checking.
 
 ## What Phase 1 already answered
 
-`docs/dse-plan.md` §7 listed four open questions. Three are now measured, and two of the answers
+`docs/jsc/dse-plan.md` §7 listed four open questions. Three are now measured, and two of the answers
 change the plan.
 
 ### 1. Encoder cost — far worse than budgeted ⚠️
@@ -171,7 +171,7 @@ Things that will silently produce wrong sweep points if forgotten:
 
 - **Final layer width must be divisible by `num_classes`.** `GroupSum` zero-pads silently
   otherwise, and hardware and software then disagree about group boundaries
-  (`docs/checkpoint-format.md` §4). The emitter asserts this; the sweep grid must respect it.
+  (`docs/reference/checkpoint-format.md` §4). The emitter asserts this; the sweep grid must respect it.
 - **`tau` tracks layer width.** It is not a constant to copy from `sm` — see the paper's values
   above.
 - **Vector store depth limits batch size**, and bigger models mean wider vectors. `DEPTH=1024` ×
@@ -221,7 +221,7 @@ are interpreter-independent.
 
 **Two corrections came out of this run:**
 
-- `docs/phase1-ledger.md`'s board table read **2054 LUTs / +1.662 ns**; the measured value is
+- `docs/jsc/phase1-ledger.md`'s board table read **2054 LUTs / +1.662 ns**; the measured value is
   **2058 / +1.753 ns**, matching the report, handoff, manifest and `verify_phase1.py`. Ledger
   corrected in place with the retraction kept visible.
 - The 166k test set is gitignored and **does not travel with the repo**. It was absent here and
@@ -388,7 +388,7 @@ Six width×z configs measured. **Every predicted accuracy landed within 0.10 pp*
 
 #### ⚠️ Correction to the Phase 1 projection, and it is a large one
 
-`docs/phase1-ledger.md` projected the paper's `lg` (1×2400) as **">100% of the device — does not
+`docs/jsc/phase1-ledger.md` projected the paper's `lg` (1×2400) as **">100% of the device — does not
 fit"**, on an encoder estimate of ~24,000 LUTs against a 20,800-LUT part. That was computed at
 z=200 and reported as a property of the *model*.
 
@@ -489,7 +489,7 @@ everything there is meant to be "regenerable by re-running the flow that made it
 not -- regenerating it costs a Kaggle session plus hours of Vivado. That made `build/` unsafe to
 delete, the opposite of the rule's intent.
 
-`load_results()` now falls back to the committed snapshot (`docs/results/sweep-results.json`),
+`load_results()` now falls back to the committed snapshot (`docs/jsc/results/sweep-results.json`),
 so wiping `build/` costs nothing but disk and the next run rebuilds only what is genuinely
 missing. **The ordering matters: snapshot, commit, then delete** -- the fallback recovers what
 was committed, not what was not.
@@ -736,7 +736,7 @@ around **-13%**, not -17.1%.
 
 **Consequences:**
 
-- The "-17.1%, not adopted" line in `docs/phase1-ledger.md` should be read as **-13%, and the
+- The "-17.1%, not adopted" line in `docs/jsc/phase1-ledger.md` should be read as **-13%, and the
   original was never safe to adopt**. Not adopting it was right for a better reason than the one
   recorded.
 - **Narrowing is data-dependent per config.** Widths must be derived from the full test set, not
@@ -917,7 +917,7 @@ n=2 the 4-entry table `[1,1,1,0]` emitted as `0x70` instead of `0x07` — **ever
 wrong address**. n≥3 was unaffected, because `2**n` is then a whole number of bytes, which is
 exactly why n=6 never showed it.
 
-**This was more dangerous than an ordinary off-by-one.** `docs/dse-plan.md` §3 *predicts* n=2
+**This was more dangerous than an ordinary off-by-one.** `docs/jsc/dse-plan.md` §3 *predicts* n=2
 fails — routing congestion — and states that such a failure "is a data point marking the
 frontier's edge, not a mistake to prevent." A Gate 1 failure caused by this bug would have
 looked exactly like the expected architectural finding, and could plausibly have been written up
@@ -1047,7 +1047,7 @@ them through.
 
 ### 2026-08-07 — Sweep results are committed evidence; the weights are not
 
-`dse/report.py --snapshot` writes `docs/results/sweep-results.{json,csv}`.
+`dse/report.py --snapshot` writes `docs/jsc/results/sweep-results.{json,csv}`.
 
 **The gap this closes.** `build/dse/results.json` is gitignored with the rest of `build/`, on the
 rule that everything there is regenerable. But it is not regenerable in any useful sense —
@@ -1544,7 +1544,7 @@ multiplexer cost entirely. The measured ceiling is −5%.
 
 ## Numbers worth quoting
 
-*(empty — Phase 1's are in `docs/phase1-ledger.md`)*
+*(empty — Phase 1's are in `docs/jsc/phase1-ledger.md`)*
 
 ---
 
@@ -1561,15 +1561,15 @@ multiplexer cost entirely. The measured ceiling is −5%.
 | **Slim checkpoint format — would make every trained config committable** | Sweep checkpoints total ~933 MB and one is ~122 MB, over GitHub's per-file limit, so they are gitignored. But **91% of a checkpoint is `mapping.weights`**, an `input_bits × (nodes×n)` tensor used *only during training*: `extract_wiring()` reads it once, takes `argmax(axis=0)`, and keeps `nodes × n` integers. Storing the resolved wiring instead would cut a 101 MB checkpoint to **~350 KB** and the whole grid to **~4 MB** — committable, with faster loads as a bonus. **Not attempted mid-sweep**, deliberately: it changes the checkpoint format on the Gate 1 path, and `extract.py`'s own comment warns that `__dummy_mapping` has the same shape and dtype as a real mapping, so getting this wrong yields "a valid-looking, totally wrong export" — silently. Build it after the sweep, with a Gate 1 re-run proving slim and fat checkpoints emit byte-identical RTL. **Zipping is not the alternative: measured 1.09×**, since float32 weights are near-incompressible. |
 | **3-stage pipeline** | Closes 100 MHz post-synthesis but was never re-verified post-route. One cheap Group B point. |
 | **FTDI D2XX for >5 Mbaud** | Optional; the VCP driver, not the design, is the wall. Two more I/O-wall points if Phase 3 leaves time. |
-| **Package the generator as a reusable tool** — *scoped, after Phase 3* | `docs/reusable-generator.md`. No open RTL implementation of DWN targets small FPGAs, which is why this project exists — and the generator is most of one already: verified across 20–2400 nodes, 1–3 layers, n=2/4/6, z=8–800, three encodings, and both wiring representations. What is JSC-specific is the *plumbing*: hardcoded Q3.12, and a harness shaped around 33-byte records and 5 classes. **~1–2 weeks, almost none of it RTL.** The load-bearing item is the MNIST port, because it is the only one that *tests* generality rather than asserting it. Split by forking after Phase 3 — the history is where the reasoning lives. |
-| **MNIST port** | Stretch, after Phase 3. Scoped in `docs/phase1-ledger.md` — three harness breakages, ~1–2 days, and a *higher* accuracy number that means less, not more. |
+| **Package the generator as a reusable tool** — *scoped, after Phase 3* | `docs/reference/reusable-generator.md`. No open RTL implementation of DWN targets small FPGAs, which is why this project exists — and the generator is most of one already: verified across 20–2400 nodes, 1–3 layers, n=2/4/6, z=8–800, three encodings, and both wiring representations. What is JSC-specific is the *plumbing*: hardcoded Q3.12, and a harness shaped around 33-byte records and 5 classes. **~1–2 weeks, almost none of it RTL.** The load-bearing item is the MNIST port, because it is the only one that *tests* generality rather than asserting it. Split by forking after Phase 3 — the history is where the reasoning lives. |
+| **MNIST port** | Stretch, after Phase 3. Scoped in `docs/jsc/phase1-ledger.md` — three harness breakages, ~1–2 days, and a *higher* accuracy number that means less, not more. |
 
 ---
 
 ## Pointers
 
-- `docs/dse-plan.md` — what gets swept, the knob groups, the strategy
-- `docs/phase2-handoff.md` — machine acceptance test + the `rtlgen/` restructure
-- `docs/phase1-report.md` — what already works, and how to reproduce it
-- `docs/phase1-ledger.md` — Phase 1's raw log and its open questions
-- `docs/project-brief.md` §10 — the DSE study as originally specified
+- `docs/jsc/dse-plan.md` — what gets swept, the knob groups, the strategy
+- `docs/jsc/phase2-handoff.md` — machine acceptance test + the `rtlgen/` restructure
+- `docs/jsc/phase1-report.md` — what already works, and how to reproduce it
+- `docs/jsc/phase1-ledger.md` — Phase 1's raw log and its open questions
+- `docs/reference/project-brief.md` §10 — the DSE study as originally specified

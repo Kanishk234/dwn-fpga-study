@@ -61,7 +61,7 @@ The reference config is **`1x50`**: 50 lookup-table neurons, the paper's smalles
 **52 configurations**, every one verified bit-exact against the software model and
 placed-and-routed on the real part.
 
-![accuracy vs area](./docs/results/frontier.png)
+![accuracy vs area](./docs/jsc/results/frontier.png)
 
 | | |
 |---|---|
@@ -85,7 +85,7 @@ and nothing between them:
 4. **What runs out first is the clock, not the chip.** Every model too big for the board still
    had a third of its area free — it just could not be clocked fast enough.
 
-**Read this next:** [`docs/phase2-report.md`](./docs/phase2-report.md) — the full sweep, all 46
+**Read this next:** [`docs/jsc/phase2-report.md`](./docs/jsc/phase2-report.md) — the full sweep, all 46
 configurations, and the six things that broke along the way.
 
 ### Phase 3 — how it compares
@@ -94,7 +94,7 @@ Two halves: two competing toolchains — a **gradient-boosted decision tree** th
 **quantized neural network** through hls4ml — both synthesized on the *same part, same flow, same
 clock* as every DWN config; and the published LUT-DNN literature, 32 rows across 11 methods.
 
-![accuracy vs area on our dataset](./docs/results-cc/jsc-openml.png)
+![accuracy vs area on our dataset](./docs/jsc/results-cc/jsc-openml.png)
 
 **Against a GBDT on identical silicon** — 14 conifer configurations, 10 of which fit:
 
@@ -149,7 +149,7 @@ theirs.*
 specialised LUT-DNN compilers. What is different about ours is that it includes the encoder, and
 runs on a **$150 board** rather than a data-centre FPGA.
 
-**Read this next:** [`docs/phase3-report.md`](./docs/phase3-report.md) — the comparison, both
+**Read this next:** [`docs/jsc/phase3-report.md`](./docs/jsc/phase3-report.md) — the comparison, both
 literature defects, and what we chose not to measure.
 
 ### Second dataset — does the generator generalise, or did it learn one problem?
@@ -158,7 +158,7 @@ The same exporter and RTL generator, on a deliberately unfavourable target: **78
 instead of 16**, ten classes instead of five, and a natively 8-bit input where JSC's is continuous.
 25 configurations, all place-and-routed.
 
-![MNIST accuracy vs area, ours and published](./docs/results-cc-mnist/mnist.png)
+![MNIST accuracy vs area, ours and published](./docs/mnist/results-cc/mnist.png)
 
 | | |
 |---|---|
@@ -251,7 +251,7 @@ small model sizes.
 ```
 
 ⚠️ **The full sweep is tens of hours of Vivado.** Every result is already committed under
-[`docs/results/`](./docs/results/), so you do not need to re-run it to read or check the numbers.
+[`docs/jsc/results/`](./docs/jsc/results/), so you do not need to re-run it to read or check the numbers.
 
 ### The comparisons
 
@@ -271,14 +271,14 @@ to see. The two per-dataset studies below have the depth.
 | | |
 |---|---|
 | [**`REPORT.md`**](./REPORT.md) | **the combined report** — both datasets, and what neither shows alone |
-| [`docs/jsc-report.md`](./docs/jsc-report.md) | the JSC study, standalone, with appendices and glossary |
+| [`docs/jsc/report.md`](./docs/jsc/report.md) | the JSC study, standalone, with appendices and glossary |
 | [`docs/mnist/report.md`](./docs/mnist/report.md) | the MNIST study, in the same form |
-| [`docs/phase1-report.md`](./docs/phase1-report.md) · [`phase2-`](./docs/phase2-report.md) · [`phase3-`](./docs/phase3-report.md) | JSC, per phase: what was built, the sweep, the comparison |
+| [`docs/jsc/phase1-report.md`](./docs/jsc/phase1-report.md) · [`phase2-`](./docs/jsc/phase2-report.md) · [`phase3-`](./docs/jsc/phase3-report.md) | JSC, per phase: what was built, the sweep, the comparison |
 | [`docs/mnist/`](./docs/mnist/) | MNIST, per phase — plus the learnable-reduction and noise-floor studies |
-| [`docs/results/`](./docs/results/) · [`results-cc/`](./docs/results-cc/) | JSC measurements and comparison figures |
-| [`docs/results-mnist/`](./docs/results-mnist/) · [`results-cc-mnist/`](./docs/results-cc-mnist/) | MNIST measurements and comparison figures |
+| [`docs/jsc/results/`](./docs/jsc/results/) · [`results-cc/`](./docs/jsc/results-cc/) | JSC measurements and comparison figures |
+| [`docs/mnist/results/`](./docs/mnist/results/) · [`results-cc-mnist/`](./docs/mnist/results-cc/) | MNIST measurements and comparison figures |
 | [`cc/literature/`](./cc/literature/) | published results as machine-readable tables, with per-row provenance |
-| [`docs/project-brief.md`](./docs/project-brief.md) | the full technical plan |
+| [`docs/reference/project-brief.md`](./docs/reference/project-brief.md) | the full technical plan |
 | ledgers — [`docs/`](./docs/) and [`docs/mnist/`](./docs/mnist/) | dated working logs, including what was tried and retracted |
 
 ## Repository
@@ -308,7 +308,7 @@ and the idea that one weightless neuron maps to one FPGA lookup table are all fr
 
 Training uses the authors' own implementation, [`alanbacellar/DWN`](https://github.com/alanbacellar/DWN),
 vendored as a submodule pinned at `9f887a0`. Our exporter reads whatever checkpoint format that
-commit produces — see [`docs/checkpoint-format.md`](./docs/checkpoint-format.md).
+commit produces — see [`docs/reference/checkpoint-format.md`](./docs/reference/checkpoint-format.md).
 
 **What is ours:** the RTL and its generator, the golden-model testbench and bit-exactness harness,
 the board design, the design-space exploration, and every measurement reported here. The upstream

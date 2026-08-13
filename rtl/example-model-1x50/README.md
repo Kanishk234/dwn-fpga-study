@@ -44,7 +44,7 @@ which is why a 43 MB checkpoint collapses into a few thousand integers.
 
 ⚠️ **Address bit order is load-bearing.** Slot 0 must land on `addr[0]`, so the concatenation is
 emitted MSB-first. Reversed, the design still elaborates, still synthesizes, and is wrong on most
-inputs — see `docs/checkpoint-format.md` §2.
+inputs — see `docs/reference/checkpoint-format.md` §2.
 
 **The encoder is one comparator per selected threshold**, with the threshold folded to a Q3.12
 integer at export time. The hardware does a signed compare and no arithmetic anywhere:

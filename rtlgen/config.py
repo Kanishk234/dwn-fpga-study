@@ -6,7 +6,7 @@ which breaks that in two ways:
 
   1. The checkpoint knows only about TRAINING. Pipeline depth, clock target, part and synthesis
      strategy are hardware choices made after training, and Group B sweeps exactly those on an
-     already-trained model (docs/dse-plan.md §3). They have to live somewhere, and the
+     already-trained model (docs/jsc/dse-plan.md §3). They have to live somewhere, and the
      checkpoint is the wrong place -- the same checkpoint feeds several hardware configs.
   2. Every emitted path was a constant. Sweep point #7 would overwrite #8.
 
@@ -64,7 +64,7 @@ class ModelConfig:
 
     def __post_init__(self):
         # GroupSum zero-pads silently when this does not hold, and hardware and software then
-        # disagree about group boundaries (docs/checkpoint-format.md §4). The emitter asserts
+        # disagree about group boundaries (docs/reference/checkpoint-format.md §4). The emitter asserts
         # it too; catching it here means a bad sweep point dies before Vivado is ever launched.
         if self.layers[-1] % self.num_classes:
             raise ValueError(

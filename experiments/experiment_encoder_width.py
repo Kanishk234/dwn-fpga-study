@@ -7,7 +7,7 @@ our features are standard-scaled to roughly [-4.6, +4.3].
 
 Two schemes, both scored by ACCURACY on the FULL 166k test set - not by bit differences against
 Q3.12 (which is itself an approximation, so "differs" does not mean "worse"), and not on the
-1000-sample subset, which is how the Phase 1 narrowing result went wrong (docs/phase2-report.md
+1000-sample subset, which is how the Phase 1 narrowing result went wrong (docs/jsc/phase2-report.md
 5.6). The test vectors' `x_raw` is already StandardScaler-applied - it is what the board is fed.
 
   in-place    keep the current scaling, just drop fractional bits. Cheap to adopt, bounded win.
@@ -101,7 +101,7 @@ def classify(bits_used, layers, num_classes):
 
     Delegates to extract.forward rather than re-deriving the address order: slot l is bit l of
     the address, LSB first, and getting that backwards yields a model that is wrong on most
-    inputs but structurally plausible (docs/checkpoint-format.md 2). `layers` must already carry
+    inputs but structurally plausible (docs/reference/checkpoint-format.md 2). `layers` must already carry
     wiring remapped onto the `used` subset -- see remap_layers.
     """
     # Chunked over samples: extract.lut_forward materializes an (N, nodes, n) int64 array, which

@@ -37,7 +37,7 @@ from extract import (load_checkpoint, layer_indices, extract_tables,  # noqa: E4
 
 # DEFAULT pipeline configuration -- the Phase 1 shipped depth. These are now argparse/function
 # defaults rather than the value itself: `emit()` takes the depth as arguments so a Phase 2
-# sweep point can vary it without editing this file (docs/dse-plan.md §1 -- a sweep point is a
+# sweep point can vary it without editing this file (docs/jsc/dse-plan.md §1 -- a sweep point is a
 # config, not a code edit). rtlgen/config.py asserts its own HardwareConfig defaults against
 # these three, so the two cannot drift apart.
 PIPE_LUT = 1
@@ -150,7 +150,7 @@ def emit(ck, out_path, pipe_lut=PIPE_LUT, pipe_pop=PIPE_POP, pipe_out=PIPE_OUT):
         for j in range(count):
             # Concatenation is MSB-first, and slot 0 must land on addr[0], so the slots are
             # listed in REVERSE order here. This is the single most reversible-looking
-            # decision in the whole design (docs/checkpoint-format.md §2).
+            # decision in the whole design (docs/reference/checkpoint-format.md §2).
             slots = ', '.join(f'{prev}[{b}]' for b in reversed(wiring[j].tolist()))
             L.append(f'    lut_node #(.N({n}), .TABLE(64\'h{table_to_hex(tables[j]):016X}))')
             L.append(f'        u_l{li}_n{j} (.addr({{{slots}}}), .out(layer{li}[{j}]));')
@@ -250,7 +250,7 @@ def main():
     ap.add_argument('--outdir', default=os.path.join(REPO, 'build', 'rtl'),
                     help='where to write dwn_core.v and dwn_core_params.vh '
                          '(default: the Phase 1 location)')
-    # Pipeline depth is a Group B sweep axis (docs/dse-plan.md §3): it changes timing and FF
+    # Pipeline depth is a Group B sweep axis (docs/jsc/dse-plan.md §3): it changes timing and FF
     # count at zero GPU cost, since accuracy is invariant. 0 compiles a stage out entirely.
     ap.add_argument('--pipe-lut', type=int, default=PIPE_LUT,
                     help='register after each LUT layer (default %(default)s)')

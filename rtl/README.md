@@ -17,7 +17,7 @@ Two kinds of thing live here, and the distinction matters:
 | `pipe_reg.v` | one pipeline stage; `ENABLE=0` compiles it out entirely, which is how Group B sweeps depth |
 
 `probe/` is a throwaway Phase 1a diagnostic — does `TABLE[addr]` really map to a single LUT6?
-See `docs/probe-results.md`. The whole area model rests on that answer.
+See `docs/reference/probe-results.md`. The whole area model rests on that answer.
 
 ## `example-model-1x50/` — a real model, in Verilog, committed to be read
 

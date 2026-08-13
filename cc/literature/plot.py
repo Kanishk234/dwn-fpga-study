@@ -1,6 +1,6 @@
 """Phase 3 comparison plots: accuracy vs LUTs, ONE FIGURE PER JSC DATASET.
 
-Never one figure. JSC is two datasets ~1.05 pp apart (docs/phase3-ledger.md, 2026-08-10), so a
+Never one figure. JSC is two datasets ~1.05 pp apart (docs/jsc/phase3-ledger.md, 2026-08-10), so a
 combined plot would show a gap that is partly the data and partly the design. This script refuses
 to mix them, which is the whole point of it existing.
 
@@ -10,7 +10,7 @@ Marker fill encodes the accounting convention, because that is the other way the
     square   no separate encoder stage exists in that architecture
 
     .venv\\Scripts\\python.exe cc\\literature\\plot.py
-    .venv\\Scripts\\python.exe cc\\literature\\plot.py --snapshot   # -> docs/results-cc/
+    .venv\\Scripts\\python.exe cc\\literature\\plot.py --snapshot   # -> docs/jsc/results-cc/
 """
 import argparse
 import os
@@ -27,13 +27,13 @@ sys.path.insert(0, HERE)
 from table import (BENCHMARKS, load_conifer, load_hls4ml,        # noqa: E402
                    load_literature, load_ours, use_benchmark)
 
-# Per-benchmark output dirs. JSC keeps docs/results-cc/ -- docs/jsc-report.md and the jsc-complete tag
+# Per-benchmark output dirs. JSC keeps docs/jsc/results-cc/ -- docs/jsc/report.md and the jsc-complete tag
 # reference it. The two studies are NEVER plotted together: their accuracy scales differ by ~20
 # points and their encoder economics run opposite (docs/mnist/phase2-ledger.md).
 OUTDIRS = {'jsc':   (os.path.join(REPO, 'build', 'cc', 'literature'),
-                     os.path.join(REPO, 'docs', 'results-cc')),
+                     os.path.join(REPO, 'docs', 'jsc', 'results-cc')),
            'mnist': (os.path.join(REPO, 'build', 'cc', 'literature-mnist'),
-                     os.path.join(REPO, 'docs', 'results-cc-mnist'))}
+                     os.path.join(REPO, 'docs', 'mnist', 'results-cc'))}
 OUT = OUTDIRS['jsc'][0]
 SNAP = OUTDIRS['jsc'][1]
 
@@ -161,7 +161,7 @@ def main(argv=None):
     ap.add_argument('--benchmark', choices=sorted(BENCHMARKS), default='jsc',
                     help='which study to plot (default %(default)s)')
     ap.add_argument('--snapshot', action='store_true',
-                    help="also write into the benchmark's docs/results-cc dir for committing")
+                    help="also write into the benchmark's docs/jsc/results-cc dir for committing")
     args = ap.parse_args(argv)
 
     global OUT, SNAP

@@ -152,7 +152,7 @@ engineering conclusion, reached on area alone, with no accuracy claim in it.
 
 ⚠️ **Four samples is a floor, not a distribution** — three degrees of freedom. A strict improvement
 on JSC's two, and still crude. Quote the observed spread, not a standard deviation. And if the
-spread comes out above ~0.5 pp that is itself a finding, because `docs/jsc-report.md` separates JSC
+spread comes out above ~0.5 pp that is itself a finding, because `docs/jsc/report.md` separates JSC
 configurations by less.
 
 ### 2026-08-11 — ✅ THE ANSWER: the taper works, and it still does not pay
@@ -433,5 +433,5 @@ taper is judged against:
 - `third_party/DWN/src/torch_dwn/utils.py` — `GroupSum`, where `/ tau` lives
 - `third_party/DWN/src/torch_dwn/mapping.py` — `learnable` vs `random`, and the other `tau`
 - `dse/grid.py: tau_for` — JSC's four anchors and the 0.57 exponent
-- `docs/datapath.md` — what the reduction stage does, and why it is the critical path
+- `docs/reference/datapath.md` — what the reduction stage does, and why it is the critical path
 - `docs/mnist/phase1-ledger.md` — the bring-up log, including the `1x300` accuracy this may move

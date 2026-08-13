@@ -10,7 +10,7 @@ This is the front half of the exporter (repo layout: `exporter/`). It does two j
 
 Job 2 is not optional. Every structural fact this file relies on -- LSB-first address order,
 `argmax(dim=0)` for learnable wiring, `> 0` table thresholding, contiguous GroupSum groups --
-was read out of `third_party/DWN` and written up in `docs/checkpoint-format.md`, but read
+was read out of `third_party/DWN` and written up in `docs/reference/checkpoint-format.md`, but read
 correctly is not the same as implemented correctly. If the numpy model disagrees with PyTorch
 here, the Verilog written from these tables would be wrong in exactly the same way, and Gate 1
 would find it much later and much more expensively.
@@ -43,7 +43,7 @@ def layer_indices(state_dict):
 def extract_tables(state_dict, i):
     """(output_size, 2**n) float -> bool truth tables.
 
-    docs/checkpoint-format.md §1: the hardware bit is `luts[j][addr] > 0`. Strictly greater --
+    docs/reference/checkpoint-format.md §1: the hardware bit is `luts[j][addr] > 0`. Strictly greater --
     an exact 0.0 emits 0. Unlikely in a trained model, but Gate 1 covers edge cases.
     """
     luts = state_dict[f'{i}.luts'].numpy()
@@ -53,7 +53,7 @@ def extract_tables(state_dict, i):
 def extract_wiring(state_dict, i, n):
     """(output_size, n) int -> which input bit feeds each node slot.
 
-    Two completely different representations, per docs/checkpoint-format.md §3.
+    Two completely different representations, per docs/reference/checkpoint-format.md §3.
     """
     learnable_key = f'{i}.mapping.weights'
     if learnable_key in state_dict:
@@ -74,7 +74,7 @@ def extract_wiring(state_dict, i, n):
 
 def lut_forward(x_bits, tables, wiring):
     """One LUT layer. x_bits: (N, input_size) bool. Returns (N, output_size) bool."""
-    # docs/checkpoint-format.md §2: slot l contributes bit l of the address -- LSB FIRST.
+    # docs/reference/checkpoint-format.md §2: slot l contributes bit l of the address -- LSB FIRST.
     # Reversing this gives a model that is wrong on most inputs but structurally plausible.
     gathered = x_bits[:, wiring]                       # (N, output_size, n)
     n = wiring.shape[1]
@@ -84,7 +84,7 @@ def lut_forward(x_bits, tables, wiring):
 
 
 def group_sum_argmax(x_bits, num_classes):
-    """GroupSum + argmax. docs/checkpoint-format.md §4.
+    """GroupSum + argmax. docs/reference/checkpoint-format.md §4.
 
     Groups are contiguous and in order. `tau` is a uniform divisor across classes, so it
     cannot change the argmax and the hardware never needs it -- popcount and compare only.
@@ -166,7 +166,7 @@ def required_int_bits(thresholds):
 
     ⚠️ Its counterpart is NOT derivable. How many FRACTIONAL bits are needed depends on whether
     quantisation changes predictions, which depends on the data, not the checkpoint. Deriving a
-    fractional width from thresholds alone reproduces the mistake in docs/jsc-report.md 5.6, where a
+    fractional width from thresholds alone reproduces the mistake in docs/jsc/report.md 5.6, where a
     narrowing was fitted and validated on the same 1,000 samples and 8 of 15 features came out
     too narrow. Report a floor as a floor; call a width "safe" only after measuring on held-out
     data (experiments/experiment_encoder_width.py does that).
@@ -239,7 +239,7 @@ def main():
 
     # How much of the thermometer survives into hardware. Only bits the first layer's wiring
     # actually references need a comparator; the rest feed no node. This is the claim in
-    # docs/paper-configs.md that makes z=200 plausible on a small part.
+    # docs/reference/paper-configs.md that makes z=200 plausible on a small part.
     used = np.unique(layers[0][1])
     total_bits = thresholds.size
     print(f'encoder      : {used.size} of {total_bits} thermometer bits are wired to a node '
@@ -285,7 +285,7 @@ def main():
         print(f'  FAIL. first mismatches at {bad.tolist()}')
         print(f'    expected {expected[bad].tolist()}, got {pred[bad].tolist()}')
         print('  Do not write RTL against this extraction. Re-check '
-              'docs/checkpoint-format.md §2 (address bit order) and §3 (wiring).')
+              'docs/reference/checkpoint-format.md §2 (address bit order) and §3 (wiring).')
         return 1
 
     print('  PASS -- the extraction reproduces PyTorch exactly.')

@@ -1,6 +1,6 @@
 """The sweep grid: which configs Phase 2 actually runs, and why not the others.
 
-A full factorial over the axes in `docs/dse-plan.md` §3 is ~1,024 configs, which at 10-20 min of
+A full factorial over the axes in `docs/jsc/dse-plan.md` §3 is ~1,024 configs, which at 10-20 min of
 serial Vivado is 200-340 hours. This file is the **slice** that maps the frontier's shape at a
 cost that can actually be paid -- dse-plan §6, adjusted for the fact that this project runs on
 ONE machine (CLAUDE.md), not the two the brief's estimate assumed.
@@ -65,7 +65,7 @@ MINUTES_PER_SYNTH = 12
 
 # ---------------------------------------------------------------------------------------------
 # tau tracks layer width -- it is NOT a constant to copy from `sm`.
-# The paper's JSC values, by total node count (docs/paper-configs.md).
+# The paper's JSC values, by total node count (docs/reference/paper-configs.md).
 # ---------------------------------------------------------------------------------------------
 # tau_for and its anchors moved to `datasets.Dataset.tau_for`. The interpolation is unchanged
 # and verified to reproduce this function exactly over widths 5..3000. What is new is that a

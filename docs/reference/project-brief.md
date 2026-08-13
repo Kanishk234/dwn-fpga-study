@@ -338,7 +338,7 @@ its ancestors — a gap a reader in this field would notice immediately.
 
 ⚠️ **None of these report JSC** — verified 2026-08-10 against the DWN paper (v5), which uses them
 only in its MNIST/KWS/FashionMNIST tables. They are related work to cite, not rows in the
-comparison table. See `docs/phase3-ledger.md`, 2026-08-10.
+comparison table. See `docs/jsc/phase3-ledger.md`, 2026-08-10.
 
 Representative published JSC numbers (xcvu9p, out-of-context, ~700 MHz), for scale — pull the full,
 current set for your own comparison table rather than treating this as final:
@@ -359,7 +359,7 @@ current set for your own comparison table rather than treating this as final:
 ⚠️ ***Corrected 2026-08-10 — this table mixes two conventions.** `DWN (lg)` at 4,972 is the
 original paper's **encoder-excluded** number (Mecik & Kumm's `DWN-TEN`); `DWN (sm-50)` at 311 and
 `DWN (sm-10)` at 64 are the **encoder-included** ones (`DWN-PEN+FT`). Quoting them in one column is
-wrong — `lg` with its encoder is 7,011. Use the corrected table in `docs/phase3-ledger.md`, not
+wrong — `lg` with its encoder is 7,011. Use the corrected table in `docs/jsc/phase3-ledger.md`, not
 this one. Note also that the three "if time allows" entries above are now standard rows in the
 literature and are no longer optional.*
 

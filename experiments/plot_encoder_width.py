@@ -18,7 +18,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt        # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(REPO, 'docs', 'results', 'encoder-width.png')
+OUT = os.path.join(REPO, 'docs', 'jsc', 'results', 'encoder-width.png')
 
 # input word (bits) -> encoder LUTs, measured
 AREA = {16: 5753, 13: 4916, 12: 4157, 11: 992, 10: 891, 9: 794, 8: 655}

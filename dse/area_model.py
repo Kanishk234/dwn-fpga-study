@@ -45,7 +45,7 @@ by physical optimisation afterwards).
 
 
 This is step 2b. It exists because step 2d filters configs on predicted area BEFORE spending
-serial Vivado time on them, and `docs/dse-plan.md` §5's original formula assumed the encoder
+serial Vivado time on them, and `docs/jsc/dse-plan.md` §5's original formula assumed the encoder
 costs "up to 3.2x the core" (brief §12 risk #3, from Mecik & Kumm). Phase 1 measured **14.06x**.
 Filtering with the old number would pass configs that overshoot the part by a factor of four,
 and the sweep would find that out one 15-minute synthesis at a time.
@@ -89,7 +89,7 @@ DEVICE_LUTS = 20800          # XC7A35T
 JSC_FEATURES = datasets.JSC.features
 
 # ---------------------------------------------------------------------------------------------
-# Calibration constants. Every one of these traces to a number in docs/phase1-ledger.md.
+# Calibration constants. Every one of these traces to a number in docs/jsc/phase1-ledger.md.
 # ---------------------------------------------------------------------------------------------
 
 # 1519 LUTs / (202 comparators x 16 bits). A compare-against-constant costs about W/2 on a

@@ -462,7 +462,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     # THE REFERENCE IS THE FIXED-POINT MODEL, NOT THE FLOAT ONE.
     #
     # `pred` in the .npz came from PyTorch on float32 features. The hardware implements Q3.12,
-    # which is a deliberate part of the specification, not an error (docs/phase1-ledger.md).
+    # which is a deliberate part of the specification, not an error (docs/jsc/phase1-ledger.md).
     # Scoring hardware against the float model therefore measures the quantization decision,
     # not the hardware -- and reports a FAIL for a design that is exactly correct.
     #

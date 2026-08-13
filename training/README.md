@@ -2,7 +2,7 @@
 
 Training runs on Kaggle, not locally. Upstream `torch_dwn` has no CPU path: `lut_layer.py` raises
 `EFDFunction CPU not Implemented` in both forward and backward, and only a CUDA extension ships.
-See `docs/project-brief.md` §12 risk #7.
+See `docs/reference/project-brief.md` §12 risk #7.
 
 Everything else in the project — export, RTL generation, simulation, Vivado — runs locally on CPU.
 Only training leaves the machine.
@@ -78,7 +78,7 @@ has to reproduce that `pred` array exactly.
 ## Changing the configuration
 
 Edit the `CONFIG` dict in one cell. Nothing else should need touching — that's deliberate, and it's
-the same rule Phase 2 depends on (`docs/dse-plan.md` §1: a sweep point is a config, not a code
+the same rule Phase 2 depends on (`docs/jsc/dse-plan.md` §1: a sweep point is a config, not a code
 edit). If you find yourself editing code to change a configuration, that's a bug in the notebook.
 
 Current config is `t=8`, distributive, layers `[300, 100]`, mapping `['learnable', 'random']`, n=6
@@ -138,14 +138,14 @@ underfitting / stuck optimizer" reading was wrong: a flat loss is simply what DW
 on JSC. The starved runs were input-limited, and the loss curve never indicated otherwise.
 
 Everything in the first three runs was the training recipe, which was never the problem. See
-`docs/paper-configs.md`.
+`docs/reference/paper-configs.md`.
 
 `RUN_NAME` gained a `_b<batch>` suffix from this run on — without it this run and the t=8 run
 collide on the same name. The two earlier files keep their original names.
 
 **~~What the t4 → t8 comparison settled~~ — RETRACTED.** This previously read: "the encoder-resolution
 axis is flatter than the §6 discussion assumes." That conclusion was wrong. The paper uses **z=200**
-for every JSC config (`docs/paper-configs.md`); testing 4 vs 8 sampled the flat part of a curve whose
+for every JSC config (`docs/reference/paper-configs.md`); testing 4 vs 8 sampled the flat part of a curve whose
 operating point is 25× further out. All three runs below were starved at the input, which is also why
 extra layer capacity bought nothing.
 
@@ -161,7 +161,7 @@ keep up to date now versus reconstructing it from checkpoints later.
 
 ## Reading the result
 
-Reference JSC accuracies, from `docs/project-brief.md` §8 (xcvu9p, out-of-context):
+Reference JSC accuracies, from `docs/reference/project-brief.md` §8 (xcvu9p, out-of-context):
 
 | Model | Accuracy | LUTs |
 |---|---|---|

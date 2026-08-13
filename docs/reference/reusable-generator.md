@@ -87,7 +87,7 @@ The Phase 1 ledger's MNIST scoping note lists the three things that break, and t
 width constants — `uart_loader`'s `reg [5:0] byte_idx` would silently wrap on a 1569-byte
 record rather than fail.
 
-**c. The checkpoint format — coupled to one upstream commit.** `docs/checkpoint-format.md`
+**c. The checkpoint format — coupled to one upstream commit.** `docs/reference/checkpoint-format.md`
 records what the exporter reads, verified against pinned commit `9f887a0`. A different upstream
 version could move `mapping.weights` or change the LUT sign convention, and the failure would be
 a valid-looking wrong export (the `__dummy_mapping` trap in `extract.py` is exactly this).
@@ -139,9 +139,9 @@ otherwise rediscover the hard way.
 
 ```
 keep      exporter/  rtlgen/  rtl/  tb/  scripts/run_gate1.py  scripts/build.tcl
-keep      docs/checkpoint-format.md   (what the exporter reads, and why)
+keep      docs/reference/checkpoint-format.md   (what the exporter reads, and why)
 optional  harness/   -- only if the board flow is in scope
-drop      docs/phase*-ledger.md, docs/project-brief.md, dse/, cc/, releases/
+drop      docs/phase*-ledger.md, docs/reference/project-brief.md, dse/, cc/, releases/
 ```
 
 Dropped files stay in history, so nothing is lost — but the tool's README should not open with a

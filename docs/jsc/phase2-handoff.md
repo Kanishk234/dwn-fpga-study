@@ -5,8 +5,8 @@ Phase 1 is complete and frozen. This document covers two things, in order:
 1. **Prove Phase 1 reproduces here first.** Do not start Phase 2 work until it does.
 2. **The restructure Phase 2 should do**, decided in advance so it isn't rediscovered mid-sweep.
 
-Background reading, in this order: `docs/phase1-report.md` (what was built and what broke),
-`docs/dse-plan.md` (what Phase 2 sweeps), `docs/project-brief.md` §10 (the DSE study).
+Background reading, in this order: `docs/jsc/phase1-report.md` (what was built and what broke),
+`docs/jsc/dse-plan.md` (what Phase 2 sweeps), `docs/reference/project-brief.md` §10 (the DSE study).
 
 ---
 
@@ -24,7 +24,7 @@ sweep.
 
 ### Setup
 
-Full cold-start instructions are `docs/phase1-report.md` §5 — toolchain, Python, Vivado, the
+Full cold-start instructions are `docs/jsc/phase1-report.md` §5 — toolchain, Python, Vivado, the
 Kaggle test-set dump. In short:
 
 ```bat
@@ -111,7 +111,7 @@ in a minute rather than an afternoon.
 
 > ✅ **DONE 2026-08-07**, as step 5 of 2a. The layout below is what the repo now has, and
 > `rtl/gen/` no longer exists. Kept as written because the *reasoning* still governs where new
-> code goes; see `docs/phase2-ledger.md` for what actually happened, including the two things
+> code goes; see `docs/jsc/phase2-ledger.md` for what actually happened, including the two things
 > the plan below did not anticipate.
 
 ### `rtlgen/` vs `rtl/gen/` — the naming is currently wrong
@@ -124,7 +124,7 @@ in a minute rather than an afternoon.
 Brief §11 draws a real distinction worth keeping: **exporter** = checkpoint → tables, wiring,
 thresholds (`extract.py`); **rtlgen** = that export → Verilog (`emit_core.py`,
 `emit_encoder.py`). Phase 2 will want them separable — estimating area from a checkpoint without
-emitting RTL is exactly the filtering step `docs/dse-plan.md` calls for.
+emitting RTL is exactly the filtering step `docs/jsc/dse-plan.md` calls for.
 
 **Decision, to be done while generalizing the emitters rather than as separate churn:**
 
@@ -179,6 +179,6 @@ FTDI D2XX for >5 Mbaud.
 
 ### Before the first sweep run
 
-`docs/phase1-ledger.md` records one decision that must be made **before** the sweep starts
+`docs/jsc/phase1-ledger.md` records one decision that must be made **before** the sweep starts
 committing per-config artifacts, not after: what gets committed per config. The restructure
 above answers it — code in `rtlgen/`, output in `build/`, nothing per-config in git.

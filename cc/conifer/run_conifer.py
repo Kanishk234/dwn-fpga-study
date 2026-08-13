@@ -10,7 +10,7 @@ WHY THIS DOES NOT CALL `conifer.model.build()`. Two reasons, and the second is t
   1. It cannot work here. conifer detects the HLS tool with `os.system('type X > /dev/null')`
      -- a POSIX builtin -- and then invokes a command named `vitis_hls`, which Vivado/Vitis
      2025.2 does not ship. HLS moved to `vitis-run --mode hls --tcl`.
-  2. `docs/phase3-handoff.md` §2.1 requires every competitor design to go through OUR synthesis
+  2. `docs/jsc/phase3-handoff.md` §2.1 requires every competitor design to go through OUR synthesis
      path, not the vendor's default project flow. conifer's `build()` IS the vendor default
      flow. Driving HLS ourselves is the method, not a workaround.
 
@@ -87,8 +87,8 @@ SNAPSHOT_DIR = os.path.join(REPO, 'docs', DS.cc_results_dir)
 def use_dataset(name):
     """Point every derived path and the sweep grid at `name`. Call before anything reads them.
 
-    JSC's paths are unchanged by construction -- `build/cc/conifer` and `docs/results-cc` are
-    what the 14 measured rows already live in, and `docs/phase3-handoff.md` names the second.
+    JSC's paths are unchanged by construction -- `build/cc/conifer` and `docs/jsc/results-cc` are
+    what the 14 measured rows already live in, and `docs/jsc/phase3-handoff.md` names the second.
     Other datasets get a suffixed sibling rather than a subdirectory, so nothing existing moves.
     """
     global DS, CACHE, OUT_ROOT, RESULTS, SNAPSHOT_DIR, SWEEP
@@ -239,7 +239,7 @@ def eval_ensemble(ens, X):
 
 
 # The project's measured run-to-run training noise. Any accuracy difference below this is not a
-# difference (docs/phase3-handoff.md §2.4), so it is the right bar for "did the conversion
+# difference (docs/jsc/phase3-handoff.md §2.4), so it is the right bar for "did the conversion
 # preserve the model" -- what goes in the comparison table is accuracy, not prediction identity.
 NOISE_FLOOR_PP = 0.15
 
@@ -459,7 +459,7 @@ def save(rows):
 
 # SNAPSHOT_DIR is defined with the other paths near the top and rebound by use_dataset(); it is
 # NOT redefined here. It was, and a second assignment below the first silently reverted every
-# --dataset run to JSC's docs/results-cc/.
+# --dataset run to JSC's docs/jsc/results-cc/.
 SNAPSHOT_COLS = ['name', 'depth', 'trees', 'status', 'accuracy_pct', 'accuracy_xgboost_pct',
                  'convert_mismatches', 'luts', 'ff', 'bram', 'dsp', 'device_pct',
                  'latency_cycles', 'ii', 'wns', 'fmax_mhz', 'latency_ns',
@@ -473,7 +473,7 @@ def snapshot():
     everything there is regenerable. These are not regenerable in any useful sense -- 14 configs
     of HLS plus place-and-route is most of a day of wall clock -- and they are the evidence that
     a competitor design was actually built and measured on our part, not cited from a paper.
-    `docs/phase3-handoff.md` §2.6 names this destination.
+    `docs/jsc/phase3-handoff.md` §2.6 names this destination.
     """
     import csv as _csv
     rows = json.load(open(RESULTS))
@@ -508,7 +508,7 @@ def main():
     ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
                     help='which dataset to compare on (default %(default)s)')
     ap.add_argument('--snapshot', action='store_true',
-                    help="copy results into the dataset's docs/results-cc*/ for committing")
+                    help="copy results into the dataset's docs/jsc/results-cc*/ for committing")
     ap.add_argument('--depth', type=int, default=4)
     ap.add_argument('--trees', type=int, default=20)
     ap.add_argument('--sweep', action='store_true', help='the full depth x n_estimators curve')

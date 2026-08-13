@@ -14,7 +14,7 @@ measurement rather than by extrapolation.
 *(Six further configurations combining the width and `z` knees are queued for training; they are
 noted in §7 and will extend §3.1 when measured.)*
 
-`docs/phase2-ledger.md` is the raw dated log this was written from. `docs/results/` holds the
+`docs/jsc/phase2-ledger.md` is the raw dated log this was written from. `docs/jsc/results/` holds the
 committed evidence: both figures, every measurement, and the grid as trained.
 
 ---
@@ -57,7 +57,7 @@ Four findings, in order of how much they change what is known:
 
 ## 2. What the sweep covered
 
-37 configurations from `dse/grid.py`, following `docs/dse-plan.md` §6's structure:
+37 configurations from `dse/grid.py`, following `docs/jsc/dse-plan.md` §6's structure:
 
 | group | axis | values | configs |
 |---|---|---|---|
@@ -461,13 +461,13 @@ set. Not adopting it was right — for a better reason than the one recorded.
 
 :: 5. results
 .venv\Scripts\python.exe dse\report.py
-.venv\Scripts\python.exe dse\report.py --snapshot     :: -> docs/results/, commit this
+.venv\Scripts\python.exe dse\report.py --snapshot     :: -> docs/jsc/results/, commit this
 .venv\Scripts\python.exe dse\plot.py --snapshot
 ```
 
 **Checkpoints do not travel with the repo** — ~933 MB across the grid, and one file exceeds
-GitHub's 100 MB limit. `docs/results/` carries the measurements (232 KB) instead; §5 of
-`docs/phase1-report.md` covers toolchain setup.
+GitHub's 100 MB limit. `docs/jsc/results/` carries the measurements (232 KB) instead; §5 of
+`docs/jsc/phase1-report.md` covers toolchain setup.
 
 `dse/run.py` verifies each checkpoint's `n`, `z`, encoding, layers **and tau** against the grid
 before building. That guard exists because the tau fix invalidated a set of checkpoints whose
@@ -502,15 +502,15 @@ belonging to a different model.
   on measuring 58 LUTs at `sm` — 3.6% of that design. But the reduction grows with layer width:
   at `1x2400 z=50` it is **4,450 LUTs, 34.9% of the design**, second only to the encoder. A LUT
   pyramid feeding a much narrower popcount projects to ~710 LUTs. The axis is reopened; see
-  `docs/phase2-ledger.md`, 2026-08-10.
+  `docs/jsc/phase2-ledger.md`, 2026-08-10.
 - **Configurable precision not implemented**, which is why the linear configs are unbuilt (§5.3).
 
 ---
 
 ## 8. Pointers
 
-- `docs/phase2-ledger.md` — the dated log this was written from, including what was tried and rejected
-- `docs/results/` — committed evidence: `frontier.png`, `area_split.png`, all measurements, the grid as trained
-- `docs/dse-plan.md` — the plan, with superseded sections marked
-- `docs/phase1-report.md` — what Phase 2 was built on, and toolchain setup
-- `docs/reusable-generator.md` — scoping for packaging the generator as a tool
+- `docs/jsc/phase2-ledger.md` — the dated log this was written from, including what was tried and rejected
+- `docs/jsc/results/` — committed evidence: `frontier.png`, `area_split.png`, all measurements, the grid as trained
+- `docs/jsc/dse-plan.md` — the plan, with superseded sections marked
+- `docs/jsc/phase1-report.md` — what Phase 2 was built on, and toolchain setup
+- `docs/reference/reusable-generator.md` — scoping for packaging the generator as a tool

@@ -5,7 +5,7 @@ produced the JSC design, running on the same Digilent Basys 3, and verified bit-
 software model on all 10,000 test samples.
 
 This is the written-up account. `docs/mnist/phase1-ledger.md` is the running log it was written
-from — dated, with the retractions. The JSC study it generalises is `docs/phase1-report.md`.
+from — dated, with the retractions. The JSC study it generalises is `docs/jsc/phase1-report.md`.
 
 **The deliverable of this phase is the generalised flow, not the accuracy number.** A port that
 did not fit the board would still have been a success if the generator came out general. It fits,
@@ -43,7 +43,7 @@ JSC's features are continuous, and quantising them genuinely discards informatio
 | NeuraLUT | 96% | 54,798 |
 
 ⚠️ **Read this comparison with care.** The area convention is ours (encoder included, which is the
-stricter choice — see `docs/jsc-report.md` §5.2), but the published rows were measured on different parts
+stricter choice — see `docs/jsc/report.md` §5.2), but the published rows were measured on different parts
 at different clock targets, and this is a bring-up configuration rather than a tuned one. It is
 evidence that the approach is in the right range, not a claim to have beaten either.
 
@@ -184,7 +184,7 @@ silently and the two report stages would now be mixed through every table built 
 
 ## 5. Reproducing this
 
-Assumes the JSC Phase 1 toolchain setup (`docs/phase1-report.md` §5.1) — same Vivado, same venv,
+Assumes the JSC Phase 1 toolchain setup (`docs/jsc/phase1-report.md` §5.1) — same Vivado, same venv,
 plus `scikit-learn` and `pandas` for the test-set dump.
 
 ### 5.1 Gate 1 — prove the RTL in simulation (no board needed)

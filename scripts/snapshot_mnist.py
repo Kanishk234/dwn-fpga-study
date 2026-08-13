@@ -1,4 +1,4 @@
-"""Snapshot the MNIST measurements into docs/results-mnist/, for committing.
+"""Snapshot the MNIST measurements into docs/mnist/results/, for committing.
 
 Same role as `dse/report.py --snapshot` for JSC: `build/` is gitignored and regenerable in
 principle, but a place-and-route run costs real time and a Kaggle session, so the *numbers* are
@@ -22,7 +22,7 @@ for sub in ('scripts', 'exporter'):
 from extract import load_checkpoint                                  # noqa: E402
 from run_synth import DEVICE_LUTS, parse_utilization, parse_wns      # noqa: E402
 
-OUT = os.path.join(REPO, 'docs', 'results-mnist')
+OUT = os.path.join(REPO, 'docs', 'mnist', 'results')
 MODULES = ('dwn_core', 'thermometer_encoder', 'dwn_top')
 
 

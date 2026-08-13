@@ -1,8 +1,8 @@
-"""Render the JSC literature comparison table (Phase 3, docs/phase3-plan.md sec 3).
+"""Render the JSC literature comparison table (Phase 3, docs/jsc/phase3-plan.md sec 3).
 
 Citation only - nothing here is resynthesized. The one rule this script enforces is that
 rows from different JSC datasets are never printed in the same table, because JSC is two
-datasets with a ~1 pp systematic offset. See docs/phase3-ledger.md, 2026-08-10.
+datasets with a ~1 pp systematic offset. See docs/jsc/phase3-ledger.md, 2026-08-10.
 
     .venv\\Scripts\\python.exe cc\\literature\\table.py
     .venv\\Scripts\\python.exe cc\\literature\\table.py --dataset cernbox
@@ -15,22 +15,22 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-# Per-benchmark inputs. JSC's paths are its historical ones and must not move -- docs/jsc-report.md,
-# README.md and the `jsc-complete` tag reference docs/results/ and docs/results-cc/.
+# Per-benchmark inputs. JSC's paths are its historical ones and must not move -- docs/jsc/report.md,
+# README.md and the `jsc-complete` tag reference docs/jsc/results/ and docs/jsc/results-cc/.
 BENCHMARKS = {
     'jsc': {
         'lit': 'jsc_literature.json',
-        'ours': os.path.join('docs', 'results', 'sweep-results.json'),
-        'conifer': os.path.join('docs', 'results-cc', 'conifer-results.json'),
-        'hls4ml': os.path.join('docs', 'results-cc', 'hls4ml-results.json'),
+        'ours': os.path.join('docs', 'jsc', 'results', 'sweep-results.json'),
+        'conifer': os.path.join('docs', 'jsc', 'results-cc', 'conifer-results.json'),
+        'hls4ml': os.path.join('docs', 'jsc', 'results-cc', 'hls4ml-results.json'),
         'default_dataset': 'openml',      # JSC is two datasets; this is the one we trained on
         'noise_floor_pp': 0.15,
     },
     'mnist': {
         'lit': 'mnist_literature.json',
-        'ours': os.path.join('docs', 'results-mnist', 'sweep-results.json'),
-        'conifer': os.path.join('docs', 'results-cc-mnist', 'conifer-results.json'),
-        'hls4ml': os.path.join('docs', 'results-cc-mnist', 'hls4ml-results.json'),
+        'ours': os.path.join('docs', 'mnist', 'results', 'sweep-results.json'),
+        'conifer': os.path.join('docs', 'mnist', 'results-cc', 'conifer-results.json'),
+        'hls4ml': os.path.join('docs', 'mnist', 'results-cc', 'hls4ml-results.json'),
         'default_dataset': 'mnist',       # one canonical split, so no variant to choose
         'noise_floor_pp': 0.24,
     },
@@ -217,7 +217,7 @@ def main(argv=None):
     ap.add_argument('--benchmark', choices=sorted(BENCHMARKS), default='jsc',
                     help='which study to tabulate (default %(default)s)')
     # NOTE this is the JSC-variant filter, not the benchmark. JSC is two datasets ~1.05 pp apart
-    # (docs/phase3-ledger.md); MNIST has one canonical split, so for --benchmark mnist the only
+    # (docs/jsc/phase3-ledger.md); MNIST has one canonical split, so for --benchmark mnist the only
     # value is 'mnist' and the filter is a no-op. Default None = the benchmark's own default.
     ap.add_argument('--dataset', default=None,
                     help="dataset variant within the benchmark, or 'all' (JSC only: "

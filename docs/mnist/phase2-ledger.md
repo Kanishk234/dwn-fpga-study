@@ -1,9 +1,9 @@
 # MNIST Phase 2 ledger — design-space exploration on the second dataset
 
 **🏁 CLOSED 2026-08-12.** 25 configurations built and place-and-routed, 0 failures, snapshot in
-`docs/results-mnist/`. The frontier is **bounded by what was trained (33.06% of device), not by
+`docs/mnist/results/`. The frontier is **bounded by what was trained (33.06% of device), not by
 the device** — a deliberate stopping point, see the closing log entry. Two Phase 1 predictions
-were retracted along the way. Figures in `docs/results-mnist/`. Open: the area model (do not
+were retracted along the way. Figures in `docs/mnist/results/`. Open: the area model (do not
 quote it). **M2h is closed 2026-08-12 — both datasets verified on silicon post-refactor.**
 
 Running log for the MNIST DSE. Phase 1 is complete and written up in
@@ -31,8 +31,8 @@ conclusions this way and every one was caught by measuring at a second point.
 | M2e | Gate 1 across the grid | ✅ **done 2026-08-12 — 25/25 pass**, every built config bit-exact |
 | M2f | Synthesis + place-and-route sweep | ✅ **done 2026-08-12 — 25 configs, 0 failures.** ⚠️ nothing failed to fit, so the frontier has no measured edge |
 | M2h | **Gate 1b on silicon, post-refactor** | ✅ **CLOSED 2026-08-12 — JSC 166,000/166,000, MNIST 10,000/10,000.** Two silent defects found and fixed on the way; see the log |
-| M2i | Write `docs/mnist/phase2-report.md` | ✅ **done 2026-08-12.** Every LUT figure in it checked against `docs/results-mnist/sweep-results.json` programmatically, not by eye |
-| M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Figures done (`dse/plot.py --dataset mnist --snapshot`) |
+| M2i | Write `docs/mnist/phase2-report.md` | ✅ **done 2026-08-12.** Every LUT figure in it checked against `docs/mnist/results/sweep-results.json` programmatically, not by eye |
+| M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/mnist/results/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Figures done (`dse/plot.py --dataset mnist --snapshot`) |
 
 ---
 
@@ -135,7 +135,7 @@ current, correct set is:
 | whole board design | **1,893** LUTs, 864 FF, 8 BRAM | was 2,058, then 2,060 |
 | Gate 1b | **166,000 / 166,000** | |
 
-`docs/jsc-report.md` and `README.md` quote the **`jsc-complete` tag's** figures (108 / 1,619 / 2,058) and
+`docs/jsc/report.md` and `README.md` quote the **`jsc-complete` tag's** figures (108 / 1,619 / 2,058) and
 say so. Both are right; they describe different commits. Do not mix them in one table.
 
 **If parity fails, stop.** Past that point an MNIST result cannot be attributed — a difference
@@ -146,7 +146,7 @@ could be the sweep, the toolchain, or the machine, and there is no way to tell w
 ✅ **As of 2026-08-12 all 14 sweepable checkpoints are local** in
 `training/artifacts/sweeps-mnist/`, and the sweep is complete. This section is kept for a machine
 starting from a fresh clone: checkpoints are large and deliberately not in git (one JSC file
-exceeds GitHub's 100 MB limit), so `docs/results-mnist/` describes them in ~10 KB instead and a new
+exceeds GitHub's 100 MB limit), so `docs/mnist/results/` describes them in ~10 KB instead and a new
 box has to re-download them.
 
 Download `_checkpoint.pt` + `_testvectors.npz` pairs into `training/artifacts/` from **three**
@@ -456,7 +456,7 @@ saturated ~1,315-LUT encoder, the wall is at roughly **6,800–7,600 nodes** —
 rung. Reaching it costs ~1 h of Kaggle GPU, **1.2 GB** of checkpoints to download, and ~1.5 h of
 place-and-route that scales worse than linearly near high occupancy.
 
-⚠️ Judge "does it fit" on **routed** area, not on the tool exiting cleanly — `docs/phase2-report.md`
+⚠️ Judge "does it fit" on **routed** area, not on the tool exiting cleanly — `docs/jsc/phase2-report.md`
 §5.2. JSC's `1x2000` fit at post-synthesis (96.76%) and was pushed past the device to 102.80% by
 physical optimisation replicating logic for timing.
 
@@ -492,7 +492,7 @@ nodes and falling. **So JSC reaches high occupancy at a fraction of MNIST's node
 exactly why JSC is the cheaper vehicle for probing the routing limit and MNIST is not.
 
 Accuracy scales differ by 20 points, so even a shared axis would be meaningless. Keep
-`docs/results/` and `docs/results-mnist/` separate, and plot them separately.
+`docs/jsc/results/` and `docs/mnist/results/` separate, and plot them separately.
 
 #### ⬜ Future work, explicitly deferred rather than forgotten
 
@@ -504,7 +504,7 @@ Accuracy scales differ by 20 points, so even a shared axis would be meaningless.
 
 #### ⚠️ RETRACTED: "`device_pct` is measured against the wrong denominator"
 
-**Wrong, and already answered by `docs/phase2-report.md` §5.2 before this was ever written.**
+**Wrong, and already answered by `docs/jsc/phase2-report.md` §5.2 before this was ever written.**
 
 The chain of reasoning was: JSC's `1x2000` reports 102.80% *and* completed place-and-route, a
 design cannot route into 102.8% of a part, therefore the denominator must be wrong. The Slice row
@@ -536,7 +536,7 @@ limit)", which is now wrong and is corrected below.
 
 ### 2026-08-12 — ✅ M2e/M2f: the MNIST sweep is complete. 25 configs, 0 failures.
 
-`dse/run.py --dataset mnist --all --impl`, snapshotted to `docs/results-mnist/`. Every config that
+`dse/run.py --dataset mnist --all --impl`, snapshotted to `docs/mnist/results/`. Every config that
 has a checkpoint is built and place-and-routed. Four grid entries remain untrained (`gaussian`,
 `linear`, `2x500`, `3x330`) — no notebook ever produced them.
 
@@ -602,7 +602,7 @@ contradict the reduction study's "depth does not pay" — that was an accuracy c
 It adds an axis the accuracy study could not see.
 
 ⚠️ **Not a new finding — JSC found it first and this entry originally claimed otherwise.**
-`docs/phase2-report.md` §4.4: *"`2x100` reached 155.5 MHz and `3x120` 152.3 — the fastest designs
+`docs/jsc/phase2-report.md` §4.4: *"`2x100` reached 155.5 MHz and `3x120` 152.3 — the fastest designs
 in the sweep, against 113.9 MHz for `1x200`. `PIPE_LUT` inserts a register per layer, so depth buys
 pipelining for free."* Same mechanism, same conclusion, different dataset.
 
@@ -654,7 +654,7 @@ until something fails is outstanding work.
   one launch, and counting `python.exe` by command-line substring was never a valid test; (2)
   `dse/run.py` counted `checkpoint-mismatch` as "already done", so downloading the corrected
   checkpoints changed nothing until transient statuses were made retryable; (3) the snapshot
-  printed `-> docs/results/` while writing to `docs/results-mnist/`, which reads exactly like the
+  printed `-> docs/jsc/results/` while writing to `docs/mnist/results/`, which reads exactly like the
   JSC snapshot being overwritten. All three are fixed. **`save_result()` still does an unguarded
   read-modify-write on shared JSON** — a real hazard if two sweeps ever do run at once.
 
@@ -681,7 +681,7 @@ Running the check across JSC's grid, two configs would widen: `1x200 linear` and
 thresholds spanning ±8.906 against Q3.12's 3 integer bits. Both are recorded as `gate1-failed`, and
 they are the only 2 failures in all 54 JSC configs.
 
-**This was written up as a discovery. It is not one.** `docs/phase2-ledger.md` already records the
+**This was written up as a discovery. It is not one.** `docs/jsc/phase2-ledger.md` already records the
 cause and the decision: Q4.11 would represent them at *identical* area (still 16-bit), but the
 encoding axis spread is **0.12 pp against a 0.15 pp noise floor**, so the precision plumbing was
 judged not worth it. Documented failure with a stated reason, not a silent gap.
@@ -709,11 +709,11 @@ descriptor fields rather than special cases in code:
 | | JSC (unchanged) | MNIST |
 |---|---|---|
 | results | `build/dse/results.json` | `build/dse/mnist/results.json` |
-| snapshot | `docs/results/` | `docs/results-mnist/` |
+| snapshot | `docs/jsc/results/` | `docs/mnist/results/` |
 | checkpoints | `training/artifacts/sweeps/` | `.../sweeps-mnist/` |
 
-JSC's are recorded as data with a comment saying they are historical: `docs/results/` is
-referenced by `docs/jsc-report.md`, `README.md` and the `jsc-complete` tag, and `build/dse/results.json`
+JSC's are recorded as data with a comment saying they are historical: `docs/jsc/results/` is
+referenced by `docs/jsc/report.md`, `README.md` and the `jsc-complete` tag, and `build/dse/results.json`
 holds 54 measured configs that a moved path would silently re-run from scratch. Verified
 unchanged — `--list` byte-identical, 54/54 results found, 40/40 checkpoints resolve.
 

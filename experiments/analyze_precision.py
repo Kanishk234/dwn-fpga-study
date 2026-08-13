@@ -138,7 +138,7 @@ def main():
     print('Input precision is a real area knob, not just a correctness threshold -- comparator')
     print('cost scales with width, and 202 of them is ~4x the node count. Formats above that')
     print('cost fewer LUTs for a handful of class changes are a Phase 2 sweep axis, not a')
-    print('mistake (docs/paper-configs.md: nobody has measured encoder cost where it binds).')
+    print('mistake (docs/reference/paper-configs.md: nobody has measured encoder cost where it binds).')
     return 0
 
 

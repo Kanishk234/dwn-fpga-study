@@ -64,7 +64,7 @@ The JSC baseline this generalisation must not disturb:
 | whole board design | ~~2,058~~ → **1,893 LUTs**, 864 FF (post-route) |
 | On silicon | 166,000 / 166,000 exact — **re-confirmed 2026-08-12** |
 
-The struck values are the `jsc-complete` tag's, which is what `docs/jsc-report.md` and `README.md` quote.
+The struck values are the `jsc-complete` tag's, which is what `docs/jsc/report.md` and `README.md` quote.
 The current ones include the argmax tree (+2 in the core, +2 in `dwn_top`) and the loader shift
 register (−167 on the board). Do not mix the two columns in one table without saying which is
 which.
@@ -381,7 +381,7 @@ A balanced tree makes the depth `ceil(log2(K))`: 4 instead of 9. It closed timin
 
 Two LUTs sounds ignorable. It is not, and the reason is worth recording:
 
-- **108 and 1,619 are published**, in `README.md`, `docs/jsc-report.md` and three phase reports.
+- **108 and 1,619 are published**, in `README.md`, `docs/jsc/report.md` and three phase reports.
 - `verify_phase1.py`'s own message says re-measured areas must not share a table with old ones.
 - **All 54 JSC configs have K=5**, so all of them move together — but *not by a constant*. Argmax
   cost depends on K **and** W, the score width, which is `ceil(log2(group+1))` and varies with
@@ -411,14 +411,14 @@ already exists; papers cite a commit for exactly this reason. Freezing code to p
 number inverts the relationship and taxes every future improvement.
 
 **Final: the tree is unconditional.** `EXPECTED` in `verify_phase1.py` moves to 110 / 1,621, with
-the pre-change values reproducible at `jsc-complete`, and `docs/jsc-report.md` and `README.md` now say the
+the pre-change values reproducible at `jsc-complete`, and `docs/jsc/report.md` and `README.md` now say the
 JSC figures are measured there. The shift is **0.12% at `1x50` and 0.02% at the headline config** —
-no frontier point, knee or conclusion moves. `docs/results/sweep-results.json` still holds
+no frontier point, knee or conclusion moves. `docs/jsc/results/sweep-results.json` still holds
 chain-era areas, so the two must not share a table without saying so.
 
 #### For the tool: tree unconditionally
 
-`docs/tool-roadmap.md` should carry this. The constraint above is specific to this repository —
+`docs/reference/tool-roadmap.md` should carry this. The constraint above is specific to this repository —
 the tool has no frozen baseline to protect, and a user may arrive with 100 classes, where a
 depth-99 chain is pathological. Two LUTs at K=5 costs nothing when nothing downstream is pinned to
 it.
@@ -697,7 +697,7 @@ risks retired, one assumption overturned.
 
 Upstream binarises MNIST with the **same `DistributiveThermometer`** class as JSC, and
 `feature_wise=True` is the default, so thresholds are per-feature quantiles exactly as
-`docs/checkpoint-format.md` describes. No new format work.
+`docs/reference/checkpoint-format.md` describes. No new format work.
 
 #### ✅ Both wiring representations are already exercised
 
@@ -743,7 +743,7 @@ our binarisation. Sweep `z` afterwards, when it is an accuracy knob rather than 
 
 Upstream's example is `2000, 1000`, not the paper's `1000, 500`, and uses `tau = 1/0.3`. Neither
 blocks anything, but the two sources disagree about what "the MNIST model" is, and the paper's
-Table 14 is the one `docs/paper-configs.md` records.
+Table 14 is the one `docs/reference/paper-configs.md` records.
 
 ### 2026-08-11 — M1b: precision is a parameter, and the golden model moves with it
 
@@ -772,7 +772,7 @@ the list in one place makes that unrepresentable rather than merely unlikely.
 
 #### What is derivable, and what is not
 
-Following the V4 argument in `docs/tool-roadmap.md` §4, which is the right one:
+Following the V4 argument in `docs/reference/tool-roadmap.md` §4, which is the right one:
 
 **Integer bits are derivable exactly.** `required_int_bits()` returns the floor below which a
 threshold cannot be represented at all, and the emitter refuses to build there:
@@ -784,7 +784,7 @@ integer bits; a 8-bit word with 7 fractional bits has 0.
 
 **Fractional bits are not.** Whether quantisation changes predictions depends on the data, not the
 checkpoint. `required_int_bits()`'s docstring says so and cites the scar: the encoder-narrowing
-result in `docs/jsc-report.md` §5.6 was fitted and validated on the same 1,000 samples, and 8 of 15 features
+result in `docs/jsc/report.md` §5.6 was fitted and validated on the same 1,000 samples, and 8 of 15 features
 came out too narrow. **The code reports a floor as a floor and never calls a width safe.**
 
 #### Verification
@@ -801,7 +801,7 @@ came out too narrow. **The code reports a floor as a floor and never calls a wid
 shows the golden model and the RTL agree at a width neither was written for, which is the property
 MNIST depends on.
 
-#### A correction to `docs/tool-roadmap.md`
+#### A correction to `docs/reference/tool-roadmap.md`
 
 F1 read `rtlgen/config.py:186-187` as asserting that the config equals the module constants, and
 therefore as an obstacle. It checks `HardwareConfig()` — the **default** instance — so it means
@@ -979,7 +979,7 @@ latency figure that goes in the report, so measure before quoting.
 | ~~Does the upstream MNIST recipe binarise differently from JSC?~~ | ✅ **Closed 2026-08-11: no.** Same `DistributiveThermometer`, `feature_wise=True`. Both wiring paths (learnable, fixed) already Gate 1 verified by our `300-100` checkpoint |
 | How many MNIST vectors fit in the vector store? | ⬜ Open. Sets whether Gate 1b is one pass or many |
 | Does the paper's `1000, 500` fit at any precision? | ⬜ Open. A negative answer is a result, not a failure |
-| ~~Does the **tool** ship a harness?~~ | ✅ **Closed 2026-08-11: no, generator-only.** Users bring their own, as hls4ml does. The encoder still ships — intrinsic to a DWN and most of the area, so omitting it would repeat the reporting failure `docs/jsc-report.md` §5.2 criticises |
+| ~~Does the **tool** ship a harness?~~ | ✅ **Closed 2026-08-11: no, generator-only.** Users bring their own, as hls4ml does. The encoder still ships — intrinsic to a DWN and most of the area, so omitting it would repeat the reporting failure `docs/jsc/report.md` §5.2 criticises |
 | ~~Does MNIST run on our board in this repo?~~ | ✅ **Closed 2026-08-11: yes.** M1f and M1g are in scope. Separate from the tool question — the tool still ships generator-only; the board demo is this project's own deliverable, and a second dataset on real silicon is a far stronger result than a second dataset in simulation |
 | How many MNIST vectors fit in the vector store? | ⬜ Open, and only matters if the board answer is yes. ~48× wider per vector than JSC, so `DEPTH` falls to order 100 |
 | ~~Is `1x300`'s 96.14% understated by `tau`?~~ | ✅ **Closed 2026-08-11: yes, by +0.63 pp — the bring-up model is 96.77%, not 96.14%.** `GroupSum` divides by `tau`, and `tau=3.3333` at group 30 gives a logit range of 9 against the anchor's 30, so this rung trained ~2× hot. Retrained at `tau=1.678`: **96.77%** (best 96.88%), checkpoint `mnist_n6_z3_distributive_w300_tau1p678`. **Gate 1 and every area and timing number are unaffected** — `tau` is a training-time constant that never reaches hardware — but the accuracy quoted for this design should be the corrected one. Full analysis, including why the narrow rungs moved 5× as much: `docs/mnist/reduction-ledger.md` |

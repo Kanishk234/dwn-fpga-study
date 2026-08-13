@@ -1,6 +1,6 @@
 """EXPERIMENT: how much of dwn_core is the reduction, really?
 
-`docs/phase2-ledger.md` carries this as an open question, and `dse/area_model.py` depends on the
+`docs/jsc/phase2-ledger.md` carries this as an open question, and `dse/area_model.py` depends on the
 answer. The current number is an INFERENCE, not a measurement:
 
     dwn_core measured 108 LUTs for 50 nodes + 5 x popcount(10) + argmax(5)
@@ -11,7 +11,7 @@ That subtraction is only sound if a node really costs exactly one LUT6 and nothi
 across the boundary. Vivado inlined `lut_node`, `popcount` and `argmax` into the top level, so
 the hierarchical report attributes all 108 LUTs to `dwn_core` and cannot separate them.
 
-Why it matters beyond tidiness: `docs/dse-plan.md` §3 deferred Learnable Reduction on exactly
+Why it matters beyond tidiness: `docs/jsc/dse-plan.md` §3 deferred Learnable Reduction on exactly
 this number -- *"if it's 40% of area, building the pyramid is obviously worth it; if it's 3%,
 this was never an interesting axis."* 54% clears that bar comfortably, but not if it is wrong.
 

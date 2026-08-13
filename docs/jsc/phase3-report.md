@@ -6,7 +6,7 @@ LUT-DNN literature?
 
 Two halves, run on two machines. The *hands-on* half (conifer **and hls4ml**) was measured through the same
 `scripts/build.tcl` flow as all 54 Phase 2 DWN configs. The *literature* half is citation and
-plotting only. Running log with the dated detail: `docs/phase3-ledger.md`.
+plotting only. Running log with the dated detail: `docs/jsc/phase3-ledger.md`.
 
 ⚠️ **The most useful thing in this report is not a number.** It is that the standard JSC
 comparison table — the one reproduced in the DWN paper, in Mecik & Kumm, and in the 2025 survey —
@@ -42,12 +42,12 @@ Everything in the "measured" column below went through `scripts/build.tcl`, out-
 | published LUT-DNN family | 32 rows, 11 methods | cited, `cc/literature/jsc_literature.json` |
 
 The three DWN counts are all used somewhere and are easy to conflate, so: **54** records in
-`docs/results/sweep-results.csv`, **52** built (2 are `gate1-failed` — the linear-encoding configs
+`docs/jsc/results/sweep-results.csv`, **52** built (2 are `gate1-failed` — the linear-encoding configs
 of Phase 2 §5.3), **51** fit the device (`1x2000` builds but measures 102.80%), and **42** both fit
 and meet the board's 100 MHz. §1's "all 52 DWN configs" for DSP/BRAM is the *built* count, since
 `1x2000` was measured at 0/0 too.
 
-Figures: `docs/results-cc/jsc-openml.png`, `docs/results-cc/jsc-cernbox.png`.
+Figures: `docs/jsc/results-cc/jsc-openml.png`, `docs/jsc/results-cc/jsc-cernbox.png`.
 Regenerate with `.venv\Scripts\python.exe cc\literature\plot.py --snapshot`.
 
 ---
@@ -284,7 +284,7 @@ of *"the wall is timing, not area"* we have.
 
 ⚠️ **Not adopted.** Projected 12,751 → ~7,990 LUTs (~38% of device), but it buys area on a design
 whose binding constraint is timing, and adopting it costs a renorm-capable emitter, host-side
-scaler changes and Gate 1 regeneration. Recorded as a finding; `docs/phase3-ledger.md` carries the
+scaler changes and Gate 1 regeneration. Recorded as a finding; `docs/jsc/phase3-ledger.md` carries the
 full numbers.
 
 ---
@@ -317,14 +317,14 @@ full numbers.
 .venv\Scripts\python.exe cc\conifer\run_conifer.py --sweep       # needs Vivado + HLS
 ```
 
-Committed evidence: `docs/results-cc/` (conifer measurements + both figures),
+Committed evidence: `docs/jsc/results-cc/` (conifer measurements + both figures),
 `cc/literature/jsc_literature.json` (32 published rows, each with source and confidence).
 
 ---
 
 ## 10. Pointers
 
-- `docs/phase3-ledger.md` — the dated log, including every correction and retraction
-- `docs/phase3-plan.md` — what Phase 3 set out to do
-- `docs/phase2-report.md` — the DWN frontier this compares against
+- `docs/jsc/phase3-ledger.md` — the dated log, including every correction and retraction
+- `docs/jsc/phase3-plan.md` — what Phase 3 set out to do
+- `docs/jsc/phase2-report.md` — the DWN frontier this compares against
 - `cc/literature/jsc_literature.json` — per-row source, dataset, convention, confidence

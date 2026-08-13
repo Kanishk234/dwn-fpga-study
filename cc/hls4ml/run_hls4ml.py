@@ -388,7 +388,7 @@ def save(rows):
     print(f'\nresults -> {os.path.relpath(RESULTS, REPO)}  ({len(have)} rows)')
 
 
-SNAPSHOT_DIR = os.path.join(REPO, 'docs', 'results-cc')
+SNAPSHOT_DIR = os.path.join(REPO, 'docs', 'jsc', 'results-cc')
 SNAPSHOT_COLS = ['name', 'layers', 'reuse', 'precision', 'status', 'accuracy_float_pct',
                  'accuracy_is_float_upper_bound', 'luts', 'ff', 'bram', 'dsp', 'device_pct',
                  'latency_cycles', 'ii', 'pipeline_type', 'wns', 'fmax_mhz',
@@ -434,7 +434,7 @@ def main():
     ap.add_argument('--shrink', action='store_true', help='the full shrink sequence')
     ap.add_argument('--force', action='store_true')
     ap.add_argument('--snapshot', action='store_true',
-                    help='copy results into docs/results-cc/ for committing')
+                    help='copy results into docs/jsc/results-cc/ for committing')
     args = ap.parse_args()
 
     if args.snapshot:

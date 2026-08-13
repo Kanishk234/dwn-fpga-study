@@ -5,7 +5,7 @@
 //
 // ADDRESS BIT ORDER IS LOAD-BEARING. Upstream's CUDA kernel builds the address as
 //     addr |= (input[mapping[j][l]] > 0) << l;
-// so mapping slot l is address bit l -- slot 0 is the LSB (docs/checkpoint-format.md §2).
+// so mapping slot l is address bit l -- slot 0 is the LSB (docs/reference/checkpoint-format.md §2).
 // Getting this backwards yields a design that elaborates, synthesizes, and is wrong on most
 // inputs. The caller is responsible for concatenating in the matching order:
 //     .addr({slot5, slot4, slot3, slot2, slot1, slot0})
@@ -27,7 +27,7 @@ module lut_node #(
 );
 
     // The learned parameters ARE the table. Vivado must map this to a single LUT6 rather
-    // than inferring distributed RAM -- confirmed by the Phase 1a probe, docs/probe-results.md.
+    // than inferring distributed RAM -- confirmed by the Phase 1a probe, docs/reference/probe-results.md.
     assign out = TABLE[addr];
 
 endmodule

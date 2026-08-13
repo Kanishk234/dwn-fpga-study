@@ -51,7 +51,7 @@ After **every** generalisation commit:
 ```
 
 **12/12, with areas at 108 / 1,519 / 1,619.** Not "close" — identical. A generalisation that
-changes a single LUT has changed behaviour, and every number in `docs/jsc-report.md` was measured on the
+changes a single LUT has changed behaviour, and every number in `docs/jsc/report.md` was measured on the
 old one.
 
 `verify_phase1.py` only exercises one single-layer config, and MNIST is two layers, so also run:
@@ -76,8 +76,8 @@ thought of?* Not: *does this work for MNIST?*
 
 ### 1.4 Never move or rename an existing JSC artifact
 
-`docs/jsc-report.md`, `README.md` and the `jsc-complete` tag all reference current paths —
-`docs/results/`, `docs/results-cc/`, `rtl/example-model-1x50/`, `training/artifacts/`.
+`docs/jsc/report.md`, `README.md` and the `jsc-complete` tag all reference current paths —
+`docs/jsc/results/`, `docs/jsc/results-cc/`, `rtl/example-model-1x50/`, `training/artifacts/`.
 
 MNIST is **additive**: new directories alongside, never a reorganisation of what is there. A tidier
 layout is not worth breaking the published artifact, and a reorganisation is a separate change to
@@ -100,7 +100,7 @@ datasets/            one descriptor per dataset -- the only place dimensions liv
 training/artifacts/  checkpoints, already dataset-tagged by filename
 ```
 
-JSC stays flat because §1.4 says so: `docs/jsc-report.md`, `README.md` and the `jsc-complete` tag point at
+JSC stays flat because §1.4 says so: `docs/jsc/report.md`, `README.md` and the `jsc-complete` tag point at
 those paths. `docs/README.md` carries one line explaining the asymmetry. Making it symmetric means
 moving JSC into `docs/jsc/` and updating every reference — a legitimate change, but a **separate
 and deliberate** one, made on its own after this branch merges, if it is wanted at all.
@@ -163,7 +163,7 @@ branches. Concretely:
 
 - No file named for a branch, a phase of this work, or a person.
 - No dataset name in shared code (1.3).
-- `README.md` and `docs/jsc-report.md` describe JSC exactly as they do now, plus MNIST where it belongs —
+- `README.md` and `docs/jsc/report.md` describe JSC exactly as they do now, plus MNIST where it belongs —
   JSC results are not rewritten, reworded or renumbered because a second dataset arrived.
 - The ledger stays a dated log. It is not tidied into a summary before merging; the wrong turns
   are the useful part.
@@ -216,7 +216,7 @@ model is fitted to a 16-feature encoder at 16-bit words; both change.
 
 **T2. A test-vector dump** in the same shape the exporter expects.
 
-**T3. Confirm the checkpoint structure** matches `docs/checkpoint-format.md`. Probably fine, and
+**T3. Confirm the checkpoint structure** matches `docs/reference/checkpoint-format.md`. Probably fine, and
 the failure mode if not is a valid-looking wrong export, which is the expensive kind.
 
 ---
@@ -272,7 +272,7 @@ Two things question one does *not* mean, whatever question two decides:
 - **The encoder always ships with the tool.** Thermometer encoding is intrinsic to a DWN, not
   preprocessing a user supplies, and it is where the area goes — fourteen times the network on the
   smallest JSC model. A generator emitting the network alone would repeat exactly the reporting
-  failure `docs/jsc-report.md` §5.2 criticises, handing users a LUT count missing most of their design.
+  failure `docs/jsc/report.md` §5.2 criticises, handing users a LUT count missing most of their design.
 - **The JSC board path stays on `main`**, untouched, either way.
 
 ### What would make this fail, and what each failure means
@@ -295,7 +295,7 @@ the only genuinely bad outcome, which is why Gate 1 comes before any area number
 |---|---|
 | How many thermometer thresholds per pixel? | 784 features × z is the whole area problem. JSC used 200; MNIST almost certainly cannot |
 | Are MNIST pixels standard-scaled or min-max? | decides how many integer bits the word needs, and F1 depends on it |
-| Does the upstream MNIST recipe binarise differently? | `docs/checkpoint-format.md` was verified against JSC checkpoints only |
+| Does the upstream MNIST recipe binarise differently? | `docs/reference/checkpoint-format.md` was verified against JSC checkpoints only |
 | How many test vectors can the board actually hold? | sets whether Gate 1b is one pass or many (B3) |
 
 ---

@@ -1,7 +1,7 @@
 # MNIST Phase 3 — the controlled comparison: DWN against its own family, for the first time
 
 The written-up account of MNIST Phase 3. Running log with the dead ends:
-`docs/mnist/phase3-ledger.md`. The JSC equivalent is `docs/phase3-report.md`; most of the *method*
+`docs/mnist/phase3-ledger.md`. The JSC equivalent is `docs/jsc/phase3-report.md`; most of the *method*
 is settled there and is reused rather than re-derived here.
 
 **What is new on MNIST, and it is not the accuracy number.** JSC Phase 3 could only compare a DWN
@@ -32,7 +32,7 @@ Our designs that meet the **100 MHz board clock**, both accounting conventions:
 | `1x200` | 95.93 | 420 | 839 | 1,264 | 6.08 | 111.3 | 4 |
 | `1x100` | 92.98 | 234 | 611 | 845 | 4.06 | 123.8 | 4 |
 
-Figure: `docs/results-cc-mnist/mnist.png`. Table: `cc/literature/table.py --benchmark mnist`.
+Figure: `docs/mnist/results-cc/mnist.png`. Table: `cc/literature/table.py --benchmark mnist`.
 
 ## 2. What was compared, and on what
 
@@ -69,10 +69,10 @@ On MNIST the correction is **not a single factor**, because the encoder saturate
 | encoder share of total | **72.3%** | 60.8% | 35.0% | **20.9%** |
 
 So a fixed multiplier cannot fix a mis-conventioned table. **Every row must state its own
-convention**, which is why `docs/results-mnist/sweep-results.json` carries `dwn_core_luts` and
+convention**, which is why `docs/mnist/results/sweep-results.json` carries `dwn_core_luts` and
 `thermometer_encoder_luts` separately, and why the figure encodes convention in marker fill.
 
-This is the defect `docs/jsc-report.md` §5.2 criticises in the JSC literature. It recurs on MNIST, and the
+This is the defect `docs/jsc/report.md` §5.2 criticises in the JSC literature. It recurs on MNIST, and the
 width-dependence makes it *worse* here, not better.
 
 ### 3.2 Accuracy is often printed to whole percent — coarser than our noise floor
@@ -98,7 +98,7 @@ overstated — the safe direction, but it must be said rather than quietly enjoy
 ### 3.3 ✅ The dataset-ambiguity defect does *not* apply — and that is a result
 
 JSC Phase 3's largest correction was that **"JSC" is two different datasets ~1.05 pp apart**, and
-the standard comparison table conflated them (`docs/phase3-report.md` §3.1).
+the standard comparison table conflated them (`docs/jsc/phase3-report.md` §3.1).
 
 **MNIST has one canonical split.** `mnist_784` ships in train-then-test order and the last 10,000
 rows are the test set every published number uses. So this entire class of correction is absent,
@@ -143,7 +143,7 @@ Not measured on MNIST. Three reasons, recorded before the decision rather than a
    That is **12.5× NeuraLUT** and **75× our `2x[1000,500]`**.
 2. **784 inputs will not fit this part.** On JSC, with 16 features, hls4ml fit only at quarter
    width. The first layer scales with input count.
-3. **JSC measured this axis in full** (`docs/phase3-report.md` §5), including two silent failures
+3. **JSC measured this axis in full** (`docs/jsc/phase3-report.md` §5), including two silent failures
    worth more than the numbers.
 
 **This is a scope cut, not a result.** We have not shown hls4ml fails on MNIST on our part; we have

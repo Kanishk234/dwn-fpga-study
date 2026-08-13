@@ -1,6 +1,6 @@
 """Turn sweep results into the two things Study 1 owes: a table and a Pareto frontier.
 
-`docs/dse-plan.md` §6 and brief §10 ask for the accuracy/area/latency frontier plus ONE headline
+`docs/jsc/dse-plan.md` §6 and brief §10 ask for the accuracy/area/latency frontier plus ONE headline
 number -- *the largest DWN that fits an XC7A35T, and what it scores*. This computes both from
 `build/dse/results.json`.
 
@@ -284,8 +284,8 @@ def main() -> int:
         src = os.path.join(REPO, 'build', 'dse', 'train_grid.json')
         if os.path.exists(src):
             shutil.copy(src, os.path.join(out, 'train_grid.json'))
-        # The path, not a literal: this printed 'docs/results/' while writing to
-        # docs/results-mnist/, which reads exactly like the JSC snapshot has just
+        # The path, not a literal: this printed 'docs/jsc/results/' while writing to
+        # docs/mnist/results/, which reads exactly like the JSC snapshot has just
         # been overwritten -- alarming, and wrong.
         print(f'\nsnapshot -> docs/{DS.results_dir}/  ({len(rows)} configs) -- commit these')
         print('  sweep-results.json/.csv + train_grid.json'

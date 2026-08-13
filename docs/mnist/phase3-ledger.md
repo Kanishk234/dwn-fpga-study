@@ -1,8 +1,8 @@
 # MNIST Phase 3 ledger — the Controlled Comparison on a second dataset
 
 Running log for MNIST Phase 3. Phase 2 is closed: `docs/mnist/phase2-report.md`, log in
-`docs/mnist/phase2-ledger.md`. The JSC equivalents are `docs/phase3-plan.md`,
-`docs/phase3-ledger.md` and `docs/phase3-report.md` — **read those first; most of the method is
+`docs/mnist/phase2-ledger.md`. The JSC equivalents are `docs/jsc/phase3-plan.md`,
+`docs/jsc/phase3-ledger.md` and `docs/jsc/phase3-report.md` — **read those first; most of the method is
 already settled and should be reused rather than re-derived.**
 
 **Split, as agreed:** the *literature half* (3L-\*) needs no board, no Vivado and no synthesis. The
@@ -22,9 +22,9 @@ its own headline. A wrong turn left visible is worth more than a tidy log.
 | 3L-a | Refresh the MNIST literature list | literature | ✅ **done 2026-08-13** — 9 papers + a dedicated survey |
 | 3L-b | Confirm the encoder convention applies unchanged | literature | ✅ **done 2026-08-13 — it applies, and it is the biggest single correction.** Reading DWN's core-only rows against our encoder-inclusive ones would have shown us 2.3x too large |
 | 3L-c | Per-paper MNIST numbers into a machine-readable table | literature | ✅ **done 2026-08-13 — 26 rows, 21 verified** in `cc/literature/mnist_literature.json`. 4 low-priority items left in `pending` |
-| 3L-d | Combined table + Pareto plot against our frontier | literature | ✅ **done 2026-08-13** — `table.py --benchmark mnist`, `plot.py --benchmark mnist --snapshot`; figure in `docs/results-cc-mnist/` |
+| 3L-d | Combined table + Pareto plot against our frontier | literature | ✅ **done 2026-08-13** — `table.py --benchmark mnist`, `plot.py --benchmark mnist --snapshot`; figure in `docs/mnist/results-cc/` |
 | 3L-e | Phase 3 report | literature | ⬜ `docs/mnist/phase3-report.md` |
-| 3M-a | conifer (GBDT) on MNIST | hands-on | 🏁 **CLOSED 2026-08-13 at two measured rows** → `docs/results-cc-mnist/`. Iso-area: **DWN +13.45 pp at matched LUTs**; conifer **4.6× faster**. ⚠️ no curve, no measured ceiling |
+| 3M-a | conifer (GBDT) on MNIST | hands-on | 🏁 **CLOSED 2026-08-13 at two measured rows** → `docs/mnist/results-cc/`. Iso-area: **DWN +13.45 pp at matched LUTs**; conifer **4.6× faster**. ⚠️ no curve, no measured ceiling |
 | 3M-b | hls4ml (quantized MLP) on MNIST | hands-on | ❌ **CUT 2026-08-13, deliberately.** A published MNIST row exists, it will not fit 784 inputs on this part, and JSC measured this axis in full. Reasons in the log |
 
 ---
@@ -32,7 +32,7 @@ its own headline. A wrong turn left visible is worth more than a tidy log.
 ## 1. What Phase 2 hands over
 
 Every number below is measured, place-and-routed at `xc7a35tcpg236-1` / 10 ns, and snapshotted in
-`docs/results-mnist/sweep-results.json`. **25 configurations, 0 failures, Gate 1 25/25 bit-exact,
+`docs/mnist/results/sweep-results.json`. **25 configurations, 0 failures, Gate 1 25/25 bit-exact,
 Gate 1b 10,000/10,000 on silicon.**
 
 The rows a comparison table should quote:
@@ -71,20 +71,20 @@ Also from that measurement: **the same seed does not reproduce**, by up to 0.17 
 
 ### 2.2 The encoder-convention trap carries over unchanged
 
-`docs/phase3-plan.md` §4.1 and `docs/jsc-report.md` §5.2. Published LUT counts are frequently **core-only**,
+`docs/jsc/phase3-plan.md` §4.1 and `docs/jsc/report.md` §5.2. Published LUT counts are frequently **core-only**,
 excluding the input encoder; ours are encoder-inclusive, which is the stricter convention.
 
 For MNIST this matters *less* than for JSC but is still real: the encoder is **72.3%** of `1x100`
 and **20.9%** of `1x2000`, against JSC's ~42% at comparable width. So the correction is
 width-dependent here, not a single factor — state it per row.
 
-`docs/results-mnist/sweep-results.json` carries `dwn_core_luts` and `thermometer_encoder_luts`
+`docs/mnist/results/sweep-results.json` carries `dwn_core_luts` and `thermometer_encoder_luts`
 separately for exactly this reason. **Report both conventions, as Phase 3 did for JSC.**
 
 ### 2.3 ✅ The dataset-ambiguity trap does NOT apply — and that is worth saying out loud
 
 JSC Phase 3's largest correction was that **"JSC" is two different datasets ~1.05 pp apart**
-(`docs/phase3-ledger.md`, 2026-08-10), and the standard comparison table conflated them.
+(`docs/jsc/phase3-ledger.md`, 2026-08-10), and the standard comparison table conflated them.
 
 **MNIST has one canonical split**: `mnist_784` ships in train-then-test order and the last 10,000
 rows are the test set every published number uses. `datasets.MNIST.test_split = 'tail:10000'`
@@ -108,7 +108,7 @@ resource count. Getting that wrong would produce the most embarrassing row in th
 
 ## 3. Hands-on half — what is already solved
 
-**Do not re-derive the toolchain.** `docs/phase3-ledger.md` (2026-08-10) records the conifer and
+**Do not re-derive the toolchain.** `docs/jsc/phase3-ledger.md` (2026-08-10) records the conifer and
 hls4ml flows working at Vivado 2025.2, plus five silent failures already found and fixed. The ones
 most likely to recur:
 
@@ -152,7 +152,7 @@ Suggested order for the literature half, matching what worked for JSC:
 
 Both scripts take `--benchmark {jsc,mnist}` and read their inputs from a `BENCHMARKS` table rather
 than JSC literals. **JSC output verified byte-identical** for both, at every step. Figure:
-`docs/results-cc-mnist/mnist.png`.
+`docs/mnist/results-cc/mnist.png`.
 
 #### ⚠️ Two real defects found by pointing the tools at a second dataset
 
@@ -289,7 +289,7 @@ against, and it is the most consequential comparison in the study.
 
 Our `1x300` is **1,597 LUTs** against the paper's `sm` at **692** — a 2.3× gap that would be the
 headline of a careless table. **The paper's rows exclude the thermometer encoder** (brief §6,
-`docs/jsc-report.md` §5.2); ours include it. Compared like for like, on core only:
+`docs/jsc/report.md` §5.2); ours include it. Compared like for like, on core only:
 
 | | ours | DWN paper | ratio | Δ acc |
 |---|---|---|---|---|
@@ -374,7 +374,7 @@ This is the mirror image of the encoder-convention trap: there, others exclude a
 here, others move area into resources we do not use at all. **Both need stating per row.**
 ### 2026-08-13 — [hands-on] 🏁 3M-a STOPPED at two measured points. The hands-on half is closed.
 
-Snapshotted to `docs/results-cc-mnist/`. **Two synthesized rows plus one accuracy-only row**, and
+Snapshotted to `docs/mnist/results-cc/`. **Two synthesized rows plus one accuracy-only row**, and
 that is the final state — the sweep is not being resumed.
 
 | config | trees | acc% | LUTs | %dev | Fmax | cycles |
@@ -440,8 +440,8 @@ snapshot has been reporting *"10 fit, 4 over-device"* when the truth is **"10 fi
 4 synth-failed"**: those four are the largest configs and they failed synthesis outright rather
 than reporting a LUT count over the part.
 
-✅ **No published claim is affected** — "over-device" appears nowhere in `docs/phase3-report.md`
-or `docs/jsc-report.md`. The committed JSON and CSV are byte-identical; only the printed line changed.
+✅ **No published claim is affected** — "over-device" appears nowhere in `docs/jsc/phase3-report.md`
+or `docs/jsc/report.md`. The committed JSON and CSV are byte-identical; only the printed line changed.
 
 ### 2026-08-13 — [hands-on] ❌ 3M-b hls4ml is CUT, and 3M-a is trimmed to six points
 
@@ -522,7 +522,7 @@ counts, scaler, split, sweep grid and every output path.
 
 ```
 sweep identical to the original : True (14 configs, same order)
-paths                           : build/cc/conifer, docs/results-cc   (unchanged)
+paths                           : build/cc/conifer, docs/jsc/results-cc   (unchanged)
 X_train sha256[:16]             : 9815d799940ee527
 ```
 
@@ -542,7 +542,7 @@ reasoning beside them.
 
 #### ⚠️ `SNAPSHOT_DIR` was assigned twice, 380 lines apart
 
-Once near the top and again at `docs/results-cc` below `save()`. The second wins, so every
+Once near the top and again at `docs/jsc/results-cc` below `save()`. The second wins, so every
 `--dataset mnist --snapshot` would have **overwritten JSC's committed rows** while printing a
 plausible message. Removed, with a comment where it used to be saying why it is not there.
 

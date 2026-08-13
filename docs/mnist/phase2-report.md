@@ -6,7 +6,7 @@ sweep, run on a dataset with 49× the features and twice the classes.
 
 This is the written-up account. `docs/mnist/phase2-ledger.md` is the running log it was written
 from — dated, with the retractions in place. The JSC study this parallels is
-`docs/phase2-report.md`; Phase 1 of this port is `docs/mnist/phase1-report.md`.
+`docs/jsc/phase2-report.md`; Phase 1 of this port is `docs/mnist/phase1-report.md`.
 
 **What makes this phase worth reading is not the frontier.** It is that seven conclusions were
 withdrawn — two of them Phase 1 predictions recorded specifically so they could be scored, one of
@@ -48,7 +48,7 @@ runs and the other does not.
 | NeuraLUT | 96% | 54,798 | `xcvu9p` |
 
 ⚠️ **Read this with the same care Phase 1 asked for.** Our area convention includes the encoder,
-which is the stricter choice (`docs/jsc-report.md` §5.2), but the published rows were measured on a
+which is the stricter choice (`docs/jsc/report.md` §5.2), but the published rows were measured on a
 different part at a different clock target. It is evidence the approach is in the right range, not
 a claim to have beaten either.
 
@@ -205,7 +205,7 @@ costs throughput nothing.
 claim and it stands: `2x[1000,500]` is not more accurate. Depth buys an axis the accuracy study
 could not see.
 
-⚠️ **And it is not new — JSC found it first** (`docs/phase2-report.md` §4.4: `2x100` at 155.5 MHz
+⚠️ **And it is not new — JSC found it first** (`docs/jsc/phase2-report.md` §4.4: `2x100` at 155.5 MHz
 against `1x200`'s 113.9). That makes it *more* valuable, not less: it is one of the few JSC
 conclusions now **reproduced** on a second dataset rather than generalised from one. The two
 retractions in §5.2 are what happens when that check is skipped.
@@ -290,7 +290,7 @@ exit status.**
 ### 5.4 ⚠️ "The JSC study has no `linear` encoding data" — overstated, withdrawn
 
 Two JSC configs (`1x200 linear`, `1x360 linear`) are recorded as `gate1-failed`, the only 2
-failures in 54. This was written up as a discovery; it is not one. `docs/phase2-ledger.md` already
+failures in 54. This was written up as a discovery; it is not one. `docs/jsc/phase2-ledger.md` already
 records the cause and the decision — Q4.11 would represent them at identical area, but the
 encoding axis spread is 0.12 pp against a 0.15 pp floor, so the plumbing was judged not worth it.
 **A documented failure with a stated reason, not a silent gap.**
@@ -417,10 +417,10 @@ method as §5.3 — an anomaly explained by hypothesis instead of by inspection.
 ```
 
 **Prove JSC parity before trusting a single sweep point.** Expect **110 / 1,519 / 1,621** — not the
-108 / 1,519 / 1,619 that `docs/jsc-report.md` and `README.md` quote, which are the `jsc-complete` tag's
+108 / 1,519 / 1,619 that `docs/jsc/report.md` and `README.md` quote, which are the `jsc-complete` tag's
 pre-argmax-tree figures. Both are right; they describe different commits.
 
-Checkpoints are not in git (one JSC file exceeds GitHub's 100 MB limit). `docs/results-mnist/`
+Checkpoints are not in git (one JSC file exceeds GitHub's 100 MB limit). `docs/mnist/results/`
 describes all 25 configurations in ~10 KB; the trained models are ~1.2 GB.
 
 ---
@@ -470,6 +470,6 @@ the wall.
 - `docs/mnist/phase2-ledger.md` — the dated running log, with every retraction in place
 - `docs/mnist/phase1-report.md` — the port that made this sweep possible
 - `docs/mnist/reduction-ledger.md` — the learnable-reduction study and the `tau` confound
-- `docs/results-mnist/` — the snapshot: `sweep-results.json`, `.csv`, and both figures
-- `docs/phase2-report.md` — the JSC sweep this parallels, and the source of §5.3's rule
-- `docs/tool-roadmap.md` — what the generator still needs to become a tool
+- `docs/mnist/results/` — the snapshot: `sweep-results.json`, `.csv`, and both figures
+- `docs/jsc/phase2-report.md` — the JSC sweep this parallels, and the source of §5.3's rule
+- `docs/reference/tool-roadmap.md` — what the generator still needs to become a tool

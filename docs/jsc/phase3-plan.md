@@ -7,10 +7,10 @@ literature?
 Two halves. The hands-on half is the expensive one; the literature half is cheap and is what
 actually answers the question for a reader who knows the space.
 
-Read first: `docs/phase2-report.md` (what we are comparing), brief §8 (the literature tier),
+Read first: `docs/jsc/phase2-report.md` (what we are comparing), brief §8 (the literature tier),
 brief §10 Study 2, brief §12 risk #6.
 
-**Running this on a different machine?** `docs/phase3-handoff.md` first — the acceptance test,
+**Running this on a different machine?** `docs/jsc/phase3-handoff.md` first — the acceptance test,
 the toolchain (Vivado 2025.2 **and an HLS-capable install** — see the ledger note on which
 `vitis_hls`/`v++` command the tools expect), and the rules that keep the comparison controlled. Phase 3 is portable: everything it needs is committed, including the Phase 1
 checkpoint and all 54 DWN results. No sweep checkpoints, no 166k test set, no board.
@@ -63,7 +63,7 @@ Expect this to be the harder of the two (brief §12 risk #6). Budget accordingly
 > no TensorFlow. Rebuilt in PyTorch and swept over reuse × width × precision (6 configs):
 > **259,492 LUTs as published — 12.5× over — and still 2.2× over at 16× reuse.** It fits only at
 > quarter width + 12-bit + 4× reuse: **75.67% at 8,749 LUTs, 53 DSPs, 34 cycles, II=4.**
-> Full result in `docs/phase3-report.md` §5; the two silent failures it cost are in the ledger.
+> Full result in `docs/jsc/phase3-report.md` §5; the two silent failures it cost are in the ledger.
 
 ### 2.3 What to measure, for every design
 
@@ -84,7 +84,7 @@ one simulator invocation, and reviewers reading one language.
   execute on Windows at all: `FixedPointConverter` shells out to a hard-coded POSIX `g++ … -fPIC
   … -o X.so` through `os.system`, and it fails earlier still on `np.random.randint(0, 2**32)`,
   which overflows Windows' 32-bit default int. **So `build.tcl` needs no `read_vhdl` branch and
-  the Verilog convention holds for every row**, with no exception. See `docs/phase3-ledger.md`,
+  the Verilog convention holds for every row**, with no exception. See `docs/jsc/phase3-ledger.md`,
   2026-08-10.
 
 ### 2.5 Compare at iso-accuracy and iso-area

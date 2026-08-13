@@ -3,7 +3,7 @@
 **Status: implemented, 2026-08-07.** Written 2026-08-02 as planning, when nothing here ran yet.
 The plan is now code — `dse/grid.py` (the slice), `dse/area_model.py` (§5), `dse/run.py` (the
 loop), `dse/report.py` + `dse/plot.py` (§6's outputs). **Where this document and the code
-disagree, the code is right and this file is history**; `docs/phase2-ledger.md` records what
+disagree, the code is right and this file is history**; `docs/jsc/phase2-ledger.md` records what
 changed and why. Two sections are explicitly superseded: §5's encoder assumption (see the box
 there) and §7's open questions (most are now answered).
 
@@ -191,7 +191,7 @@ does, and it's what makes the filter step affordable.
 
 > ⚠️ **Superseded, 2026-08-07 — this section is kept for its reasoning, not its numbers.** The
 > implementation is `dse/area_model.py`, calibrated on Phase 1's measurements, and it corrects
-> the estimate below by a factor of four. See `docs/phase2-ledger.md` for the derivation.
+> the estimate below by a factor of four. See `docs/jsc/phase2-ledger.md` for the derivation.
 >
 > - **The encoder is 14.06× the core, not "up to 3.2×".** Filtering with 3.2× would have
 >   underestimated encoder area by **4.4×** at `sm` alone, passing configs that cannot fit.
