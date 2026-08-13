@@ -148,5 +148,67 @@ Suggested order for the literature half, matching what worked for JSC:
 
 ## Log
 
-*(empty — Phase 3 has not started. Add a dated entry per work session, newest first. Mark each
-entry `[literature]` or `[hands-on]` so the two halves stay attributable.)*
+### 2026-08-13 — [literature] 3L-a started: four rows verified, and three problems found
+
+`cc/literature/mnist_literature.json` created, schema copied from `jsc_literature.json` so
+`cc/literature/table.py` and `plot.py` can read both.
+
+**NeuraLUT Table III, read directly from the PDF** (not via a summarizer — the JSC phase got burned
+twice that way):
+
+| method | model | acc | LUT | FF | BRAM | Fmax | latency |
+|---|---|---|---|---|---|---|---|
+| NeuraLUT | HDR-5L | 96% | 54,798 | 3,757 | 0 | 431 MHz | 12 ns |
+| PolyLUT | HDR | 96% | 70,673 | 4,681 | 0 | 378 MHz | 16 ns |
+| FINN | SFC-max | 96% | 91,131 | — | 5 | 200 MHz | 310 ns |
+| hls4ml | ternary (Duarte) | 95% | 260,092 | 165,513 | 0 | 200 MHz | 190 ns |
+
+✅ **This confirms the figures already quoted in `docs/mnist/phase1-report.md`** (PolyLUT 96% /
+70,673, NeuraLUT 96% / 54,798) — they are exactly what the paper prints.
+
+#### ⚠️ Problem 1: the sources round accuracy to whole percent, and that is coarser than our noise floor
+
+NeuraLUT's Table III prints `96%` and `95%`. A row printed as "96%" spans **±0.5 pp — twice our
+0.24 pp noise floor.** Two such rows cannot be ranked against each other at all, and ours can only
+be compared to them when the intervals are disjoint.
+
+For the headline that does hold: **ours 97.76% ± 0.24 → [97.52, 98.00]** against **96% ± 0.5 →
+[95.5, 96.5]**. Disjoint, so that gap is real. Any comparison inside ~1 pp is not.
+
+**Added `accuracy_precision` to the schema** (`whole_pct` / `one_dp` / `two_dp`) so a table can
+refuse to rank rows it cannot support. This did not come up on JSC because those sources print two
+decimals.
+
+#### ⚠️ Problem 2: two different PolyLUT MNIST numbers are in circulation
+
+**96% / 70,673 LUTs** (NeuraLUT Table III, verified) versus **97.5% / 75,131 LUTs** (secondary
+source, unverified). Different on both axes, both labelled PolyLUT "HDR".
+
+This is the same *shape* as JSC Phase 3's two-datasets problem — a number everyone quotes that
+turns out to mean two things. **Resolve before tabulating PolyLUT**: read `arXiv:2309.02334`
+directly and record which configuration each corresponds to. First item in `pending`.
+
+#### ⚠️ Problem 3: all four rows are on `xcvu9p`, ~1.18M LUTs
+
+NeuraLUT's MNIST model at 54,798 LUTs is **2.6× our entire XC7A35T**. So LUT *count* is comparable
+as a number, but "fits on the board" is not, and the speed grades differ — `xcvu9p-…-2-i` against
+our `-1`. The JSC plan's §4.2 silicon caveat applies unchanged.
+
+#### Where that leaves us, on the numbers verified so far
+
+Our best config that meets the **board** clock — `2x[1000,500]`, 97.76%, 3,464 LUTs, 103.8 MHz:
+
+| vs | their LUTs | ratio |
+|---|---|---|
+| NeuraLUT HDR-5L | 54,798 | **15.8×** |
+| PolyLUT HDR | 70,673 | **20.4×** |
+| hls4ml ternary | 260,092 | **75.1×** |
+
+⚠️ Provisional: 4 rows of a table that should have ~15, and the weightless family (ULEEN,
+BTHOWeN) — the comparison that actually matters for DWN — is not in it yet.
+
+#### Next
+
+`pending` in the JSON is ordered. PolyLUT's discrepancy first, then ULEEN/BTHOWeN, then sweep the
+papers already read for JSC for MNIST rows — that is the cheapest source of verified data since
+those PDFs are already vetted.
