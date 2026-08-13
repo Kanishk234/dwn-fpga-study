@@ -4,11 +4,15 @@ Start with a **report** if you want results, a **ledger** if you want the reason
 wrong turns, and the **brief** if you want the plan the whole thing follows.
 
 **Files at this level are the JSC study** — the original dataset, and everything `REPORT.md`
-describes. Work on a second dataset lives in its own directory: [`mnist/`](./mnist/). The
-asymmetry is deliberate rather than tidy: `REPORT.md`, the root `README.md` and the
-`jsc-complete` tag all reference these paths, and breaking a published artifact to gain symmetry
-is a bad trade. Dimensions and per-dataset settings live in `datasets/`, never in the shared
-code.
+describes. The second dataset lives in its own directory: [`mnist/`](./mnist/), indexed
+[below](#the-mnist-study). The asymmetry is deliberate rather than tidy: `REPORT.md`, the root
+`README.md` and the `jsc-complete` tag all reference these paths, and breaking a published
+artifact to gain symmetry is a bad trade. Dimensions and per-dataset settings live in
+`datasets/`, never in the shared code.
+
+⚠️ **The two studies are not comparable on shared axes** and are deliberately never merged into
+one table or one figure: their accuracy scales differ by ~20 points, their encoder economics run
+opposite, and their figures are pinned to different tags (`jsc-complete` and `mnist-complete`).
 
 ## Reports — what happened, written up
 
@@ -50,6 +54,28 @@ still readable.
 | [`checkpoint-format.md`](./checkpoint-format.md) | What the exporter reads, verified against the pinned upstream commit. Includes the traps — address bit order, and a dummy mapping that looks exactly like a real one |
 | [`paper-configs.md`](./paper-configs.md) | The paper's JSC configurations (Table 14 / Table 2) and what they corrected |
 | [`probe-results.md`](./probe-results.md) | Phase 1a: does `TABLE[addr]` map to a single LUT6? The evidence the whole area model rests on |
+
+## The MNIST study
+
+The same flow on a second, deliberately different dataset — 784 features against 16, ten classes
+against five. **The port is the result**: the exporter, generator and testbenches became
+dataset-agnostic, and both datasets now reproduce from the same code.
+
+| | |
+|---|---|
+| [`mnist/report.md`](./mnist/report.md) | **Start here** — the standalone MNIST study, in the same form as `REPORT.md` |
+| [`mnist/phase1-report.md`](./mnist/phase1-report.md) | Bring-up: one bug pattern found seven times, and what generalising actually required |
+| [`mnist/phase2-report.md`](./mnist/phase2-report.md) | The sweep: 25 configurations, and two Phase 1 predictions retracted |
+| [`mnist/phase3-report.md`](./mnist/phase3-report.md) | The comparison: DWN against its own weightless family for the first time |
+| [`results-mnist/`](./results-mnist/) | Phase 2 evidence — all 25 measured records, both figures, the grid as trained |
+| [`results-cc-mnist/`](./results-cc-mnist/) | Phase 3 evidence — the conifer measurements and the comparison figure |
+| [`mnist/plan.md`](./mnist/plan.md) | The ground rules the port was held to, including the contract in §1.5 |
+
+Ledgers, same role as above — the dated record with the wrong turns left visible:
+[`phase1-`](./mnist/phase1-ledger.md) · [`phase2-`](./mnist/phase2-ledger.md) ·
+[`phase3-`](./mnist/phase3-ledger.md) · [`reduction-ledger.md`](./mnist/reduction-ledger.md),
+which measured the 0.24 pp noise floor that withdrew three claims — including the study's own
+headline.
 
 ## Scoping — considered, not started
 
