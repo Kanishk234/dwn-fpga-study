@@ -8,7 +8,7 @@ This is the written-up account. `docs/mnist/phase2-ledger.md` is the running log
 from — dated, with the retractions in place. The JSC study this parallels is
 `docs/phase2-report.md`; Phase 1 of this port is `docs/mnist/phase1-report.md`.
 
-**What makes this phase worth reading is not the frontier.** It is that six conclusions were
+**What makes this phase worth reading is not the frontier.** It is that seven conclusions were
 withdrawn — two of them Phase 1 predictions recorded specifically so they could be scored, one of
 them this study's own headline. A sweep that only confirmed things would have been evidence that
 the sweep was not sharp enough.
@@ -21,6 +21,7 @@ the sweep was not sharp enough.
 |---|---|
 | Configurations built | **25**, place-and-routed, **0 failures** |
 | **Gate 1** | **25/25 bit-exact**, 1,504 core vectors each |
+| **Gate 1b on silicon** | **MNIST 10,000/10,000, JSC 166,000/166,000** — both re-verified post-refactor (§5.7) |
 | Accuracy range | **92.98% → 98.32%** across a 20× node range |
 | **Measured noise floor** | **0.24 pp** — larger than JSC's 0.15 |
 | Best accuracy | `1x2000` — **98.26%**, 6,294 LUTs (30.3%), 94.0 MHz ⚠️ misses the board clock |
@@ -221,7 +222,7 @@ The only lever that does move timing is the constraint itself: asking for 8 ns g
 
 ---
 
-## 5. What broke — six retractions
+## 5. What broke — seven retractions
 
 ### 5.1 ⚠️ The study's own best model was withdrawn by the noise floor
 
@@ -352,6 +353,56 @@ reported separately by requirement, not because they partition the design.)
 
 Anyone comparing the two reports will hit this. It is not a regression.
 
+### 5.7 ⚠️ A Gate 1b that failed at chance, and the two silent defects behind it
+
+Both datasets were re-verified on silicon at the close of Phase 2, because the descriptor refactor
+had touched the export path and only simulation had confirmed it:
+
+| | Gate 1b | board | slack |
+|---|---|---|---|
+| **JSC** | **166,000 / 166,000** | 1,893 LUTs, 864 FF, 8 BRAM | +2.014 ns |
+| **MNIST** | **10,000 / 10,000** | 4,586 LUTs, 10,746 FF, 0 BRAM | +0.292 ns |
+
+Both reproduce their Phase 1 records exactly — MNIST to the LUT, the flip-flop *and* the same
+slack. JSC's `core_cycles` landed on 166,815, which is the load-bearing figure: 166,000 samples
+plus pipeline fill, so an exact match proves **II=1 and the label alignment both survived the
+refactor.** A drifted latency scores every sample against the wrong label and still completes.
+
+**But the first MNIST attempt failed at 1,035/10,000 — chance for ten classes.** The cause was
+operator error, and the interesting part is that nothing in the flow objected.
+
+`build_bitstream.py` derives the *harness* from the checkpoint and does **not** emit the network,
+which comes from `build/rtl`. A `verify_phase1.py --with-board` run had just regenerated **JSC's**
+RTL there, so the MNIST bitstream wrapped an MNIST-shaped 1,569-byte loader around JSC's 256-bit
+core. **Verilog truncates a too-wide connection rather than erroring**, so the build succeeded,
+met timing, programmed, ran, and produced confident garbage. Hierarchical utilization settled it:
+`u_dwn` measured **1,621 LUTs — exactly JSC's `dwn_top`**, against MNIST's 1,597.
+
+Two defects, both of this project's characteristic shape — silent, and reassuring:
+
+1. **`build_bitstream.py` reported a model it was not building**, printing
+   `dataset: mnist / 784 features x 9-bit, 10 classes` while building JSC's network. Now checked
+   before Vivado launches: `x_flat` width against `features × word_bits`, `class_idx` against
+   `ceil(log2(classes))`, and the `lut_node` count against `sum(layers)` — the last because two
+   MNIST checkpoints have identical port widths, so widths alone would build either happily.
+2. **`host.py` printed the software reference's accuracy under the label "on hardware."** On the
+   failing run it displayed **96.1400% "on hardware"** from a board agreeing on 10% of samples.
+   Now labelled conditionally.
+
+⚠️ **JSC structurally cannot detect either defect.** Its 16-bit word is exactly two bytes, so the
+byte-padding calculation gives the same answer whether it ceilings or floors, and its record is 33
+bytes against MNIST's 1,569. This is the clearest case in the whole port of a second dataset
+finding what inspection could not — and it was found by a *failing* run, which is the argument for
+running Gate 1b rather than reasoning about it.
+
+⚠️ **One diagnosis was retracted along the way.** The bad build reported 2,237 LUTs / 7 BRAM
+against the record's 4,586 / 0, and the first explanation offered was that this machine's Vivado
+inferred block RAM where the Phase 1 machine had not — which would have contradicted the standing
+finding that a 12,544-bit-wide store cannot map to block RAM at all. **Wrong:** the difference was
+entirely that the design contained JSC's network, and the rebuild returned 4,586 / 0 BRAM exactly.
+`grep -c "lut_node #" build/rtl/dwn_core.v` would have answered it in a second. Same failure of
+method as §5.3 — an anomaly explained by hypothesis instead of by inspection.
+
 ---
 
 ## 6. Reproducing this
@@ -409,10 +460,8 @@ figure would need a normalised axis and this reasoning stated alongside it.
 z-dependent area model (§5.5); the `2x[2000,500]` monotone taper; extending the ladder to bracket
 the wall.
 
-🔴 **Outstanding and required: JSC Gate 1b on silicon since the descriptor refactor.**
-`scripts\verify_phase1.py --with-board`, expecting 22/22 and 166,000/166,000. Deferred only
-because the board was not connected. The refactor touched the export path and **only simulation
-has confirmed it** — this is a `CLAUDE.md` rule, not a nicety.
+~~🔴 **Outstanding and required: Gate 1b on silicon since the descriptor refactor.**~~
+✅ **Done 2026-08-12, both datasets** — see §5.7. `verify_phase1.py --with-board` gives 22/22.
 
 ---
 
