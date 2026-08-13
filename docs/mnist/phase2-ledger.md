@@ -31,7 +31,7 @@ conclusions this way and every one was caught by measuring at a second point.
 | M2e | Gate 1 across the grid | ✅ **done 2026-08-12 — 25/25 pass**, every built config bit-exact |
 | M2f | Synthesis + place-and-route sweep | ✅ **done 2026-08-12 — 25 configs, 0 failures.** ⚠️ nothing failed to fit, so the frontier has no measured edge |
 | M2h | 🔴 **JSC Gate 1b on silicon, post-refactor** | ⬜ **OUTSTANDING — needs the board plugged in.** See below; this is a `CLAUDE.md` rule, not a nicety |
-| M2i | Write `docs/mnist/phase2-report.md` | ⬜ JSC has a report per phase; MNIST has one for Phase 1 only |
+| M2i | Write `docs/mnist/phase2-report.md` | ✅ **done 2026-08-12.** Every LUT figure in it checked against `docs/results-mnist/sweep-results.json` programmatically, not by eye |
 | M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** ⚠️ frontier has **no measured edge** — bounded by training, deliberately. Figures done (`dse/plot.py --dataset mnist --snapshot`) |
 
 ---
