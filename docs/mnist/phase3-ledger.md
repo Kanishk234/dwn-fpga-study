@@ -22,7 +22,7 @@ its own headline. A wrong turn left visible is worth more than a tidy log.
 | 3L-a | Refresh the MNIST literature list | literature | ✅ **done 2026-08-13** — 9 papers + a dedicated survey |
 | 3L-b | Confirm the encoder convention applies unchanged | literature | ✅ **done 2026-08-13 — it applies, and it is the biggest single correction.** Reading DWN's core-only rows against our encoder-inclusive ones would have shown us 2.3x too large |
 | 3L-c | Per-paper MNIST numbers into a machine-readable table | literature | ✅ **done 2026-08-13 — 26 rows, 21 verified** in `cc/literature/mnist_literature.json`. 4 low-priority items left in `pending` |
-| 3L-d | Combined table + Pareto plot against our frontier | literature | ⬜ |
+| 3L-d | Combined table + Pareto plot against our frontier | literature | ✅ **done 2026-08-13** — `table.py --benchmark mnist`, `plot.py --benchmark mnist --snapshot`; figure in `docs/results-cc-mnist/` |
 | 3L-e | Phase 3 report | literature | ⬜ `docs/mnist/phase3-report.md` |
 | 3M-a | conifer (GBDT) on MNIST | hands-on | ⬜ |
 | 3M-b | hls4ml (quantized MLP) on MNIST | hands-on | ⬜ |
@@ -147,6 +147,46 @@ Suggested order for the literature half, matching what worked for JSC:
 ---
 
 ## Log
+
+### 2026-08-13 — [literature] 3L-d: `table.py` and `plot.py` are benchmark-aware; JSC byte-identical
+
+Both scripts take `--benchmark {jsc,mnist}` and read their inputs from a `BENCHMARKS` table rather
+than JSC literals. **JSC output verified byte-identical** for both, at every step. Figure:
+`docs/results-cc-mnist/mnist.png`.
+
+#### ⚠️ Two real defects found by pointing the tools at a second dataset
+
+**1. `fits` meant "met the clock it was constrained at", not "runs on our board."** A Group B config
+built at a 12 ns constraint reports `meets_timing: true` at **87 MHz** — and was being listed in the
+comparison table as a design that works. JSC never exposed this because its 12 ns variant still
+reached 102 MHz. Now `fits` also requires `fmax >= 100 MHz`. **This is the exact error §1 of this
+ledger warns about**, and it was in the tool rather than the table.
+
+**2. `--dataset all` would have treated a note as a dataset.** `jsc_literature.json`'s `datasets`
+dict carries an `offset_pp` entry describing the 1.05 pp gap between the two JSC datasets — not a
+dataset. Introduced by me when generalising; fixed by intersecting against the datasets that
+actually appear in rows.
+
+Also JSC-specific and now conditional: the `offset_pp` note (MNIST has no variants), the
+`jsc-<name>.png` filename, the `JSC-<NAME>` panel heading, and the closing "two figures, never one"
+message — which for MNIST becomes *one* figure, and says so because the single canonical split is
+the **absence** of JSC's defect rather than an oversight.
+
+⚠️ **A factual error in the figure, caught on inspection:** the subtitle read "published (xcvu9p)",
+but MNIST's BTHOWeN rows are **xc7z020** — the same 7-series family and `-1` speed grade as ours.
+Now reads `xcvu9p + xc7z020-1`.
+
+#### What the figure shows
+
+Our curve sits at the far left, second only to the DWN paper's own hollow (core-only) markers, with
+every other method one to two orders of magnitude to the right. **Only our designs, the DWN paper's,
+and BTHOWeN-Small fall left of the 20,800-LUT device line** — i.e. almost nothing in the published
+MNIST literature would fit on a Basys 3 at all.
+
+Marker fill carries the accounting convention (filled = encoder included, hollow = core only,
+square = no separate encoder), which is what stops the figure from making the comparison error §2.2
+warns about.
+
 
 ### 2026-08-13 — [literature] 3L-a/3L-c substantially complete: 26 rows, 21 verified
 
