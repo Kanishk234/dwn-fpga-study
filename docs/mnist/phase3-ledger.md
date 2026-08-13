@@ -148,6 +148,57 @@ Suggested order for the literature half, matching what worked for JSC:
 
 ## Log
 
+### 2026-08-13 — [literature] the weightless comparison lands, and it is the strongest row in the study
+
+**10 verified rows.** BTHOWeN and ULEEN read directly from their own PDFs.
+
+#### ✅ BTHOWeN is the closest silicon match in the entire table, and it is not close
+
+BTHOWeN Table IV reports **real FPGA LUT counts on `xc7z020clg400-1`** — a Zynq-7000, the **same
+7-series family and the same `-1` speed grade** as our XC7A35T. Every LUT-DNN row is on
+`xcvu9p-…-2-i`, a Virtex UltraScale+ two process generations along. And BTHOWeN prints accuracy to
+**three decimals**, so it clears the rounding problem that makes the LUT-DNN rows uncomparable.
+
+| | acc | LUTs | cycles/inf |
+|---|---|---|---|
+| BTHOWeN-Small | 93.4% | 15,756 | 25 |
+| BTHOWeN-Medium | 94.3% | 38,912 | 37 |
+| BTHOWeN-Large | 95.2% | 151,704 | 74 |
+| **this work `2x[1000,500]`** | **97.76%** | **3,464** | **5** |
+| **this work `1x300`** | **96.77%** | **1,597** | **4** |
+
+**+2.56 pp over BTHOWeN-Large at 43.8× fewer LUTs**, on comparable silicon, weightless against
+weightless. `1x300` alone beats every BTHOWeN model at **9.9× fewer LUTs than the smallest**.
+
+Also worth recording: BTHOWeN uses **thermometer encoding**, and its `Bits/Input` (2 / 3 / 6) is
+exactly our `z`. So the two designs share an input stage as well as a family — this is the
+like-for-like comparison `docs/mnist/phase3-ledger.md` §2.4 predicted, and it arrived better than
+predicted.
+
+#### ⚠️ ULEEN cannot go in a LUT column at all
+
+ULEEN is the more accurate weightless model — **ULN-L reaches 98.46%**, above our best — but its
+Table III is **ASIC**: area in mm² (5.22) against Bit Fusion/LeNet-5, and Table IV gives **model
+size in KiB** (262). **There is no FPGA LUT number for MNIST.**
+
+So ULEEN is comparable on **accuracy** and **model size**, and not on area. Recorded with
+`lut: null` and a loud note. Putting it in a LUT column would be the single most embarrassing row
+in the table, which is what §2.4 warned about — and the warning turned out to be aimed at the right
+paper.
+
+**Honest reading: ULEEN beats us on accuracy (98.46% vs 97.76%).** Our answer is area and latency,
+not accuracy, and the report must say so rather than quietly comparing against BTHOWeN only.
+
+#### The DNN baselines BTHOWeN provides are useful and must be caveated
+
+`MLP 784-16-10` at 94.6% uses only 2,163 LUTs — *fewer than ours* — but also **8 BRAM and 28 DSP**,
+and takes **846 cycles/inference** against our 4–5. It is not a LUT-only design, so a LUT-count
+comparison against it is meaningless without stating the DSP/BRAM. Same for `CNN 1 (LeNet1)`:
+94.7%, 5,753 LUTs, 7 BRAM, 18 DSP, **33,615 cycles**.
+
+This is the mirror image of the encoder-convention trap: there, others exclude area we include;
+here, others move area into resources we do not use at all. **Both need stating per row.**
+
 ### 2026-08-13 — [literature] 3L-a started: four rows verified, and three problems found
 
 `cc/literature/mnist_literature.json` created, schema copied from `jsc_literature.json` so
