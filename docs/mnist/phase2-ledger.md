@@ -19,12 +19,12 @@ conclusions this way and every one was caught by measuring at a second point.
 |---|---|---|
 | M2a | Machine parity — prove this box reproduces Phase 1 | ✅ **done 2026-08-12 — 12/12**, areas exact at 110 / 1,519 / 1,621. ⚠️ no-board half only; run `--with-board` before M2f |
 | M2·0 | **Noise floor** | ✅ **done 2026-08-12 — 0.24 pp.** Withdrew 3 reduction-study claims incl. the headline; `1x2000` replaces `2x[2000,1000]` as best model. See `reduction-ledger.md` |
-| M2b | Get the checkpoints onto the machine — **the `_tau*` set, see §1.3** | ⬜ trained on Kaggle, **not present locally**. ⚠️ 13 of 14 exist — `2x[1000,500]` needs one 4-min retrain, §1.3 |
+| M2b | Get the checkpoints onto the machine | ✅ **done 2026-08-12 — all 14 local**, including the `_tau*` ladder and the `2x[1000,500]` retrain. 4 grid entries remain untrained (gaussian, linear, `2x500`, `3x330`) — no notebook produces them |
 | M2c | Make `dse/` dataset-aware | ✅ **done 2026-08-12 — option 1, JSC byte-identical.** See the log |
 | M2d | Fix `dse/area_model.py` | ⚠️ **bigger than stated.** `predict_comparators` is off by +108% on MNIST at z=3 and needs a z-dependent model, not a constant. Still not blocking measurement |
-| M2e | Gate 1 across the grid | ⬜ |
-| M2f | Synthesis + place-and-route sweep | ⬜ the long pole |
-| M2g | Report, frontier, snapshot | ⬜ |
+| M2e | Gate 1 across the grid | ✅ **done 2026-08-12 — 25/25 pass**, every built config bit-exact |
+| M2f | Synthesis + place-and-route sweep | ✅ **done 2026-08-12 — 25 configs, 0 failures.** ⚠️ nothing failed to fit, so the frontier has no measured edge |
+| M2g | Report, frontier, snapshot | ✅ **snapshotted to `docs/results-mnist/`.** Plots still pending — `dse/plot.py` has no `--dataset` |
 
 ---
 
@@ -56,10 +56,11 @@ could be the sweep, the toolchain, or the machine, and there is no way to tell w
 
 ### 1.2 The checkpoints are not in the repo
 
-Everything is trained — 14 baselines plus the 35-config reduction/`tau` study — but **only
-`mnist_n6_z3_distributive_w300` is on the machine that finished Phase 1.** Checkpoints are large
-and deliberately not in git (one JSC file exceeds GitHub's 100 MB limit); `docs/results-mnist/`
-describes them in ~10 KB instead.
+✅ **As of 2026-08-12 all 14 sweepable checkpoints are local** in
+`training/artifacts/sweeps-mnist/`, and the sweep is complete. This section is kept for a machine
+starting from a fresh clone: checkpoints are large and deliberately not in git (one JSC file
+exceeds GitHub's 100 MB limit), so `docs/results-mnist/` describes them in ~10 KB instead and a new
+box has to re-download them.
 
 Download `_checkpoint.pt` + `_testvectors.npz` pairs into `training/artifacts/` from **three**
 Kaggle Outputs, and mind which:
@@ -114,9 +115,11 @@ layer, group 100, which **is** the anchor.
 | ladder rungs 100/200/300/500/2000 | 5 | `mnist_reduction_tau_kaggle.ipynb` (`_tau*`) |
 | **`2x[1000,500]`** | **1** | ⬜ **needs one retrain at τ=2.246, ~4 min** |
 
-Expect roughly +0.27 pp from it, by analogy with `1x500` — small, and probably inside the noise
-floor. Retrain anyway: 4 minutes buys a grid where every point was trained the same way, and the
-alternative is a footnote on one row of the published frontier forever.
+~~Expect roughly +0.27 pp from it, by analogy with `1x500`.~~ ⚠️ **Retrained 2026-08-12 and the
+prediction was wrong**: 97.93 → **97.76**, slightly *down* and well inside the 0.24 pp floor. The
+analogy to `1x500` did not hold. It was still worth the 4 minutes — every point in the grid is now
+trained the same way, and the config turned out to matter for a different reason entirely (it is
+the only ~3,500-LUT model that meets 100 MHz; see the sweep entry).
 
 **Area, timing and Gate 1 are entirely unaffected** — `tau` is a training-time constant that never
 reaches hardware. Only the accuracy column moves. But it moves the *shape* of the ladder, not just
@@ -277,6 +280,121 @@ Predictions, recorded now so they can be scored later rather than reconstructed 
 ---
 
 ## Log
+
+### 2026-08-12 — ✅ M2e/M2f: the MNIST sweep is complete. 25 configs, 0 failures.
+
+`dse/run.py --dataset mnist --all --impl`, snapshotted to `docs/results-mnist/`. Every config that
+has a checkpoint is built and place-and-routed. Four grid entries remain untrained (`gaussian`,
+`linear`, `2x500`, `3x330`) — no notebook ever produced them.
+
+#### The ladder
+
+| rung | acc% | core | encoder | top | %dev | Fmax |
+|---|---|---|---|---|---|---|
+| `1x100` | 92.98 | 234 | 611 | **845** | 4.06 | **123.8** |
+| `1x200` | 95.93 | 420 | 839 | 1,264 | 6.08 | **111.3** |
+| `1x300` | 96.77 | 630 | 971 | 1,597 | 7.68 | **107.5** |
+| `1x500` | 97.70 | 1,168 | 1,079 | 2,246 | 10.80 | **108.4** |
+| `1x1000` | 97.97 | 2,272 | 1,220 | 3,490 | 16.78 | 93.1 |
+| `1x2000` | 98.26 | 4,821 | 1,315 | 6,294 | 30.26 | 94.0 |
+
+#### ⚠️ RETRACTED: "timing binds before area on MNIST"
+
+Recorded in §5 as a Phase 1 prediction and reported as confirmed after the z-sweep. **It is wrong.**
+The whole bottom half of the ladder clears 100 MHz comfortably — `1x100` reaches 123.8 MHz — and
+the 90–95 MHz figures were a property of `1x1000` and wider, not of the dataset. The z-sweep looked
+like confirmation only because every config in it was `1x1000`.
+
+**Corrected:** timing binds above roughly 500 nodes. Below that the design is comfortable on both
+axes. The prediction was generalised from one width, which is the same error this project has now
+retracted five times.
+
+#### ⚠️ RETRACTED: "pipeline depth is the lever, and it needs no retraining"
+
+Also from Phase 1, also wrong — and wrong in the unhelpful direction. Fewer stages is worse on
+**both** axes, at every width tested:
+
+| config | stages | core | top | Fmax |
+|---|---|---|---|---|
+| `1x2000` | 4 | 4,821 | 6,294 | **94.0** |
+| `1x2000` no OUT reg | 3 | 4,815 | 6,433 | 82.6 |
+| `1x2000` no POP reg | 3 | 5,560 | 6,871 | **53.2** |
+| `1x2000` 2-stage | 2 | 5,560 | 6,877 | 48.5 |
+
+Removing the popcount register costs **41 MHz and 739 core LUTs** — a 200-wide group sum is a deep
+adder tree and that register is load-bearing. **4 stages is both the architectural maximum for a
+single-layer model and the optimum.** There is no pipeline lever to pull.
+
+**What does move timing is the clock constraint itself.** Asking Vivado for 8 ns gives `1x1000`
+**97.4 MHz**; asking for 10 ns gives 93.1. Over-constraining buys 4.3 MHz for 128 LUTs.
+
+#### ✅ NEW: depth pays — for timing, not accuracy
+
+The five configs that actually meet the 100 MHz board clock:
+
+| config | acc% | LUTs | Fmax | latency |
+|---|---|---|---|---|
+| **`2x[1000,500]`** (the paper's) | 97.76 | **3,464** | **103.8** | 5 |
+| `1x500` | 97.70 | 2,246 | 108.4 | 4 |
+| `1x300` | 96.77 | 1,597 | 107.5 | 4 |
+| `1x200` | 95.93 | 1,264 | 111.3 | 4 |
+| `1x100` | 92.98 | 845 | 123.8 | 4 |
+
+`2x[1000,500]` and `1x1000` are the **same size** (3,464 vs 3,490 LUTs) and statistically the same
+accuracy (97.76 vs 97.97 — inside the 0.24 pp floor), but the two-layer model gets a **fifth
+pipeline stage for free** and hits 103.8 MHz where the single-layer manages 93.1.
+
+**At the board's real clock, the deep one is usable and the flat one is not.** This does not
+contradict the reduction study's "depth does not pay" — that was an accuracy claim and it stands.
+It adds an axis the accuracy study could not see.
+
+#### The encoder saturates; `n` is not a lever
+
+Encoder share of `dwn_top`: **72.3%** at `1x100`, 48.0% at `1x500`, **20.9%** at `1x2000`. Across a
+20× node range the encoder grows only 611 → 1,315 LUTs, because MNIST is slot-limited — widening
+the model buys new comparators only until the mapping saturates. The core/encoder ratio therefore
+inverts across the ladder.
+
+`n` buys almost nothing: `n=2` saves 7% of area for **−1.67 pp**, `n=4` saves 2% for −0.40 pp. Core
+is flat (2,257 / 2,272 / 2,272) because one node is one LUT6 regardless of `n`; only the encoder
+moves. On JSC `n` mattered. Here it does not.
+
+#### M2d: the area model, now measurable
+
+| rung | predicted | measured | error |
+|---|---|---|---|
+| `1x100` | 852 | 845 | +0.8% |
+| `1x200` | 1,091 | 1,264 | **−13.7%** |
+| `1x300` | 1,326 | 1,597 | **−17.0%** |
+| `1x500` | 1,820 | 2,246 | **−19.0%** |
+| `1x1000` | 3,105 | 3,490 | −11.0% |
+| `1x2000` | 5,802 | 6,294 | −7.8% |
+
+It **under**-predicts by 8–19% across the ladder, worst mid-range, and is accurate only at the
+smallest rung. Combined with the +108% comparator error at z=3, the model is not usable for MNIST
+projections. It never blocked the sweep — nothing was filtered — but **no projected MNIST area
+should be quoted.**
+
+#### ⚠️ The frontier has no measured edge
+
+`dse/report.py` says it and it is worth repeating: **no config in this sweep failed to fit.** The
+largest is 30.26% of the device, so that is *the largest tried*, not the frontier's edge. MNIST's
+ladder stops at 2,000 nodes; JSC's went to 3,000 specifically to find the wall. Extending upward
+until something fails is outstanding work.
+
+#### Corrections to my own predictions in this ledger
+
+- **`2x[1000,500]` at corrected `tau` was predicted at "roughly +0.27 pp".** Measured: 97.93 →
+  **97.76**, i.e. slightly *down*, and well inside the noise floor. The analogy to `1x500` did not
+  hold.
+- Three process errors, none of which corrupted data: (1) I diagnosed two concurrent sweeps
+  clobbering `results.json` and killed a healthy run — the two PIDs were a parent/child pair from
+  one launch, and counting `python.exe` by command-line substring was never a valid test; (2)
+  `dse/run.py` counted `checkpoint-mismatch` as "already done", so downloading the corrected
+  checkpoints changed nothing until transient statuses were made retryable; (3) the snapshot
+  printed `-> docs/results/` while writing to `docs/results-mnist/`, which reads exactly like the
+  JSC snapshot being overwritten. All three are fixed. **`save_result()` still does an unguarded
+  read-modify-write on shared JSON** — a real hazard if two sweeps ever do run at once.
 
 ### 2026-08-12 — word width is now derived per config, and it found two dead JSC sweep points
 
