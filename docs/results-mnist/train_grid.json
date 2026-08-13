@@ -1,0 +1,897 @@
+{
+  "training_set": [
+    {
+      "slug": "n6_z200_distributive_w50",
+      "label": "1x50",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        50
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 3.333333333333334,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w100",
+      "label": "1x100",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        100
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 4.902385484305461,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w200",
+      "label": "1x200",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w360",
+      "label": "1x360",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w500",
+      "label": "1x500",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        500
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 12.318032472459624,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w600",
+      "label": "1x600",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        600
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 13.829048091198098,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w800",
+      "label": "1x800",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        800
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 16.599017813493987,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w1200",
+      "label": "1x1200",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        1200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 21.47017162732062,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w1600",
+      "label": "1x1600",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        1600
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 25.770664687144944,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w2000",
+      "label": "1x2000",
+      "group": "ladder",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        2000
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 29.691203596049384,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z8_distributive_w200",
+      "label": "1x200 z=8",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 8,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z25_distributive_w200",
+      "label": "1x200 z=25",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 25,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w200",
+      "label": "1x200 z=50",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z100_distributive_w200",
+      "label": "1x200 z=100",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 100,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z400_distributive_w200",
+      "label": "1x200 z=400",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 400,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z800_distributive_w200",
+      "label": "1x200 z=800",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 800,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_gaussian_w200",
+      "label": "1x200 gaussian",
+      "group": "ofat-enc",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "gaussian",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_linear_w200",
+      "label": "1x200 linear",
+      "group": "ofat-enc",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "linear",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n4_z200_distributive_w200",
+      "label": "1x200 n=4",
+      "group": "ofat-n",
+      "n": 4,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n2_z200_distributive_w200",
+      "label": "1x200 n=2",
+      "group": "ofat-n",
+      "n": 2,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w100x100",
+      "label": "2x100",
+      "group": "ofat-L",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        100,
+        100
+      ],
+      "mapping": [
+        "learnable",
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.2100150310186635,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w65x65x65",
+      "label": "3x65",
+      "group": "ofat-L",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        65,
+        65,
+        65
+      ],
+      "mapping": [
+        "learnable",
+        "learnable",
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 7.10913951343757,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z8_distributive_w360",
+      "label": "1x360 z=8",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 8,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z25_distributive_w360",
+      "label": "1x360 z=25",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 25,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w360",
+      "label": "1x360 z=50",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z100_distributive_w360",
+      "label": "1x360 z=100",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 100,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z400_distributive_w360",
+      "label": "1x360 z=400",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 400,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z800_distributive_w360",
+      "label": "1x360 z=800",
+      "group": "ofat-z",
+      "n": 6,
+      "thermometer_bits": 800,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_gaussian_w360",
+      "label": "1x360 gaussian",
+      "group": "ofat-enc",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "gaussian",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_linear_w360",
+      "label": "1x360 linear",
+      "group": "ofat-enc",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "linear",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n4_z200_distributive_w360",
+      "label": "1x360 n=4",
+      "group": "ofat-n",
+      "n": 4,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n2_z200_distributive_w360",
+      "label": "1x360 n=2",
+      "group": "ofat-n",
+      "n": 2,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        360
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w180x180",
+      "label": "2x180",
+      "group": "ofat-L",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        180,
+        180
+      ],
+      "mapping": [
+        "learnable",
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z200_distributive_w120x120x120",
+      "label": "3x120",
+      "group": "ofat-L",
+      "n": 6,
+      "thermometer_bits": 200,
+      "thermometer": "distributive",
+      "layers": [
+        120,
+        120,
+        120
+      ],
+      "mapping": [
+        "learnable",
+        "learnable",
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 10.000000000000002,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w800",
+      "label": "1x800 z=50",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        800
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 16.599017813493987,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w1200",
+      "label": "1x1200 z=50",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        1200
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 21.47017162732062,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z100_distributive_w1600",
+      "label": "1x1600 z=100",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 100,
+      "thermometer": "distributive",
+      "layers": [
+        1600
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 25.770664687144944,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z100_distributive_w2400",
+      "label": "1x2400 z=100",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 100,
+      "thermometer": "distributive",
+      "layers": [
+        2400
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 33.333333333333336,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w2400",
+      "label": "1x2400 z=50",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        2400
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 33.333333333333336,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    },
+    {
+      "slug": "n6_z50_distributive_w3000",
+      "label": "1x3000 z=50",
+      "group": "corner",
+      "n": 6,
+      "thermometer_bits": 50,
+      "thermometer": "distributive",
+      "layers": [
+        3000
+      ],
+      "mapping": [
+        "learnable"
+      ],
+      "num_classes": 5,
+      "tau": 33.333333333333336,
+      "batch_size": 100,
+      "epochs": 32,
+      "lr": 0.01,
+      "lr_step": 14,
+      "lr_gamma": 0.1,
+      "seed": 20260802
+    }
+  ],
+  "count": 40
+}

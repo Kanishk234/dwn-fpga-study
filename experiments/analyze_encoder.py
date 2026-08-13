@@ -34,8 +34,19 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, layer_indices,  # noqa: E402
+from extract import (load_checkpoint, layer_indices,  # noqa: E402
                      extract_wiring)
+
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# These are JSC ANALYSES, not part of the shipped flow -- `experiments/` is deliberately
+# outside the dataset-agnostic contract in datasets/__init__.py (which covers exporter/,
+# rtlgen/, rtl/, tb/, scripts/ and harness/). Several bake in JSC measurements outright,
+# e.g. LUT_PER_BIT = 1519 / 202. So the JSC binding is stated HERE, explicitly, rather
+# than inherited from a module constant that pretended to be universal.
+FRAC_BITS = datasets.JSC.frac_bits
+WORD_BITS = datasets.JSC.word_bits
 
 # Measured cost of one 16-bit signed compare-against-constant on this part: 1519 LUTs / 202
 # comparators. Used only to estimate savings; the real number comes from synthesis.

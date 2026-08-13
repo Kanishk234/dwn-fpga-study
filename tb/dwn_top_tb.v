@@ -29,7 +29,7 @@ module dwn_top_tb;
 
     reg            clk = 1'b0;
     reg  [X_W-1:0] x_flat;
-    wire [2:0]     class_idx;
+    wire [`IDX_W-1:0]     class_idx;
 
     always #5 clk = ~clk;          // 100 MHz, the Basys 3 board clock
 
@@ -51,12 +51,12 @@ module dwn_top_tb;
             @(negedge clk);
             if (i >= LATENCY) begin
                 j = i - LATENCY;
-                if (class_idx !== expected[j][2:0]) begin
+                if (class_idx !== expected[j][`IDX_W-1:0]) begin
                     if (first_bad == -1) first_bad = j;
                     errors = errors + 1;
                     if (errors <= 10)
                         $display("  MISMATCH vector %0d: rtl=%0d golden=%0d",
-                                 j, class_idx, expected[j][2:0]);
+                                 j, class_idx, expected[j][`IDX_W-1:0]);
                 end
             end
             x_flat = (i < N_TOP) ? vectors[i] : {X_W{1'b0}};

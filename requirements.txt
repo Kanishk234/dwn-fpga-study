@@ -32,3 +32,12 @@ pyserial==3.5
 # Pareto plots for the Phase 2 DSE (dse/plot.py). Nothing else imports it -- the sweep runner
 # and the report tables work without it, so a missing matplotlib degrades plotting only.
 matplotlib==3.10.7
+
+# Fetching a dataset's canonical test set locally (scripts/dump_testset.py), so Gate 1b's
+# full-test-set claim does not need a Kaggle session for datasets whose split is reproducible
+# from the published row order. Only that script imports it -- the exporter, RTL generator and
+# golden model do not, so a missing scikit-learn degrades test-set dumping only.
+scikit-learn==1.9.0
+# fetch_openml's default parser needs pandas for dense data. Pulled in by the above,
+# not wanted for its own sake -- nothing else in the repo imports it.
+pandas==3.0.5

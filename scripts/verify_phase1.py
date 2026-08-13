@@ -33,10 +33,37 @@ EXPECTED = {
     'gate1_top_vectors': 1518,
     'nodes': 50,
     'comparators': 202,
-    'core_luts': 108, 'core_ff': 73,
+    # ⚠️ core_luts and top_luts CHANGED on 2026-08-11, from 108 and 1619, when rtl/argmax.v
+    # became a balanced tree unconditionally (it was a sequential scan). The tree costs +2 LUTs
+    # at five classes and is what lets ten classes meet the board clock at all.
+    #
+    # The pre-change values are not lost: they are reproducible at the `jsc-complete` tag, which
+    # is what REPORT.md's JSC figures are measured at and now say so. Pinning a published result
+    # to a tag is the right mechanism; freezing the RTL to protect a printed number is not.
+    #
+    # docs/results/sweep-results.json still holds chain-era areas. Anything synthesized after
+    # this change reads ~2 LUTs higher -- 0.12% at 1x50, 0.02% at the headline config, so no
+    # frontier point or conclusion moves. Do not mix the two in one table without saying so.
+    'core_luts': 110, 'core_ff': 73,
     'enc_luts': 1519, 'enc_ff': 0,
-    'top_luts': 1619, 'top_ff': 269,
-    'board_luts': 2058, 'board_ff': 865, 'board_bram': 8, 'board_dsp': 0,
+    'top_luts': 1621, 'top_ff': 269,
+    # The board design moved TWICE, in opposite directions, and only the second is large:
+    #
+    #   2058  jsc-complete tag, chain argmax + indexed-write loader
+    #   2060  argmax tree (+2). Confirmed on hardware -- Gate 1b 166,000/166,000, cycles and
+    #         both accuracies unchanged, so the +2 was area only.
+    #   1893  uart_loader byte shift register (-167). The variable part-select write it
+    #         replaced cost 439 LUTs in the loader; a shift register costs 77 and lets Vivado
+    #         map part of it into SRLs. WNS also improved +1.753 -> +2.014 ns.
+    #
+    # ALL THREE ARE POST-ROUTE, from utilization_routed.rpt, which is what build_bitstream.py
+    # parses and therefore the only source this dict may be fed from. utilization.rpt in the
+    # same directory is POST-SYNTH and reads 1896/861 for the same design -- close enough to
+    # look like the right number and wrong enough to fail this check. Do not mix them.
+    #
+    # Only dwn_core/dwn_top feed the DSE sweep, and neither moved here -- the loader is harness,
+    # outside dwn_top. So no Phase 2 frontier point is affected by this line.
+    'board_luts': 1893, 'board_ff': 864, 'board_bram': 8, 'board_dsp': 0,
     'gate1b_agree': 166000, 'gate1b_total': 166000,
     'core_cycles': 166815,
     'acc_float': '73.8361', 'acc_fixed': '73.8349',

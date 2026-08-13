@@ -32,17 +32,29 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
+
+import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
+sys.path.insert(0, os.path.join(REPO, 'exporter'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from extract import load_checkpoint, required_int_bits  # noqa: E402
 from run_gate1 import find_vivado_bin, gate1, python_exe, run  # noqa: E402
 from run_synth import (DEVICE_LUTS, parse_utilization, parse_wns,  # noqa: E402
                        run_one, targets)
 import grid as grid_mod  # noqa: E402
 from area_model import is_extrapolated, predict  # noqa: E402
+
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# The dataset being swept. Rebound by main() from --dataset; grid_mod.DS is kept in step with it,
+# because build() reads that global. Everything below is DERIVED from DS -- see use_dataset().
+DS = datasets.JSC
 
 RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 ARTIFACTS = os.path.join(REPO, 'training', 'artifacts')
@@ -50,14 +62,12 @@ ARTIFACTS = os.path.join(REPO, 'training', 'artifacts')
 # artifacts, and those must NOT move -- scripts/verify_phase1.py, host.py, run_tb.py and
 # run_gate1.py all locate them by a hardcoded path. Worst of all, verify_phase1.py finds the
 # 166k test set that way, and if it moved, Gate 1b would silently SKIP rather than fail.
-SWEEPS = os.path.join(ARTIFACTS, 'sweeps')
+SWEEPS = os.path.join(ARTIFACTS, DS.sweeps_dir)
 
 # Phase 1's checkpoint predates the slug convention. Rather than rename a file every recorded
 # number refers to, map it. Step 2c's training notebook writes `<slug>_checkpoint.pt` directly,
 # so this table should gain no further entries.
-ALIASES = {
-    'n6_z200_distributive_w50': 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt',
-}
+ALIASES = dict(DS.checkpoint_aliases)
 
 
 def resolve_checkpoint(cfg):
@@ -81,14 +91,54 @@ def resolve_checkpoint(cfg):
         p = os.path.join(ARTIFACTS, alias)
         if os.path.exists(p):
             return p
+    # Three spellings, most specific first.
+    #
+    # 1. TAU-SUFFIXED, e.g. `mnist_n6_z3_distributive_w300_tau1p678_checkpoint.pt`. When a
+    #    schedule changes, a config is retrained at the new tau and the suffix keeps the new
+    #    file beside the old one instead of overwriting a checkpoint other numbers refer to.
+    #    The suffix is CONSTRUCTED from the tau this grid wants, not globbed -- so it can only
+    #    ever match the right one, and a directory holding both tau=3.3333 and tau=1.678 for
+    #    the same architecture is unambiguous. This is why it is tried first: a bare-slug file
+    #    may well exist and be the superseded model.
+    # 2. PREFIXED, `mnist_<slug>_...` -- MNIST's notebooks write the dataset name; JSC's do not.
+    # 3. BARE, `<slug>_...` -- JSC's convention.
+    #
+    # None of this normalises by renaming: renaming a trained checkpoint breaks every recorded
+    # number that refers to it, which is the same reason ALIASES exists above.
+    tau_tag = f'{cfg.model.tau:.3f}'.replace('.', 'p')
+    names = [f'{DS.slug_prefix}{slug}_tau{tau_tag}_checkpoint.pt',
+             f'{DS.slug_prefix}{slug}_checkpoint.pt']
+    if DS.slug_prefix:
+        names.append(f'{slug}_tau{tau_tag}_checkpoint.pt')
+        names.append(f'{slug}_checkpoint.pt')
     for root in (SWEEPS, ARTIFACTS):
-        p = os.path.join(root, f'{slug}_checkpoint.pt')
-        if os.path.exists(p):
-            return p
+        for nm in names:
+            p = os.path.join(root, nm)
+            if os.path.exists(p):
+                return p
     return None
 
 
-SNAPSHOT = os.path.join(REPO, 'docs', 'results', 'sweep-results.json')
+SNAPSHOT = os.path.join(REPO, 'docs', DS.results_dir, 'sweep-results.json')
+
+
+def use_dataset(name):
+    """Point every sweep path at `name`'s artifacts. Call before anything reads them.
+
+    JSC's paths are its historical ones and must stay put: docs/results/ and
+    training/artifacts/sweeps/ are referenced by REPORT.md, README.md and the `jsc-complete` tag,
+    and build/dse/results.json holds 54 measured configs that a moved path would silently re-run
+    from scratch. The layout is recorded per dataset in `datasets/` rather than special-cased
+    here.
+    """
+    global DS, RESULTS, SWEEPS, ALIASES, SNAPSHOT
+    DS = datasets.get(name)
+    grid_mod.DS = DS                      # build() reads the grid module's global
+    RESULTS = os.path.join(REPO, 'build', 'dse', DS.build_subdir, 'results.json')
+    SWEEPS = os.path.join(ARTIFACTS, DS.sweeps_dir)
+    ALIASES = dict(DS.checkpoint_aliases)
+    SNAPSHOT = os.path.join(REPO, 'docs', DS.results_dir, 'sweep-results.json')
+    return DS
 
 
 def load_results():
@@ -233,9 +283,54 @@ def measure_only(cfg, checkpoint, vivado_bin):
     return out
 
 
+def widen_for_checkpoint(cfg, checkpoint):
+    """Widen the word if this checkpoint's thresholds do not fit the dataset's default.
+
+    The descriptor's `word_bits` is a DEFAULT, not an invariant. MNIST is Q0.8 for z<=8 and
+    needs Q1.8 at z=25, where one quantile threshold lands on exactly 1.0 and Q0.8 represents
+    [-1, 1). Same dataset, same features, different config -- so a per-dataset width cannot be
+    right for every point in a sweep that varies z.
+
+    `required_int_bits()` derives the floor exactly, so this widens rather than guessing, and
+    only ever widens: a config whose thresholds fit keeps the descriptor's width, which is what
+    makes JSC untouched. The result is a genuinely different hardware config and its name says
+    so (`q10.8` vs `q9.8`), which is correct -- it is not the same design.
+
+    Fractional bits are NOT touched. They are not derivable from the checkpoint (see
+    required_int_bits' docstring), and narrowing them to keep the word width would trade an
+    exact representation for a smaller one silently.
+
+    ⚠️ THAT CHOICE HAS A COST, and it is not always the right trade. Widening changes the word
+    width, so a widened config is no longer area-comparable with the rest of a sweep -- which
+    matters most on a one-factor-at-a-time axis, where the whole point is that only one thing
+    varies. JSC's two `linear` configs are the case in point: Q4.11 would represent them at
+    IDENTICAL 16-bit area, while this function would take them to 17-bit Q4.12 and confound the
+    encoding axis with word width.
+
+    So: correct when the fractional bits are load-bearing (MNIST needs all 8 to represent 8-bit
+    pixels exactly, so Q1.8 at 10 bits is the only option), and the wrong lever when an equally
+    exact narrower-fraction format exists at the same width. This function optimises for
+    exactness, which is the safe default, not the free one -- check `word_bits_widened` in a
+    result before reading a widened config against unwidened ones.
+    """
+    ck = load_checkpoint(checkpoint)
+    thr = ck['thermometer']['thresholds'].numpy()
+    need = required_int_bits(thr)
+    have = cfg.hw.word_bits - 1 - cfg.hw.frac_bits
+    if need <= have:
+        return cfg, None
+    word = 1 + need + cfg.hw.frac_bits
+    note = (f'widened Q{have}.{cfg.hw.frac_bits} -> Q{need}.{cfg.hw.frac_bits} '
+            f'({cfg.hw.word_bits} -> {word} bits): thresholds span '
+            f'+/-{float(np.abs(thr).max()):.6g} and need {need} integer bits')
+    return replace(cfg, hw=replace(cfg.hw, word_bits=word)), note
+
+
 def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quiet=True):
     """Emit, Gate 1, synthesize, parse. Returns a result record (never raises on a bad config)."""
     t0 = time.time()
+    # BEFORE the record is built, so cfg.name carries the real precision.
+    cfg, widen_note = widen_for_checkpoint(cfg, checkpoint)
     est = predict(list(cfg.model.layers), cfg.model.n, cfg.model.thermometer_bits,
                   cfg.model.num_classes, word_bits=cfg.hw.word_bits)
     rec = {
@@ -255,8 +350,12 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
         'status': 'pending',
     }
     rec.update(accuracy_of(checkpoint))
+    if widen_note:
+        rec['word_bits_widened'] = widen_note
 
     print(f'--- {cfg.name} ---')
+    if widen_note:
+        print(f'    {widen_note}')
     print(f'    predicted {est.board_luts:.0f} LUTs '
           f'({est.device_pct:.1f}% of device)'
           f'{"  [extrapolated]" if rec["predicted_extrapolated"] else ""}')
@@ -275,6 +374,10 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
                      work=os.path.join(cfg.build_dir, 'gate1'),
                      pipe={'lut': cfg.hw.pipe_lut, 'pop': cfg.hw.pipe_pop,
                            'out': cfg.hw.pipe_out, 'enc': cfg.hw.pipe_enc},
+                     # Explicit, not left to the emitter's own descriptor lookup: the config
+                     # name claims a precision and the RTL must actually be built at it. They
+                     # agreed only by coincidence while nothing overrode the default.
+                     word_bits=cfg.hw.word_bits, frac_bits=cfg.hw.frac_bits,
                      quiet=quiet)
     rec['latency'] = info.get('latency')
     rec['gate1_core_vectors'] = info.get('dwn_core_tb_vectors')
@@ -339,6 +442,8 @@ def run_config(cfg, checkpoint, vivado_bin, label='', group='', impl=False, quie
 
 def main() -> int:
     ap = argparse.ArgumentParser(description='Run sweep configs through Gate 1 + synthesis.')
+    ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
+                    help='which dataset to sweep (default %(default)s)')
     ap.add_argument('--checkpoint', help='trained checkpoint for the config(s) being run')
     ap.add_argument('--config', help='run one config by name (or its grid label)')
     ap.add_argument('--all', action='store_true', help='run every config in the grid')
@@ -353,6 +458,11 @@ def main() -> int:
     ap.add_argument('--vivado-bin', default=None)
     ap.add_argument('--verbose', action='store_true', help='stream Gate 1 output')
     args = ap.parse_args()
+
+    # Before anything reads a path. grid_mod.build() below reads grid's DS, which this sets.
+    use_dataset(args.dataset)
+    print(f'dataset: {DS.name}  (results {os.path.relpath(RESULTS, REPO)}, '
+          f'checkpoints {os.path.relpath(SWEEPS, REPO)})')
 
     entries = grid_mod.build()
     done = load_results()
@@ -389,7 +499,20 @@ def main() -> int:
     vivado_bin = find_vivado_bin(args.vivado_bin)
     ran = skipped = missing = filtered = 0
     for group, label, cfg, _ in sel:
-        if cfg.name in done and not args.force:
+        # A recorded result counts as done ONLY if it is a measurement. `checkpoint-mismatch`
+        # and `untrained` describe the state of the artifacts tree at the time, not the config
+        # -- and both become stale the moment the right checkpoint arrives. Treating them as
+        # done meant that downloading the corrected `_tau*` set changed nothing: the sweep
+        # skipped all five rungs it had just been unblocked for, and reported "skipped 24
+        # already-done" as though there were nothing to do.
+        #
+        # `gate1-failed` and `synth-failed` DO count as done: those are results about the
+        # design, and re-running them without changing anything would just fail again.
+        TRANSIENT = ('checkpoint-mismatch', 'untrained')
+        prior = done.get(cfg.name)
+        if prior is not None and prior.get('status') in TRANSIENT:
+            prior = None                      # retry: the blocker may have been resolved
+        if prior is not None and not args.force:
             skipped += 1
             continue
 

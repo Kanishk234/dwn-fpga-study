@@ -34,9 +34,15 @@ from dataclasses import dataclass
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'rtlgen'))
+sys.path.insert(0, REPO)
+
+import datasets  # noqa: E402
 
 DEVICE_LUTS = 20800          # XC7A35T
-JSC_FEATURES = 16
+
+# The dataset every default here is calibrated on. Callers that know better pass their own
+# `features` and `lut_per_bit`; predict() takes a Dataset directly.
+JSC_FEATURES = datasets.JSC.features
 
 # ---------------------------------------------------------------------------------------------
 # Calibration constants. Every one of these traces to a number in docs/phase1-ledger.md.
@@ -45,7 +51,7 @@ JSC_FEATURES = 16
 # 1519 LUTs / (202 comparators x 16 bits). A compare-against-constant costs about W/2 on a
 # carry chain, and 0.47 x 16 = 7.5 LUTs is exactly that -- Vivado is already near-optimal per
 # comparator, and per-comparator sharing was measured and ruled out at -5%.
-LUT_PER_COMPARATOR_BIT = 1519 / (202 * 16)
+LUT_PER_COMPARATOR_BIT = datasets.JSC.lut_per_comparator_bit
 
 # One DWN node is one LUT6 (brief §4) -- the architectural premise of the whole project.
 # MEASURED 2026-08-07, not assumed: `nodes_only` (50 lut_node, real tables and wiring)
@@ -180,12 +186,20 @@ def predict_comparators(layers, n, z, features=JSC_FEATURES, ratio=None):
     return int(min(avail, round(selection_fraction(slots, avail) * occupancy)))
 
 
-def predict(layers, n, z, num_classes, word_bits=16, features=JSC_FEATURES):
-    """Predicted area for one config. Pure arithmetic -- no Vivado, no checkpoint."""
+def predict(layers, n, z, num_classes, word_bits=None, features=None, ds=None):
+    """Predicted area for one config. Pure arithmetic -- no Vivado, no checkpoint.
+
+    `ds` is a datasets.Dataset supplying features, word width and the encoder calibration. It
+    defaults to JSC so every existing caller is unchanged; explicit `features`/`word_bits` still
+    override, which the JSC fragment sweeps rely on.
+    """
+    ds = datasets.JSC if ds is None else ds
+    features = ds.features if features is None else features
+    word_bits = ds.word_bits if word_bits is None else word_bits
     nodes = sum(layers)
     comparators = predict_comparators(layers, n, z, features)
 
-    encoder = comparators * word_bits * LUT_PER_COMPARATOR_BIT
+    encoder = comparators * word_bits * ds.lut_per_comparator_bit
 
     # The reduction depends on GROUP width, not just on how many final bits there are: the same
     # 360 bits cost more as 5 groups of 72 than as 36 groups of 10.

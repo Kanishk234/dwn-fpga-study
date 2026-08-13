@@ -40,7 +40,9 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, quantize,  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
+from extract import (load_checkpoint, quantize,  # noqa: E402
                      quantize_thresholds, saturation_is_lossless, layer_indices,
                      extract_tables, extract_wiring, encode, forward)
 
@@ -48,6 +50,11 @@ DEFAULT_CHECKPOINT = os.path.join(
     'training', 'artifacts', 'dwn_jsc_t200_distributive_50_l_b100_checkpoint.pt')
 
 # Must match harness/vector_store.v's DEPTH. The device cannot hold more than this per batch.
+# The JSC bitstream's vector-store depth. NOT a constant of the system: build_bitstream.py
+# derives DEPTH from the model and the block-RAM budget, and a 784-feature record is ~48x wider
+# than JSC's, so an MNIST build holds far fewer. The host must be told what the bitstream it is
+# talking to was built with -- it cannot see it -- hence --depth. Loading more records than the
+# store holds silently wraps and every result after the wrap is wrong.
 DEVICE_DEPTH = 1024
 
 
@@ -55,8 +62,19 @@ DEVICE_DEPTH = 1024
 # encoding
 # ---------------------------------------------------------------------------
 
-def pack_record(features_q, label, word_bits=WORD_BITS):
-    """Quantized features + label -> the 33 bytes the loader expects.
+def bytes_per_feature(word_bits):
+    """Wire width of one feature, in whole bytes. CEILING, not floor.
+
+    A word that is not a byte multiple pads on the wire: 9 bits travels as 2 bytes. Using
+    `// 8` gives 1 byte for a 9-bit word and silently truncates every feature. The Verilog
+    loader derives the same quantity as DATA_W/8, so DATA_W must be set to
+    n_features * 8 * bytes_per_feature(), not n_features * word_bits.
+    """
+    return -(-word_bits // 8)
+
+
+def pack_record(features_q, label, word_bits):
+    """Quantized features + label -> the record bytes the loader expects.
 
     Little-endian per feature and in feature order, so byte k lands at x_flat[k*8 +: 8]. Any
     other order silently transposes the input; --selftest is what catches that.
@@ -64,14 +82,17 @@ def pack_record(features_q, label, word_bits=WORD_BITS):
     Kept for the self-test, which checks one record at a time. Bulk transfers use pack_batch.
     """
     out = bytearray()
+    nbytes = bytes_per_feature(word_bits)
     mask = (1 << word_bits) - 1
     for f in features_q:
-        out += int(f & mask).to_bytes(word_bits // 8, 'little')
+        # Two's complement in `word_bits`, then zero-padded up to whole bytes. The padding is
+        # harmless because the encoder sign-extends from bit word_bits-1 on the FPGA side.
+        out += int(f & mask).to_bytes(nbytes, 'little')
     out.append(int(label) & 0xFF)
     return bytes(out)
 
 
-def pack_batch(features_q, labels):
+def pack_batch(features_q, labels, word_bits):
     """Vectorized pack_record over a whole batch. Returns one bytes object.
 
     The per-record version runs 16 int.to_bytes() calls per sample -- 2.7 million of them
@@ -82,24 +103,30 @@ def pack_batch(features_q, labels):
     '<i2' forces little-endian 16-bit regardless of host byte order, so the wire format does
     not silently depend on what machine the host runs on.
     """
-    words = np.ascontiguousarray(features_q).astype('<i2')     # (n, 16) LE int16
-    feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, 32)
+    nbytes = bytes_per_feature(word_bits)
+    dtype = {1: '<i1', 2: '<i2', 4: '<i4'}.get(nbytes)
+    if dtype is None:
+        raise SystemExit(f'no little-endian integer type is {nbytes} bytes wide; a word of '
+                         f'{word_bits} bits needs explicit padding in both this function and '
+                         f'the Verilog loader before it can be sent')
+    words = np.ascontiguousarray(features_q).astype(dtype)     # (n, features) LE
+    feat_bytes = words.view(np.uint8).reshape(len(words), -1)  # (n, features * nbytes)
     lab = np.asarray(labels, dtype=np.uint8).reshape(-1, 1)    # (n, 1)
     return np.hstack([feat_bytes, lab]).tobytes()              # row-major = record after record
 
 
-def quantize_features(x_raw, thr_q=None, frac_bits=FRAC_BITS):
-    """Scaled float features -> Q3.12 integers, exactly as the golden model does.
+def quantize_features(x_raw, frac_bits, word_bits, thr_q=None):
+    """Scaled float features -> fixed-point integers, exactly as the golden model does.
 
     quantize() saturates to the word range. The full test set has outliers past Q3.12's +8,
     and clamping them is lossless because every threshold sits well inside the range -- but
     that has to be checked against the actual thresholds, not assumed, so pass thr_q.
     """
-    q = quantize(x_raw, frac_bits)
-    if thr_q is not None and not saturation_is_lossless(thr_q, WORD_BITS):
+    q = quantize(x_raw, frac_bits, word_bits)
+    if thr_q is not None and not saturation_is_lossless(thr_q, word_bits):
         raise SystemExit(
             'A thermometer threshold lies at or beyond the edge of the '
-            f'Q{WORD_BITS-1-frac_bits}.{frac_bits} range, so saturating features could flip '
+            f'Q{word_bits-1-frac_bits}.{frac_bits} range, so saturating features could flip '
             'an encoder bit. Widen the INTEGER bits (Q4.12), not the fractional ones -- Q3.15 '
             'has the same range and would not help.')
     return q
@@ -211,7 +238,7 @@ def list_candidate_ports():
     return sorted(ports, key=rank)
 
 
-def autodetect(baud, timeout=1.0, verbose=True):
+def autodetect(baud, timeout=1.0, verbose=True, depth=DEVICE_DEPTH):
     """Find the board by pinging candidates. Returns (Board, port_info).
 
     Pinging is the detection: a port with the right USB IDs may still be the JTAG interface, or
@@ -229,7 +256,7 @@ def autodetect(baud, timeout=1.0, verbose=True):
         if verbose:
             print(f'  trying {p.device:8s} {p.description}')
         try:
-            board = Board(p.device, baud, timeout=timeout)
+            board = Board(p.device, baud, timeout=timeout, depth=depth)
         except SystemExit:
             raise
         except Exception as e:
@@ -255,7 +282,7 @@ def autodetect(baud, timeout=1.0, verbose=True):
 
 
 class Board:
-    def __init__(self, port, baud=115200, timeout=5.0):
+    def __init__(self, port, baud=115200, timeout=5.0, depth=DEVICE_DEPTH):
         serial = _serial()
         try:
             self.ser = serial.Serial(port, baud, timeout=timeout)
@@ -265,6 +292,7 @@ class Board:
                 '  Run with --list-ports to see what is actually present, or omit --port\n'
                 '  entirely to auto-detect.')
         self.port = port
+        self.depth = depth
         self.baud = baud
 
     def close(self):
@@ -277,8 +305,10 @@ class Board:
 
     def load_bytes(self, blob, n):
         """Load n pre-packed records. One write for the whole batch."""
-        if n > DEVICE_DEPTH:
-            raise ValueError(f'{n} records exceeds the device store ({DEVICE_DEPTH})')
+        if n > self.depth:
+            raise ValueError(f'{n} records exceeds the device store ({self.depth}). The '
+                             f'bitstream was built with a smaller DEPTH than the host assumes; '
+                             f'pass --depth to match it.')
         # Header and payload in a single write: two writes per batch means two chances for the
         # driver to sit on a partial buffer waiting out the latency timer.
         self.ser.write(b'L' + struct.pack('<H', n) + blob)
@@ -342,22 +372,28 @@ def selftest(checkpoint):
     hex_lines = open(os.path.join(work, 'x_quant.hex')).read().split()
     exp_lines = open(os.path.join(work, 'expected_top.hex')).read().split()
 
-    q = quantize_features(x_raw)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word, frac = ds.word_bits, ds.frac_bits
+    q = quantize_features(x_raw, frac, word)
     n_check = min(len(q), 200)
     errors = 0
 
     for i in range(n_check):
-        rec = pack_record(q[i], int(exp_lines[i], 16))
+        rec = pack_record(q[i], int(exp_lines[i], 16), word)
         # x_quant.hex is one 256-bit word per line, LSB-last. Reassembling the record's
         # feature bytes little-endian must reproduce it exactly.
-        got = int.from_bytes(rec[:WORD_BITS * 16 // 8], 'little')
+        got = int.from_bytes(rec[:-1], 'little')      # every byte but the trailing label
         want = int(hex_lines[i], 16)
         if got != want:
             if errors < 3:
                 print(f'  MISMATCH record {i}\n    got  {got:064x}\n    want {want:064x}')
             errors += 1
-        if len(rec) != 33:
-            print(f'  MISMATCH record {i}: {len(rec)} bytes, expected 33')
+        # CEILING via bytes_per_feature, not `// 8`: a 9-bit word is 2 bytes on the wire,
+        # and floor division here would expect a 785-byte MNIST record instead of 1,569.
+        expect_len = len(q[i]) * bytes_per_feature(word) + 1   # features, then one label byte
+        if len(rec) != expect_len:
+            print(f'  MISMATCH record {i}: {len(rec)} bytes, expected {expect_len}')
             errors += 1
 
     # Status reply parsing, against a frame built the way the RTL builds it.
@@ -367,11 +403,14 @@ def selftest(checkpoint):
         print('  MISMATCH status decode')
         errors += 1
 
-    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy())
+    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), frac)
+    nfeat = q.shape[1]
     print()
+    print(f'  dataset         : {ds.name}')
     print(f'  records checked : {n_check} (against tb/gen_vectors.py output)')
-    print(f'  record size     : 33 bytes (32 feature + 1 label)')
-    print(f'  format          : Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} signed, '
+    print(f'  record size     : {nfeat * bytes_per_feature(word) + 1} bytes '
+          f'({nfeat * bytes_per_feature(word)} feature + 1 label)')
+    print(f'  format          : Q{word-1-frac}.{frac} signed, '
           f'threshold range [{thr_q.min()}, {thr_q.max()}]')
     print(f'  mismatches      : {errors}')
     print(f'  RESULT          : {"PASS" if errors == 0 else "FAIL"}')
@@ -408,10 +447,12 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     npz = np.load(path)
     x_raw, y_true, y_float = npz['x_raw'], npz['y'], npz['pred']
     print(f'  test set : {os.path.basename(path)} ({x_raw.shape[0]} samples)')
+    print(f"  batching : {batch} vectors per load (the store's DEPTH)")
     if not is_full:
-        print('  WARNING: this is the 1000-sample testbench file, not the full test set.')
-        print('           Gate 1b requires all 166k. Run training/dump_testset_kaggle.ipynb')
-        print('           and put the result in training/artifacts/.')
+        print(f'  WARNING: this is the {x_raw.shape[0]}-sample testbench file, not a full test '
+              'set.')
+        print("           Gate 1b's claim is about the WHOLE test set, so this run does not")
+        print('           support it. Dump the full set (see training/) and rerun.')
     if limit:
         x_raw, y_true, y_float = x_raw[:limit], y_true[:limit], y_float[:limit]
         print(f'  --limit  : first {len(x_raw)} only -- a smoke test, not Gate 1b')
@@ -432,14 +473,18 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     cfg = ck['config']
     layers = [(extract_tables(ck['state_dict'], i), *extract_wiring(ck['state_dict'], i, cfg['n']))
               for i in layer_indices(ck['state_dict'])]
-    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), FRAC_BITS)
-    q = quantize_features(x_raw, thr_q)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word, frac = ds.word_bits, ds.frac_bits
+    print(f'  dataset  : {ds.name} ({ds.fixed_point}, {ds.record_bytes()}-byte record)')
+    thr_q = quantize_thresholds(ck['thermometer']['thresholds'].numpy(), frac)
+    q = quantize_features(x_raw, frac, word, thr_q)
 
-    saturated = int((np.abs(np.floor(x_raw.astype(np.float64) * 2**FRAC_BITS))
-                     > 2**(WORD_BITS-1) - 1).sum())
+    saturated = int((np.abs(np.floor(x_raw.astype(np.float64) * 2**frac))
+                     > 2**(word-1) - 1).sum())
     if saturated:
         print(f'  saturated: {saturated} feature value(s) clamped to the Q'
-              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} range -- lossless, every threshold is '
+              f'{word-1-frac}.{frac} range -- lossless, every threshold is '
               'well inside it')
 
     chunks = []
@@ -448,7 +493,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     y_ref = np.concatenate(chunks)
 
     diverge = int((y_ref != y_float).sum())
-    print(f'  reference: Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} golden model '
+    print(f'  reference: Q{word-1-frac}.{frac} golden model '
           f'(the spec the hardware implements)')
     print(f'             differs from the float32 model on {diverge}/{total} samples '
           f'({100*diverge/total:.4f}%)')
@@ -461,7 +506,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
     for start in range(0, total, batch):
         stop = min(start + batch, total)
         n = stop - start
-        board.load_bytes(pack_batch(q[start:stop], y_ref[start:stop]), n)
+        board.load_bytes(pack_batch(q[start:stop], y_ref[start:stop], word), n)
         board.run(n)
         cycles, correct = board.status_when_idle()
         agree += correct
@@ -491,8 +536,15 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
               f'-- the link is the entire cost')
         print()
 
+    # BOTH of these are SOFTWARE figures. `y_ref` is the quantized golden model, not the board.
+    # They are only the hardware's accuracy when `agree == total`, which is why the label says
+    # so conditionally: on a FAILING run, printing the reference under "on hardware" reports a
+    # healthy number from a board that disagreed. That happened on 2026-08-12 -- a run agreeing
+    # on 1,035 of 10,000 samples displayed "accuracy, Q0.8 (on hardware): 96.1400%", which is
+    # the single most misleading line this script could produce.
+    on_hw = ' (== hardware)' if agree == total else ' -- SOFTWARE ONLY, hardware disagreed'
     print(f'  accuracy, float32 model      : {100*(y_float == y_true).mean():.4f}%')
-    print(f'  accuracy, Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} (on hardware)  : '
+    print(f'  accuracy, Q{word-1-frac}.{frac} reference{on_hw}  : '
           f'{100*(y_ref == y_true).mean():.4f}%')
     print(f'  cost of fixed point          : '
           f'{100*((y_ref == y_true).mean() - (y_float == y_true).mean()):+.4f} pp')
@@ -501,7 +553,7 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
         print('  RESULT: PASS -- hardware reproduces the golden model to the sample')
     else:
         print(f'  RESULT: FAIL -- {total-agree} disagreements against the Q'
-              f'{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} reference.')
+              f'{word-1-frac}.{frac} reference.')
         print('  This is a real hardware/software divergence: the reference already accounts')
         print('  for quantization, so it cannot be explained away by precision.')
     return 0 if agree == total else 1
@@ -519,6 +571,9 @@ def main():
     ap.add_argument('--list-ports', action='store_true', help='show serial ports and exit')
     ap.add_argument('--ping', action='store_true')
     ap.add_argument('--gate1b', action='store_true')
+    ap.add_argument('--depth', type=int, default=DEVICE_DEPTH,
+                    help='vector-store DEPTH the bitstream was built with (default '
+                         '%(default)s, which is the JSC build). build_bitstream.py prints it.')
     ap.add_argument('--limit', type=int, help='only run the first N samples')
     ap.add_argument('--set-latency', type=int, metavar='MS',
                     help='set the FTDI latency timer (needs admin + a replug). 1 is ideal.')
@@ -552,7 +607,7 @@ def main():
         return selftest(ckpt)
 
     if args.port:
-        board = Board(args.port, args.baud)
+        board = Board(args.port, args.baud, depth=args.depth)
         if not board.ping():
             board.close()
             raise SystemExit(
@@ -562,7 +617,7 @@ def main():
         print(f'ping OK on {args.port} at {args.baud} baud')
     else:
         print(f'auto-detecting board at {args.baud} baud...')
-        board, info = autodetect(args.baud)
+        board, info = autodetect(args.baud, depth=args.depth)
         print(f'ping OK on {info.device} ({info.description}) at {args.baud} baud')
 
     lat = ftdi_latency(board.port)
@@ -577,7 +632,7 @@ def main():
     try:
         if args.gate1b:
             print('\n=== Gate 1b ===')
-            return gate1b(board, ckpt, limit=args.limit)
+            return gate1b(board, ckpt, batch=args.depth, limit=args.limit)
         return 0
     finally:
         board.close()

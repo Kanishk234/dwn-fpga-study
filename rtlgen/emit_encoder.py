@@ -30,11 +30,14 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'exporter'))
-from extract import (FRAC_BITS, WORD_BITS, load_checkpoint, layer_indices,  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets                                                             # noqa: E402
+from extract import (load_checkpoint, layer_indices,  # noqa: E402
+                     required_int_bits,
                      extract_tables, extract_wiring, quantize_thresholds, fits_in_word)
 
 
-def emit_encoder(ck, used, out_path, frac_bits=FRAC_BITS, word=WORD_BITS):
+def emit_encoder(ck, used, out_path, frac_bits, word):
     cfg = ck['config']
     z = cfg['thermometer_bits']
     thresholds = ck['thermometer']['thresholds'].numpy()
@@ -97,7 +100,7 @@ def emit_encoder(ck, used, out_path, frac_bits=FRAC_BITS, word=WORD_BITS):
 
 
 def emit_top(ck, out_path, total_bits, n_features, num_classes, core_latency,
-             word=WORD_BITS, pipe_enc=1, core_pipe=(1, 1, 1)):
+             word, pipe_enc=1, core_pipe=(1, 1, 1)):
     idx_w = max(1, int(np.ceil(np.log2(num_classes))))
     latency = pipe_enc + core_latency
     core_lut, core_pop, core_out = core_pipe
@@ -152,7 +155,7 @@ def emit_top(ck, out_path, total_bits, n_features, num_classes, core_latency,
     return latency
 
 
-def verify_emitted(path, used, thr_q, z, word=WORD_BITS):
+def verify_emitted(path, used, thr_q, z, word):
     """Parse the emitted comparators back and check every one against the checkpoint."""
     src = open(path).read()
     pat = re.compile(
@@ -181,13 +184,38 @@ def main():
     # dwn_core_params.vh below, so the two emitters cannot be given contradicting depths.
     ap.add_argument('--pipe-enc', type=int, default=1,
                     help='register after the comparators (default %(default)s)')
+    # Precision is a HARDWARE choice, not a property of the trained model: the same checkpoint
+    # can be built at several widths, and sweeping width is a real experiment. So these stay as
+    # flags -- but their DEFAULT comes from the dataset descriptor the checkpoint matches, not
+    # from a constant. It used to default to Q3.12 for everything, which is right for JSC and
+    # silently wrong for MNIST's Q0.8.
+    ap.add_argument('--word-bits', type=int, default=None,
+                    help='signed input word width (default: the dataset descriptor)')
+    ap.add_argument('--frac-bits', type=int, default=None,
+                    help='fractional bits in the input word (default: the dataset descriptor)')
     args = ap.parse_args()
 
     ck = load_checkpoint(args.checkpoint)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    word = ds.word_bits if args.word_bits is None else args.word_bits
+    frac = ds.frac_bits if args.frac_bits is None else args.frac_bits
+    print(f'dataset      : {ds.name}  (Q{word - 1 - frac}.{frac}, {word}-bit word)')
     cfg = ck['config']
     n, num_classes, z = cfg['n'], cfg['num_classes'], cfg['thermometer_bits']
     thresholds = ck['thermometer']['thresholds'].numpy()
     n_features, total_bits = thresholds.shape[0], thresholds.size
+
+    # Integer width is derivable exactly, so refuse a word that cannot hold the thresholds --
+    # a threshold outside the range makes every comparison against it meaningless, and the
+    # design would still elaborate. Fractional width is NOT derivable; see required_int_bits().
+    need = required_int_bits(thresholds)
+    if word - 1 - frac < need:
+        raise SystemExit(
+            f'ABORT: Q{word - 1 - frac}.{frac} cannot represent this model. Its thresholds '
+            f'span +/-{np.abs(thresholds).max():.4g} and need {need} integer bits; a '
+            f'{word}-bit word with {frac} fractional bits has {word - 1 - frac}. Widen the '
+            f'word or reduce --frac-bits.')
 
     sd = ck['state_dict']
     first = layer_indices(sd)[0]
@@ -213,22 +241,22 @@ def main():
 
     core_pipe = (core_pipe_of('LUT'), core_pipe_of('POP'), core_pipe_of('OUT'))
 
-    thr_q = emit_encoder(ck, used, enc_path)
+    thr_q = emit_encoder(ck, used, enc_path, frac_bits=frac, word=word)
     latency = emit_top(ck, top_path, total_bits, n_features, num_classes, core_latency,
-                       pipe_enc=args.pipe_enc, core_pipe=core_pipe)
+                       word=word, pipe_enc=args.pipe_enc, core_pipe=core_pipe)
 
     print(f'wrote {os.path.relpath(enc_path, REPO)}')
-    print(f'  {used.size} comparators, Q{WORD_BITS-1-FRAC_BITS}.{FRAC_BITS} signed '
-          f'({WORD_BITS}-bit), {total_bits - used.size} bits tied low')
+    print(f'  {used.size} comparators, Q{word-1-frac}.{frac} signed '
+          f'({word}-bit), {total_bits - used.size} bits tied low')
     print(f'  quantized threshold range [{thr_q.min()}, {thr_q.max()}] '
-          f'(fits {WORD_BITS}-bit signed)')
+          f'(fits {word}-bit signed)')
     print(f'wrote {os.path.relpath(top_path, REPO)}')
-    print(f'  dwn_top: {n_features}x{WORD_BITS}-bit features -> class index')
+    print(f'  dwn_top: {n_features}x{word}-bit features -> class index')
     print(f'  pipeline: ENC={args.pipe_enc} (core LUT/POP/OUT={"/".join(map(str, core_pipe))}, '
           f'latency {core_latency}) -> latency {latency} cycles, II=1')
     print()
 
-    seen = verify_emitted(enc_path, used, thr_q, z)
+    seen = verify_emitted(enc_path, used, thr_q, z, word=word)
     print(f'read-back check: {seen}/{used.size} comparators match the checkpoint '
           '(feature index + threshold constant)')
     print('  PASS')

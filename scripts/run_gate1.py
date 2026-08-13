@@ -149,7 +149,8 @@ def run_xsim(vivado_bin, work, top, snapshot=None):
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False):
+def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False,
+          word_bits=None, frac_bits=None):
     """Run Gate 1 for ONE config. Returns (ok, info).
 
     Importable so `dse/` can gate every sweep point on correctness without shelling out and
@@ -159,6 +160,11 @@ def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False):
 
     `pipe` is a dict with any of lut/pop/out/enc; omitted keys keep the emitter defaults.
     `info` carries the per-level vector counts so a caller can record them per config.
+
+    `word_bits`/`frac_bits` set the input fixed-point format; None keeps the exporter default.
+    They are passed to the encoder emitter AND the vector generator together, because those two
+    must quantise identically -- give them different widths and Gate 1 compares two different
+    designs and still reports PASS.
     """
     py = python_exe()
     pipe = pipe or {}
@@ -175,6 +181,9 @@ def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False):
 
     core_flags = (pipe_flag('pipe-lut', 'lut') + pipe_flag('pipe-pop', 'pop') +
                   pipe_flag('pipe-out', 'out'))
+    # One list, used for both the encoder and the golden model. Building it once is deliberate:
+    # it makes it impossible to widen one and not the other.
+    prec_flags = ([] if word_bits is None else ['--word-bits', str(word_bits)]) +                  ([] if frac_bits is None else ['--frac-bits', str(frac_bits)])
     info = {'rtl_dir': rtl_dir, 'work': work}
 
     say('=== 1/4  emit core RTL from checkpoint ===')
@@ -184,13 +193,13 @@ def gate1(ckpt, vivado_bin, rtl_dir=None, work=None, pipe=None, quiet=False):
 
     say('\n=== 2/4  emit encoder + top RTL from checkpoint ===')
     if run([py, os.path.join(REPO, 'rtlgen', 'emit_encoder.py'), ckpt,
-            '--outdir', rtl_dir] + pipe_flag('pipe-enc', 'enc'),
+            '--outdir', rtl_dir] + pipe_flag('pipe-enc', 'enc') + prec_flags,
            capture=quiet).returncode != 0:
         return False, dict(info, error='emit_encoder.py failed')
 
     say('\n=== 3/4  generate test vectors ===')
     if run([py, os.path.join(REPO, 'tb', 'gen_vectors.py'), ckpt,
-            '--outdir', work], capture=quiet).returncode != 0:
+            '--outdir', work] + prec_flags, capture=quiet).returncode != 0:
         return False, dict(info, error='gen_vectors.py failed')
 
     # Latency is read from the emitted header, so a swept pipeline depth needs no special
@@ -246,6 +255,10 @@ def main():
     ap.add_argument('--pipe-pop', type=int, default=None)
     ap.add_argument('--pipe-out', type=int, default=None)
     ap.add_argument('--pipe-enc', type=int, default=None)
+    ap.add_argument('--word-bits', type=int, default=None,
+                    help='signed input word width (default: the exporter constant, 16)')
+    ap.add_argument('--frac-bits', type=int, default=None,
+                    help='fractional bits in the input word (default: 12)')
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
@@ -259,6 +272,7 @@ def main():
         print(f'rtl dir : {os.path.relpath(rtl_dir, REPO)}')
 
     ok, _ = gate1(ckpt, vivado_bin, rtl_dir=args.rtl_dir, work=args.work,
+                  word_bits=args.word_bits, frac_bits=args.frac_bits,
                   pipe={'lut': args.pipe_lut, 'pop': args.pipe_pop,
                         'out': args.pipe_out, 'enc': args.pipe_enc})
     return 0 if ok else 1

@@ -24,11 +24,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from table import (load_conifer, load_hls4ml, load_literature,   # noqa: E402
-                   load_ours)
+from table import (BENCHMARKS, load_conifer, load_hls4ml,        # noqa: E402
+                   load_literature, load_ours, use_benchmark)
 
-OUT = os.path.join(REPO, 'build', 'cc', 'literature')
-SNAP = os.path.join(REPO, 'docs', 'results-cc')
+# Per-benchmark output dirs. JSC keeps docs/results-cc/ -- REPORT.md and the jsc-complete tag
+# reference it. The two studies are NEVER plotted together: their accuracy scales differ by ~20
+# points and their encoder economics run opposite (docs/mnist/phase2-ledger.md).
+OUTDIRS = {'jsc':   (os.path.join(REPO, 'build', 'cc', 'literature'),
+                     os.path.join(REPO, 'docs', 'results-cc')),
+           'mnist': (os.path.join(REPO, 'build', 'cc', 'literature-mnist'),
+                     os.path.join(REPO, 'docs', 'results-cc-mnist'))}
+OUT = OUTDIRS['jsc'][0]
+SNAP = OUTDIRS['jsc'][1]
+
+# Which dataset variants get a figure, in order, and the filename prefix. JSC deliberately
+# EXCLUDES 'unknown': those rows have no established dataset, so plotting them would invite
+# exactly the comparison the study says cannot be made.
+FIGURES = {'jsc': ('jsc', ('openml', 'cernbox')),
+           'mnist': ('mnist', ('mnist',))}
 DEVICE_LUTS = 20800
 
 # Okabe-Ito plus four extensions, assigned in a FIXED order so a method keeps its colour
@@ -85,7 +98,7 @@ def pareto(rows):
     return out
 
 
-def draw(ax, rows, dataset, ours_present):
+def draw(ax, rows, dataset, ours_present, label=None):
     # Series are keyed by (method, convention), never method alone: a Pareto curve drawn
     # across both would connect core-only points to encoder-included ones and show a frontier
     # that no single accounting produces. That is the error this whole figure exists to avoid.
@@ -137,34 +150,48 @@ def draw(ax, rows, dataset, ours_present):
     ax.set_axisbelow(True)
     for s in ('top', 'right'):
         ax.spines[s].set_visible(False)
-    ax.set_title(f'JSC-{dataset.upper()}', fontsize=13, fontweight='bold', loc='left')
+    # 'JSC-OPENML' names a variant; for a single-variant benchmark the variant name alone is
+    # right and 'JSC-MNIST' would be nonsense.
+    ax.set_title(label or f'JSC-{dataset.upper()}', fontsize=13, fontweight='bold', loc='left')
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--benchmark', choices=sorted(BENCHMARKS), default='jsc',
+                    help='which study to plot (default %(default)s)')
     ap.add_argument('--snapshot', action='store_true',
-                    help='also write into docs/results-cc/ for committing')
+                    help="also write into the benchmark's docs/results-cc dir for committing")
     args = ap.parse_args(argv)
+
+    global OUT, SNAP
+    use_benchmark(args.benchmark)
+    OUT, SNAP = OUTDIRS[args.benchmark]
 
     lit = load_literature()
     rows = list(lit['results']) + load_ours() + load_conifer() + load_hls4ml()
     os.makedirs(OUT, exist_ok=True)
 
     written = []
-    for dataset in ('openml', 'cernbox'):
+    prefix, variants = FIGURES[args.benchmark]
+    for dataset in variants:
         sel = [r for r in rows if r['dataset'] == dataset and r.get('lut')
                and r.get('accuracy_pct')]
         if not sel:
             continue
         ours = any(r['part'] == 'xc7a35t-1' for r in sel)
         fig, ax = plt.subplots(figsize=(11, 6.8))
-        draw(ax, sel, dataset, ours)
+        draw(ax, sel, dataset, ours,
+             label=dataset.upper() if prefix == dataset else None)
 
-        sub = ('our silicon (xc7a35t-1) vs published (xcvu9p) — LUTs transfer, ns does not'
+        # The published parts differ by benchmark: JSC's comparators are all xcvu9p, but MNIST's
+        # weightless rows (BTHOWeN) are xc7z020 -- same 7-series family and speed grade as ours,
+        # which is the closest silicon match in the study and worth naming.
+        published = {'jsc': 'xcvu9p', 'mnist': 'xcvu9p + xc7z020-1'}[args.benchmark]
+        sub = (f'our silicon (xc7a35t-1) vs published ({published}) — LUTs transfer, ns does not'
                if ours else
                'published work only — this project has NO results here, by design')
-        fig.suptitle(f'JSC accuracy vs area — {sub}', fontsize=9.5, y=.965,
+        fig.suptitle(f'{args.benchmark.upper()} accuracy vs area — {sub}', fontsize=9.5, y=.965,
                      x=.125, ha='left', color='#444')
         h, l = ax.get_legend_handles_labels()
         ax.legend(h, l, loc='lower center', fontsize=8, frameon=False, ncol=3,
@@ -194,14 +221,25 @@ def main(argv=None):
 
         for d in ([OUT, SNAP] if args.snapshot else [OUT]):
             os.makedirs(d, exist_ok=True)
-            path = os.path.join(d, f'jsc-{dataset}.png')
+            # `mnist-mnist.png` would be silly: when the benchmark has one variant and it shares
+            # the benchmark's name, the prefix carries no information.
+            stem = dataset if prefix == dataset else f'{prefix}-{dataset}'
+            path = os.path.join(d, f'{stem}.png')
             fig.savefig(path, dpi=200)
             written.append(os.path.relpath(path, REPO))
         plt.close(fig)
 
     for w in written:
         print('wrote', w)
-    print('\nTwo figures, never one: the datasets are ~1.05 pp apart and cannot share an axis.')
+    if args.benchmark == 'jsc':
+        print('\nTwo figures, never one: the datasets are ~1.05 pp apart and cannot share an axis.')
+    else:
+        # One figure, and the REASON matters: it is the absence of JSC's two-datasets defect,
+        # not an oversight. See docs/mnist/phase3-ledger.md 2.3.
+        print('\nOne figure: MNIST has a single canonical split, so no variant axis exists.')
+        print('NOTE gaps below 0.24 pp are inside our measured noise floor and are not rankings')
+        print('     (docs/mnist/reduction-ledger.md). Several literature rows are printed to whole')
+        print('     percent, i.e. +/-0.5 pp -- the table marks which.')
     return 0
 
 

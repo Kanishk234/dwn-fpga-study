@@ -113,13 +113,21 @@ def forward(x_bits, layers, num_classes):
 #
 # Q3.12 signed (16-bit): 10 bit errors and 0 class changes vs float32 on the 1000 local
 # samples. Q3.15 (19-bit) is the zero-bit-error fallback if that ever stops being good enough.
+# That is JSC's format, and it now lives in `datasets.JSC`, not here.
+#
+# THERE ARE NO MODULE-LEVEL FRAC_BITS/WORD_BITS. They were 12 and 16 -- JSC's -- and every
+# consumer that imported them inherited JSC's precision as a default it never stated. MNIST is
+# Q0.8, so each of those sites was a silent wrong answer waiting for a second dataset; six were
+# found one crash at a time before the constants were removed.
+#
+# The parameters below are therefore REQUIRED, not defaulted. A caller that does not know the
+# word width does not know enough to quantize, and should ask `datasets.identify(ck)`. Making
+# them required is the point: a missing argument is a TypeError at the call site, whereas a
+# default is a plausible wrong number that reaches the FPGA.
 # ---------------------------------------------------------------------------
 
-FRAC_BITS = 12
-WORD_BITS = 16
 
-
-def quantize(x, frac_bits=FRAC_BITS, word_bits=WORD_BITS):
+def quantize(x, frac_bits, word_bits):
     """Real features -> fixed point. Truncation, not rounding: free in hardware.
 
     SATURATES to the word range, and that is lossless here rather than a compromise. Q3.12
@@ -140,7 +148,7 @@ def quantize(x, frac_bits=FRAC_BITS, word_bits=WORD_BITS):
     return np.clip(q, lo, hi).astype(np.int64)
 
 
-def saturation_is_lossless(thr_q, word_bits=WORD_BITS):
+def saturation_is_lossless(thr_q, word_bits):
     """True if clamping features to the word range cannot change any comparison.
 
     Holds exactly when every threshold is strictly inside the representable range: a saturated
@@ -150,7 +158,28 @@ def saturation_is_lossless(thr_q, word_bits=WORD_BITS):
     return int(np.min(thr_q)) > lo and int(np.max(thr_q)) < hi
 
 
-def quantize_thresholds(thresholds, frac_bits=FRAC_BITS):
+def required_int_bits(thresholds):
+    """The integer bits a word MUST have to represent every threshold. Exact, not a heuristic.
+
+    A threshold outside the representable range makes the comparison against it meaningless, so
+    this is a hard floor: `word_bits >= 1 + required_int_bits(thr) + frac_bits`.
+
+    ⚠️ Its counterpart is NOT derivable. How many FRACTIONAL bits are needed depends on whether
+    quantisation changes predictions, which depends on the data, not the checkpoint. Deriving a
+    fractional width from thresholds alone reproduces the mistake in REPORT.md 5.6, where a
+    narrowing was fitted and validated on the same 1,000 samples and 8 of 15 features came out
+    too narrow. Report a floor as a floor; call a width "safe" only after measuring on held-out
+    data (experiments/experiment_encoder_width.py does that).
+    """
+    import numpy as _np
+    span = float(_np.max(_np.abs(_np.asarray(thresholds, dtype=_np.float64))))
+    bits = 0
+    while (1 << bits) <= span:
+        bits += 1
+    return bits
+
+
+def quantize_thresholds(thresholds, frac_bits):
     """Thresholds -> the integer constants the comparators are built against.
 
     floor() specifically: with T = floor(t * 2**F), `q_x > T` implies `x > t` exactly, so the
@@ -169,7 +198,7 @@ def encode(xq, thr_q):
     return (xq[:, :, None] > thr_q[None, :, :]).reshape(xq.shape[0], -1)
 
 
-def fits_in_word(values, word_bits=WORD_BITS):
+def fits_in_word(values, word_bits):
     """Range check for the chosen fixed-point word -- silent overflow would be invisible."""
     lo, hi = -(2 ** (word_bits - 1)), 2 ** (word_bits - 1) - 1
     return int(np.min(values)) >= lo and int(np.max(values)) <= hi

@@ -5,6 +5,12 @@ The University of Texas at Austin
 
 ---
 
+> **Version.** Every JSC figure in this report was measured at the git tag **`jsc-complete`**.
+> A later change to `rtl/argmax.v` — a balanced reduction, needed so that ten-class models meet
+> the board clock — moved the smallest design by two lookup tables (0.12%) and the headline design
+> by 0.02%. No frontier point or conclusion moves, but the printed digits are pinned to that tag
+> rather than to whatever the repository currently builds. Checking it out reproduces them exactly.
+
 ## Abstract
 
 Differentiable Weightless Neural Networks (DWNs) replace the multiply-accumulate arithmetic of a

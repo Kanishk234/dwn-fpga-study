@@ -29,6 +29,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from area_model import DEVICE_LUTS  # noqa: E402
 
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# Default dataset and its paths; main() rebinds from --dataset. JSC's are historical and must not
+# move -- see datasets/__init__.py and dse/run.py:use_dataset().
+DS = datasets.JSC
 RESULTS = os.path.join(REPO, 'build', 'dse', 'results.json')
 
 # Columns worth dumping. Core and encoder stay separate on purpose.
@@ -124,10 +130,16 @@ def fmt(v, spec=''):
 def main() -> int:
     ap = argparse.ArgumentParser(description='Sweep results, frontier, headline number.')
     ap.add_argument('--csv', help='write the full table to a CSV file')
+    ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
+                    help='which dataset to report on (default %(default)s)')
     ap.add_argument('--results', help='read an alternate results.json')
     ap.add_argument('--snapshot', action='store_true',
                     help='copy the results into docs/ as committed evidence')
     args = ap.parse_args()
+
+    global DS, RESULTS
+    DS = datasets.get(args.dataset)
+    RESULTS = os.path.join(REPO, 'build', 'dse', DS.build_subdir, 'results.json')
     rows = derive(load(args.results))
 
     ok = [r for r in rows if r['status'] == 'ok']
@@ -261,7 +273,7 @@ def main() -> int:
         # evidence that a config was actually built and tested rather than merely planned.
         # A few hundred KB of JSON is cheap; the 933 MB of weights it describes is not, and is
         # not needed to make the claim.
-        out = os.path.join(REPO, 'docs', 'results')
+        out = os.path.join(REPO, 'docs', DS.results_dir)
         os.makedirs(out, exist_ok=True)
         with open(os.path.join(out, 'sweep-results.json'), 'w') as f:
             json.dump({r['name']: r for r in rows}, f, indent=2, sort_keys=True)
@@ -272,7 +284,10 @@ def main() -> int:
         src = os.path.join(REPO, 'build', 'dse', 'train_grid.json')
         if os.path.exists(src):
             shutil.copy(src, os.path.join(out, 'train_grid.json'))
-        print(f'\nsnapshot -> docs/results/  ({len(rows)} configs) -- commit these')
+        # The path, not a literal: this printed 'docs/results/' while writing to
+        # docs/results-mnist/, which reads exactly like the JSC snapshot has just
+        # been overwritten -- alarming, and wrong.
+        print(f'\nsnapshot -> docs/{DS.results_dir}/  ({len(rows)} configs) -- commit these')
         print('  sweep-results.json/.csv + train_grid.json'
               '  (figures: dse/plot.py --snapshot)')
     return 0

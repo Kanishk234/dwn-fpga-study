@@ -16,16 +16,86 @@ Usage:
 """
 
 import argparse
+import math
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_gate1 import REPO, find_vivado_bin  # noqa: E402
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exporter'))
+from run_gate1 import DEFAULT_CHECKPOINT, REPO, find_vivado_bin  # noqa: E402
+from extract import load_checkpoint  # noqa: E402
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
 from run_synth import (BOARD_PERIOD_NS, DEFAULT_PART, DEVICE_LUTS,  # noqa: E402
                        parse_utilization, parse_wns, run_one)
 
 TOP = 'dwn_basys3_top'
+
+
+def check_rtl_matches(rtl_dir, ck, n_features, word_bits, n_classes, label_w):
+    """The generated RTL must be THIS checkpoint's, not whatever was emitted last.
+
+    WHY THIS EXISTS. This script derives the harness -- record size, store width, label width --
+    from the checkpoint, and prints a confident `dataset: <name>` banner from it. It does NOT
+    emit the network; that comes from `rtl_dir`, whatever happens to be sitting there. So a
+    build can pair one dataset's harness with another dataset's core and report the first one.
+
+    That is not hypothetical. On 2026-08-12 a `verify_phase1.py --with-board` run regenerated
+    JSC's RTL into build/rtl; the MNIST bitstream built minutes later wrapped an MNIST-shaped
+    1,569-byte loader around JSC's 256-bit core. Verilog TRUNCATES a too-wide connection rather
+    than erroring, so the build succeeded, met timing, programmed, ran, and agreed with the
+    golden model on 1,035 of 10,000 samples -- chance for ten classes. Nothing failed loudly.
+
+    Three checks, because no one of them is sufficient:
+      - x_flat width catches a different DATASET (the failure above)
+      - class_idx width catches a different CLASS COUNT, which truncates the answer rather
+        than the input, and can still look plausible
+      - the lut_node count catches a different MODEL at the SAME dimensions -- two MNIST
+        checkpoints have identical port widths, so widths alone would build either one happily
+    """
+    top_v = os.path.join(rtl_dir, 'dwn_top.v')
+    core_v = os.path.join(rtl_dir, 'dwn_core.v')
+    if not (os.path.exists(top_v) and os.path.exists(core_v)):
+        return                                  # the `missing` check above reports this better
+
+    src = open(top_v).read()
+    problems = []
+
+    # x_flat is features x word_bits -- NOT the store's DATA_W, which pads each feature to a
+    # whole byte. At 9 bits those differ (7,056 against 12,544) and conflating them would make
+    # this check fail on every correct MNIST build.
+    m = re.search(r'input\s+wire\s*\[(\d+):0\]\s*x_flat', src)
+    want = n_features * word_bits
+    if m and int(m.group(1)) + 1 != want:
+        problems.append(f'x_flat is {int(m.group(1))+1} bits, checkpoint implies {want} '
+                        f'({n_features} features x {word_bits}-bit)')
+
+    m = re.search(r'output\s+wire\s*\[(\d+):0\]\s*class_idx', src)
+    if m and int(m.group(1)) + 1 != label_w:
+        problems.append(f'class_idx is {int(m.group(1))+1} bits, checkpoint implies {label_w} '
+                        f'({n_classes} classes)')
+
+    want_nodes = sum(ck['config']['layers'])
+    got_nodes = len(re.findall(r'lut_node #', open(core_v).read()))
+    if got_nodes != want_nodes:
+        problems.append(f'dwn_core has {got_nodes} lut_node instances, checkpoint has '
+                        f'{want_nodes} ({ck["config"]["layers"]})')
+
+    if problems:
+        raise SystemExit(
+            'GENERATED RTL DOES NOT MATCH THE CHECKPOINT\n\n  ' + '\n  '.join(problems) +
+            f'\n\n{os.path.relpath(rtl_dir, REPO)} holds a different model. Regenerate it from '
+            'the checkpoint you meant:\n\n'
+            '  .venv\\Scripts\\python.exe scripts\\run_gate1.py --checkpoint <checkpoint>\n\n'
+            'run_gate1.py re-emits AND proves the result bit-exact, so it is the right way to '
+            'refill the directory. Building anyway would pair this harness with that model and '
+            'report these dimensions -- silently, because Verilog truncates.')
+
+# XC7A35T: 50 x 36 Kbit block RAMs. The vector store is the only thing that uses them, so this
+# is the whole budget it competes for.
+DEVICE_BRAM_BITS = 50 * 36 * 1024
 XDC = 'constraints/basys3.xdc'
 
 _PRIM = ['rtl/lut_node.v', 'rtl/popcount.v', 'rtl/argmax.v', 'rtl/pipe_reg.v']
@@ -58,6 +128,18 @@ def main():
     # 100 MHz divides exactly at 1M(100), 2M(50), 4M(25), 5M(20), 10M(10).
     ap.add_argument('--baud', type=int, default=None,
                     help='override the BAUD parameter (default: whatever the RTL says)')
+    # Harness dimensions are DERIVED from the checkpoint, not typed in. They were defaults in
+    # dwn_basys3_top.v sized for JSC (DATA_W=256, LABEL_W=3, DEPTH=1024), which would have been
+    # silently wrong for any other dataset -- the loader would still have accepted 33-byte
+    # records and written garbage.
+    ap.add_argument('--checkpoint', default=DEFAULT_CHECKPOINT,
+                    help='sets DATA_W / LABEL_W from the model (default: the Phase 1 config)')
+    ap.add_argument('--word-bits', type=int, default=None,
+                    help='input word width; must match what emit_encoder was given '
+                         '(default: the dataset descriptor)')
+    ap.add_argument('--bram-budget', type=float, default=0.15,
+                    help='fraction of block RAM the vector store may use (default %(default)s, '
+                         'which is what JSC used at DEPTH=1024)')
     args = ap.parse_args()
 
     vivado_bin = find_vivado_bin(args.vivado_bin)
@@ -77,7 +159,43 @@ def main():
     print(f'clock  : {BOARD_PERIOD_NS:.1f} ns ({1000/BOARD_PERIOD_NS:.0f} MHz)')
     print()
 
-    generics = [f'BAUD={args.baud}'] if args.baud else None
+    # ---- harness dimensions, derived from the model ----
+    ck = load_checkpoint(args.checkpoint)
+    ds = datasets.identify(ck)
+    ds.check_checkpoint(ck)
+    if args.word_bits is None:
+        args.word_bits = ds.word_bits
+    n_features = ck['thermometer']['thresholds'].numpy().shape[0]
+    n_classes = ck['config']['num_classes']
+    per_feat = -(-args.word_bits // 8)          # ceiling: a 9-bit word travels as 2 bytes
+    print(f'dataset: {ds.name}  ({ds.fixed_point} by descriptor)')
+    data_w = n_features * per_feat * 8
+    label_w = max(1, math.ceil(math.log2(n_classes)))
+    bits_per_vec = data_w + label_w
+    depth = 1 << int(math.floor(math.log2(max(
+        1, DEVICE_BRAM_BITS * args.bram_budget / bits_per_vec))))
+    addr_w = max(1, int(math.log2(depth)))
+
+    # Before anything is printed as fact about the design, prove the generated RTL is this
+    # checkpoint's. Everything below describes the harness; the network comes from rtl_dir.
+    check_rtl_matches(args.rtl_dir or os.path.join(REPO, 'build', 'rtl'),
+                      ck, n_features, args.word_bits, n_classes, label_w)
+
+    print(f'model  : {n_features} features x {args.word_bits}-bit, {n_classes} classes')
+    print(f'record : {n_features * per_feat + 1} bytes ({per_feat} B/feature + 1 label)')
+    print(f'store  : DATA_W={data_w} LABEL_W={label_w} DEPTH={depth} ADDR_W={addr_w}  '
+          f'({depth * bits_per_vec / 1024:.0f} Kbit, '
+          f'{depth * bits_per_vec / DEVICE_BRAM_BITS:.0%} of block RAM)')
+    if depth < 256:
+        print(f'         NOTE only {depth} vectors fit on-chip, so a full test set needs many '
+              f'load/run batches. That is throughput, not correctness.')
+    print()
+
+    generics = [f'FEATURES={n_features}', f'WORD_BITS={args.word_bits}',
+                f'DATA_W={data_w}', f'LABEL_W={label_w}',
+                f'DEPTH={depth}', f'ADDR_W={addr_w}']
+    if args.baud:
+        generics.append(f'BAUD={args.baud}')
     if args.baud:
         div = 100_000_000 / args.baud
         print(f'baud   : {args.baud:,} (override) -- {div:g} clocks/bit'
