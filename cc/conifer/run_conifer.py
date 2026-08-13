@@ -59,16 +59,46 @@ sys.path.insert(0, os.path.join(REPO, 'scripts'))
 from run_gate1 import find_vivado_bin  # noqa: E402
 from run_synth import DEFAULT_PART, DEVICE_LUTS, parse_utilization, parse_wns, run_one  # noqa: E402
 
+sys.path.insert(0, REPO)
+import datasets  # noqa: E402
+
+# ---------------------------------------------------------------------------------------------
+# THE DATASET. Module-level DS is the default (JSC), so a bare `python run_conifer.py` behaves
+# exactly as before; main() rebinds it and every derived path from --dataset. Nothing below may
+# name a dataset's dimensions -- adding a third means adding a descriptor, not editing this file.
+# ---------------------------------------------------------------------------------------------
+DS = datasets.JSC
+
 # Matches training/dwn_jsc_kaggle.ipynb and dse/grid.py TRAINING. Do not change independently.
+# These describe the SPLIT, not the dataset: a dataset whose descriptor declares a canonical
+# `test_split` (MNIST's 'tail:10000') uses that instead and never reaches these.
 SEED = 20260802
 TEST_SIZE = 0.2
-NUM_CLASSES = 5
 
 BOARD_PERIOD_NS = 10.0
 PRECISION = 'ap_fixed<18,8>'          # conifer's default; a sweep axis in its own right
-CACHE = os.path.join(REPO, 'build', 'cc', 'jsc_data.npz')
+
+CACHE = os.path.join(REPO, 'build', 'cc', f'{DS.name}_data.npz')
 OUT_ROOT = os.path.join(REPO, 'build', 'cc', 'conifer')
 RESULTS = os.path.join(OUT_ROOT, 'results.json')
+SNAPSHOT_DIR = os.path.join(REPO, 'docs', DS.cc_results_dir)
+
+
+def use_dataset(name):
+    """Point every derived path and the sweep grid at `name`. Call before anything reads them.
+
+    JSC's paths are unchanged by construction -- `build/cc/conifer` and `docs/results-cc` are
+    what the 14 measured rows already live in, and `docs/phase3-handoff.md` names the second.
+    Other datasets get a suffixed sibling rather than a subdirectory, so nothing existing moves.
+    """
+    global DS, CACHE, OUT_ROOT, RESULTS, SNAPSHOT_DIR, SWEEP
+    DS = datasets.get(name)
+    suffix = '' if DS is datasets.JSC else f'-{DS.name}'
+    CACHE = os.path.join(REPO, 'build', 'cc', f'{DS.name}_data.npz')
+    OUT_ROOT = os.path.join(REPO, 'build', 'cc', f'conifer{suffix}')
+    RESULTS = os.path.join(OUT_ROOT, 'results.json')
+    SNAPSHOT_DIR = os.path.join(REPO, 'docs', DS.cc_results_dir)
+    SWEEP = _sweep_for(DS)
 
 VITIS_RUN_CANDIDATES = [
     os.environ.get('VITIS_RUN', ''),
@@ -87,12 +117,15 @@ VITIS_RUN_CANDIDATES = [
 # So the grid brackets the useful region and deliberately steps just past the edge at each depth:
 # a config that does not fit is a data point (brief §12 risk #2), it just should not be most of
 # them. Ordered cheapest-first by total tree count, so an interrupted run banks the most points.
-SWEEP = sorted(
-    [(3, n) for n in (10, 20, 40, 80)] +
-    [(4, n) for n in (5, 10, 20, 40)] +
-    [(5, n) for n in (5, 10, 20)] +
-    [(6, n) for n in (3, 5, 10)],
-    key=lambda dn: dn[1] * (2 ** dn[0]))
+# The grid itself is data -- `datasets.<DS>.cc_gbdt_grid`, with the reasoning for its bounds
+# recorded there. Only the ORDERING lives here, because it is a property of how this script runs
+# rather than of the dataset: cheapest-first by total tree count, so an interrupted sweep banks
+# the most points.
+def _sweep_for(ds):
+    return sorted(ds.cc_gbdt_grid, key=lambda dn: dn[1] * (2 ** dn[0]))
+
+
+SWEEP = _sweep_for(DS)
 
 
 def find_vitis_run():
@@ -107,24 +140,58 @@ def find_vitis_run():
 # ------------------------------------------------------------------------------------------
 
 def load_data():
-    """JSC, prepared exactly as the DWN training notebooks prepare it. Cached after first pull."""
+    """The dataset, prepared exactly as the DWN training notebooks prepare it.
+
+    EVERY choice here comes from the descriptor, because a comparison is only controlled if the
+    competitor sees the same data the DWN saw. Getting the scaler or the split wrong does not
+    error -- it silently compares two models trained on different problems, which is the failure
+    mode this whole phase exists to avoid.
+
+    Two split conventions, and which one applies is a property of the dataset:
+
+      `test_split='tail:N'`  a CANONICAL split the published literature uses. MNIST's last
+                             10,000 rows. Reproducible from the raw data alone, so it is the one
+                             every MNIST number in the world is measured on.
+      (empty)                no canonical split exists, so the project chose one: a stratified
+                             sklearn split at TEST_SIZE/SEED, matching the DWN training
+                             notebook. JSC is this case.
+
+    Cached per dataset after first pull. The cache filename carries the dataset name -- a single
+    shared `data.npz` would silently serve JSC's features to an MNIST run.
+    """
     if os.path.exists(CACHE):
         d = np.load(CACHE)
         return d['X_train'], d['X_test'], d['y_train'], d['y_test']
 
     from sklearn.datasets import fetch_openml
     from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import LabelEncoder, StandardScaler
+    from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
-    print('fetching hls4ml_lhc_jets_hlf from OpenML (first run only, ~100 MB)...')
-    data = fetch_openml('hls4ml_lhc_jets_hlf', version=1, as_frame=True)
+    print(f'fetching {DS.openml_name} from OpenML (first run only)...')
+    data = fetch_openml(DS.openml_name, version=1, as_frame=True)
     X = data.data.to_numpy(dtype=np.float32)
     y = LabelEncoder().fit_transform(data.target.to_numpy())
-    assert X.shape[1] == 16 and len(np.unique(y)) == NUM_CLASSES
+    if X.shape[1] != DS.features or len(np.unique(y)) != DS.classes:
+        raise SystemExit(
+            f'{DS.name}: OpenML gave {X.shape[1]} features x {len(np.unique(y))} classes, '
+            f'descriptor says {DS.features} x {DS.classes}. Refusing rather than comparing '
+            'against a different problem than the DWN was trained on.')
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=SEED, stratify=y)
-    scaler = StandardScaler().fit(X_train)
+    if DS.test_split.startswith('tail:'):
+        n_test = int(DS.test_split.split(':', 1)[1])
+        X_train, X_test = X[:-n_test], X[-n_test:]
+        y_train, y_test = y[:-n_test], y[-n_test:]
+    elif DS.test_split:
+        raise SystemExit(f'{DS.name}: unsupported test_split {DS.test_split!r}')
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=TEST_SIZE, random_state=SEED, stratify=y)
+
+    # MinMax for a dataset whose features are natively bounded (MNIST's 8-bit pixels), standard
+    # otherwise. Trees are invariant to a monotonic per-feature rescale, so this does not change
+    # the GBDT's accuracy -- but it changes the THRESHOLD VALUES conifer emits, and therefore
+    # the comparator widths and the area. Matching the DWN's scaler keeps that comparable.
+    scaler = (MinMaxScaler() if DS.scaling == 'minmax' else StandardScaler()).fit(X_train)
     X_train = scaler.transform(X_train).astype(np.float32)
     X_test = scaler.transform(X_test).astype(np.float32)
 
@@ -390,7 +457,9 @@ def save(rows):
     print(f'\nresults -> {os.path.relpath(RESULTS, REPO)}  ({len(existing)} rows)')
 
 
-SNAPSHOT_DIR = os.path.join(REPO, 'docs', 'results-cc')
+# SNAPSHOT_DIR is defined with the other paths near the top and rebound by use_dataset(); it is
+# NOT redefined here. It was, and a second assignment below the first silently reverted every
+# --dataset run to JSC's docs/results-cc/.
 SNAPSHOT_COLS = ['name', 'depth', 'trees', 'status', 'accuracy_pct', 'accuracy_xgboost_pct',
                  'convert_mismatches', 'luts', 'ff', 'bram', 'dsp', 'device_pct',
                  'latency_cycles', 'ii', 'wns', 'fmax_mhz', 'latency_ns',
@@ -416,16 +485,30 @@ def snapshot():
         w = _csv.DictWriter(fh, fieldnames=SNAPSHOT_COLS, extrasaction='ignore')
         w.writeheader()
         w.writerows(rows)
-    ok = sum(1 for r in rows if r.get('status') == 'ok')
+    # `status == 'ok'` means SYNTHESIS SUCCEEDED, not that the design fits -- a config several
+    # times over the part still routes far enough to report a LUT count, and that count is the
+    # measurement. This summary used to print non-ok as "over-device", which lumped
+    # `not-synthesized`, `hls-failed` and `convert-mismatch` under a label none of them mean.
+    # Fitting is a property of device_pct; being measured at all is a property of status.
+    ok = [r for r in rows if r.get('status') == 'ok']
+    fit = sum(1 for r in ok if (r.get('device_pct') or 0) <= 100)
+    over = len(ok) - fit
+    other = {}
+    for r in rows:
+        if r.get('status') != 'ok':
+            other[r['status']] = other.get(r['status'], 0) + 1
+    tail = ''.join(f', {n} {s}' for s, n in sorted(other.items()))
     print(f'snapshot -> {os.path.relpath(SNAPSHOT_DIR, REPO)}  '
-          f'({len(rows)} rows, {ok} fit, {len(rows)-ok} over-device)')
+          f'({len(rows)} rows, {fit} fit, {over} over-device{tail})')
     return 0
 
 
 def main():
     ap = argparse.ArgumentParser(description='conifer GBDT through our synthesis flow.')
+    ap.add_argument('--dataset', default=datasets.JSC.name, choices=datasets.names(),
+                    help='which dataset to compare on (default %(default)s)')
     ap.add_argument('--snapshot', action='store_true',
-                    help='copy results into docs/results-cc/ for committing')
+                    help="copy results into the dataset's docs/results-cc*/ for committing")
     ap.add_argument('--depth', type=int, default=4)
     ap.add_argument('--trees', type=int, default=20)
     ap.add_argument('--sweep', action='store_true', help='the full depth x n_estimators curve')
@@ -433,12 +516,18 @@ def main():
     ap.add_argument('--force', action='store_true', help='re-run configs already in results.json')
     args = ap.parse_args()
 
+    # Before anything reads a path or the grid. --snapshot included: it writes to a
+    # dataset-specific directory and would otherwise overwrite JSC's committed rows.
+    use_dataset(args.dataset)
+
     if args.snapshot:
         return snapshot()
 
     X_train, X_test, y_train, y_test = load_data()
-    print(f'JSC: train {X_train.shape}  test {X_test.shape}  '
-          f'(seed {SEED}, test_size {TEST_SIZE}, matches the DWN split)')
+    split = (f'canonical {DS.test_split}' if DS.test_split
+             else f'seed {SEED}, test_size {TEST_SIZE}')
+    print(f'{DS.name}: train {X_train.shape}  test {X_test.shape}  '
+          f'({DS.scaling} scaling, {split} -- matches the DWN split)')
     print()
 
     configs = SWEEP if args.sweep else [(args.depth, args.trees)]

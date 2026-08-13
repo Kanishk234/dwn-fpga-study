@@ -142,6 +142,23 @@ class Dataset:
     # file would break every recorded number that refers to it, so it is mapped instead.
     checkpoint_aliases: tuple = ()
 
+    # ---- Phase 3, the controlled comparison ----
+    # Where cc/ writes. Split from `results_dir` because the CC snapshot is its own artifact:
+    # docs/results-cc/ is named in REPORT.md and docs/phase3-handoff.md §2.6 and must not move.
+    cc_results_dir: str = ''       # under docs/
+
+    # The conifer GBDT sweep, as data. NOT transferable between datasets, because xgboost builds
+    # `n_estimators x classes` trees for multiclass -- so at ten classes the same `n_estimators`
+    # costs TWICE the trees, and therefore roughly twice the area, that it does at five. A grid
+    # copied across would compare a 100-tree ensemble against a 50-tree one and call it the same
+    # point. MNIST's halves `n_estimators` to hold total tree count comparable to JSC's.
+    #
+    # Bounded by measurement, not guessed: JSC's `gbdt_d4_n10` (50 trees) came to 8,005 LUTs,
+    # i.e. ~160 LUTs per depth-4 tree on a 20,800-LUT part, and leaves roughly double per level.
+    # Each depth deliberately steps just past the device edge -- a config that does not fit is a
+    # data point (brief section 12, risk #2), it just should not be most of them.
+    cc_gbdt_grid: tuple = ()
+
     notes: str = ''
 
     def tau_for(self, width) -> float:
@@ -235,6 +252,13 @@ JSC = Dataset(
                             seed=20260802),
     slug_prefix='',                # JSC's grid writes bare slugs
     results_dir='results',
+    cc_results_dir='results-cc',   # named in REPORT.md and phase3-handoff.md -- do not move
+    # 14 configs, measured 2026-08-10. Reproduces cc/conifer/run_conifer.py's original SWEEP
+    # exactly; the ordering (cheapest-first by total trees) is applied in cc/, not here.
+    cc_gbdt_grid=((3, 10), (3, 20), (3, 40), (3, 80),
+                  (4, 5), (4, 10), (4, 20), (4, 40),
+                  (5, 5), (5, 10), (5, 20),
+                  (6, 3), (6, 5), (6, 10)),
     sweeps_dir='sweeps',
     build_subdir='',               # build/dse/results.json -- 54 measured configs live here
     checkpoint_aliases=(('n6_z200_distributive_w50',
@@ -286,6 +310,37 @@ MNIST = Dataset(
                             seed=20260811),
     slug_prefix='mnist_',
     results_dir='results-mnist',
+    cc_results_dir='results-cc-mnist',
+    # `n_estimators` HALVED against JSC's, because ten classes means xgboost builds twice the
+    # trees per round. Total tree count therefore brackets the same region: JSC's (4, 20) is 100
+    # trees and MNIST's (4, 10) is also 100. Floor of 3 rounds -- fewer is not a usable ensemble.
+    #
+    # TRIMMED TWICE, both times on measured cost. 13 -> 9 -> 6.
+    #
+    # `gbdt_d3_n5` came to 3,653 LUTs for 50 depth-3 trees = 73.1 LUTs/tree, and `gbdt_d4_n3` to
+    # 4,427 for 30 depth-4 trees = 147.6. A depth-d tree is 2**d - 1 comparators, so cost/tree
+    # scales (2**d - 1)/7 from the first: ~156 at d4 against 147.6 measured, i.e. the model is
+    # 5% pessimistic and good enough to plan with. That put four points several times over the
+    # 20,800-LUT part and they were dropped first.
+    #
+    # The second trim is about TIME, not area. HLS cost scales with total comparators
+    # (trees x 2**d - 1) AND with the 784-wide input interface: 350 comparators took 31 min,
+    # 450 took 42, and 700 was still running at 50. Extrapolating, the four largest survivors
+    # -- (3,20), (4,10), (5,5), (6,3) at 1,400-1,890 comparators -- were 2-3 hours EACH.
+    #
+    # What the remaining six buy is the curve from 17.6% to 77.8% of the device. Five of them
+    # sit below 47%, which is the range where conifer is competitive at all; `(5, 5)` at 77.8%
+    # is kept as the single high-accuracy anchor, because the open question is whether MORE
+    # TREES ever close the accuracy gap, and only the largest surviving ensemble can answer it.
+    # It costs 1,550 comparators against the next-largest 930, so cheapest-first ordering runs
+    # it LAST and it can be abandoned without losing the other five.
+    #
+    # NOTE this loses the measured frontier edge -- `(6, 3)` at ~19,700 (95%) was the one point
+    # whose answer was genuinely unknown. Recorded as a stated limit in the Phase 3 report, the
+    # same way Phase 2 recorded the DWN ladder stopping at 33% of device.
+    cc_gbdt_grid=((3, 5), (3, 10),
+                  (4, 3), (4, 5),
+                  (5, 3), (5, 5)),
     sweeps_dir='sweeps-mnist',
     build_subdir='mnist',
     ofat_rungs=(1000,),       # the tau anchor; every off-anchor rung needs its own tau
