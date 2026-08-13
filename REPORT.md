@@ -42,7 +42,53 @@ magnitude cheaper than the literature assumes.
 
 ---
 
-## 1. What was built
+## 1. Background
+
+### 1.1 Lookup tables, in hardware and in the model
+
+The Artix-7 XC7A35T contains 20,800 six-input lookup tables. Each stores 64 bits and, given six
+input bits, returns the bit at that address. Everything else on the device — arithmetic, control,
+comparison — is built from these.
+
+A weightless neuron with *n* inputs is a table of 2ⁿ learned bits addressed by its inputs. At
+*n* = 6 that is exactly the hardware primitive. We measured the correspondence rather than assuming
+it: a 50-neuron layer synthesizes to exactly 50 lookup tables, one-to-one.
+
+### 1.2 The architecture, in four stages
+
+**Binarization.** Real-valued features become bits by *thermometer encoding*: each feature is
+compared against a series of thresholds, one bit per threshold. We use the distributive variant
+[2], where thresholds sit at quantiles of the training distribution rather than at even intervals.
+
+**Lookup layers.** Groups of *n* bits address a table; each table emits one bit; those bits address
+the next layer. Which bits feed which table is *learned* during training and then frozen, so the
+wiring costs nothing at inference.
+
+**Reduction.** The final layer's bits are split equally among the classes and counted — a
+*popcount*.
+
+**Decision.** The highest count wins, resolved by an argmax tree.
+
+No stage multiplies. The network is memory reads, one adder tree, and one comparison tree — which
+is why every design here uses **zero DSP blocks and zero block RAM**.
+
+### 1.3 The encoder is hardware, and it is not free
+
+Thermometer encoding is usually described as preprocessing. In a fully parallel FPGA design it is a
+comparator per threshold that some neuron actually reads. In the smallest JSC design we measured,
+the encoder occupies **1,519 lookup tables against the network's 108** — fourteen times the model
+it feeds.
+
+**Published figures for this architecture generally exclude it.** That is the defect §6.1 is about,
+and §5.1 shows why a second dataset was needed to understand its size.
+
+### 1.4 How configurations are named
+
+`1x300` is one layer of 300 neurons; `2x[1000,500]` is two layers. `z` is thermometer thresholds
+per feature, `n` is inputs per neuron. So `1x1000 z=25` is a single 1,000-neuron layer over an
+encoder with 25 thresholds per input feature.
+
+## 2. What was built
 
 The upstream authors released PyTorch training code and no hardware. Everything below the training
 step is ours:
@@ -68,7 +114,7 @@ axes — live in a descriptor package and nowhere else; the exporter, generator,
 do not know which problem they are compiling. Reaching that state required removing seven separate
 hard-coded assumptions, described in [`docs/mnist/report.md`](./docs/mnist/report.md) §2.
 
-## 2. Verification
+## 3. Verification
 
 Two gates, both required before any area number is quoted.
 
@@ -89,9 +135,9 @@ on-chip.
 An area number without a correctness result is a number about the wrong design, so the sweep
 refuses to synthesize a configuration whose Gate 1 fails.
 
-## 3. Results
+## 4. Results
 
-### 3.1 JSC — 52 configurations
+### 4.1 JSC — 52 configurations
 
 ![JSC accuracy against area](./docs/results/frontier.png)
 
@@ -106,7 +152,7 @@ Two findings the original work could not have seen, because it reports three mod
 nothing between them: the paper's thermometer setting `z=200` sits **past its own knee** — `z=50`
 gives up 0.24 points for 40% less silicon — and **what runs out first is the clock, not the chip**.
 
-### 3.2 MNIST — 25 configurations
+### 4.2 MNIST — 25 configurations
 
 ![MNIST accuracy against area](./docs/results-mnist/frontier.png)
 
@@ -122,11 +168,11 @@ Only five configurations meet the board's 100 MHz clock; the two most accurate d
 the same size and statistically the same accuracy, but the two-layer model gets a fifth pipeline
 stage for free and reaches 103.8 MHz where the flat one manages 93.1.
 
-## 4. What two datasets show that one cannot
+## 5. What two datasets show that one cannot
 
 This section is the reason the combined report exists.
 
-### 4.1 The encoder's share inverts, and that is why area models do not transfer
+### 5.1 The encoder's share inverts, and that is why area models do not transfer
 
 ![JSC core against encoder](./docs/results/area_split.png)
 ![MNIST core against encoder](./docs/results-mnist/area_split.png)
@@ -147,7 +193,7 @@ datasets** (0.47 against 0.09 lookup tables per comparator bit) because MNIST's 
 cluster near zero where comparisons collapse. One dataset cannot reveal this; two make it
 unavoidable.
 
-### 4.2 Precision is a property of the data, not of the flow
+### 5.2 Precision is a property of the data, not of the flow
 
 JSC's 16-bit input word is **six bits wider than necessary**, and narrowing it costs accuracy that
 has to be measured on held-out data:
@@ -162,7 +208,7 @@ features are continuous and quantising them genuinely discards some.
 Integer width is derivable exactly from a checkpoint. **Fractional width is not derivable at all**
 and must be chosen and stated — a constraint any tool built on this work inherits.
 
-### 4.3 A measured noise floor, which overturned one of our own results
+### 5.3 A measured noise floor, which overturned one of our own results
 
 Four MNIST configurations trained under four seeds each: the spread is **0.24 points**, and the
 same seed does not reproduce — a rerun differed by up to 0.17 points, almost certainly GPU
@@ -175,9 +221,9 @@ model's **98.29%**. The advantage did not merely fail to clear the floor — it 
 **Nothing in this report ranks two designs on an accuracy gap below the relevant floor.** That rule
 excludes several comparisons we would otherwise have been able to make, and it is why §5.2 matters.
 
-## 5. Two defects in how this field compares results
+## 6. Two defects in how this field compares results
 
-### 5.1 Lookup-table counts mix conventions
+### 6.1 Lookup-table counts mix conventions
 
 Published counts frequently exclude the input encoder; ours never do. On JSC the DWN paper reports
 its largest model at 4,972 lookup tables — network only. With the encoder it is 7,011. Three
@@ -189,14 +235,14 @@ smaller. Because the encoder's share runs from 72% to 21% across the ladder, no 
 repairs a mis-conventioned table. **Every row must carry its own convention**, which is what the
 figures below encode in marker fill.
 
-### 5.2 Accuracy is reported at incomparable precision
+### 6.2 Accuracy is reported at incomparable precision
 
 The two most-cited MNIST comparators print `96%`. That spans ±0.5 points — **twice our measured
 floor** — so two such rows cannot be ranked against each other at all. An independent re-run puts
 the same named models at 95.20% and 95.42%, so those rows are an upper bound and our margins over
 them are understated rather than overstated.
 
-### 5.3 ✅ And one defect that turns out to be local
+### 6.3 ✅ And one defect that turns out to be local
 
 JSC Phase 3's largest correction was that **"JSC" names two different datasets** — an OpenML
 distribution (~830k samples) and a CERNBox one (~987k) — routinely listed in one table, with the
@@ -204,7 +250,7 @@ same method scoring ~1.05 points higher on OpenML. That is seven times our measu
 
 ![The same methods on the CERNBox JSC distribution](./docs/results-cc/jsc-cernbox.png)
 
-The figure above is the *same comparison as §6.1* on the other JSC distribution. It is a separate
+The figure above is the *same comparison as §7.1* on the other JSC distribution. It is a separate
 figure rather than a second series on one axis for exactly the reason under discussion: the two are
 not the same benchmark, and drawing them together would show a gap that is partly the data.
 
@@ -215,9 +261,9 @@ was endemic to the field or specific to that benchmark. It is specific.
 Our comparison scripts refuse to plot two datasets on one axis or draw a frontier across two
 conventions — enforced in code rather than in a footnote.
 
-## 6. Comparison against published and re-implemented work
+## 7. Comparison against published and re-implemented work
 
-### 6.1 JSC
+### 7.1 JSC
 
 ![JSC accuracy against area, ours and published](./docs/results-cc/jsc-openml.png)
 
@@ -233,7 +279,7 @@ Against the published LUT-DNN literature we are **not competitive on raw area**:
 design reaches 76.0% in 1,780 lookup tables against our 12,751. What differs is that ours includes
 the encoder and runs on a $150 board.
 
-### 6.2 MNIST
+### 7.2 MNIST
 
 ![MNIST accuracy against area, ours and published](./docs/results-cc-mnist/mnist.png)
 
@@ -261,7 +307,7 @@ only; there is no MNIST conifer curve.
 Of every published MNIST design in the table with an FPGA lookup-table count, **only BTHOWeN-Small
 would also fit this board.** NeuraLUT needs 2.6× the device, PolyLUT 3.4×, hls4ml 12.5×.
 
-### 6.3 Our implementation reproduces the original work
+### 7.3 Our implementation reproduces the original work
 
 | | ours | DWN paper | ratio | Δ acc |
 |---|---|---|---|---|
@@ -273,7 +319,7 @@ This is stronger evidence of correctness than Gate 1 provides. Gate 1 shows our 
 golden model; this shows the whole pipeline lands where the authors' independent implementation
 lands, on both datasets and at matched convention.
 
-## 7. Limitations
+## 8. Limitations
 
 - **Neither frontier has a measured edge.** JSC reached 90.3% of the device and MNIST 33%, both
   bounded by what was trained rather than by what fit. *"The largest model that fits"* is
@@ -293,7 +339,7 @@ lands, on both datasets and at matched convention.
 - **One JSC question is open with the original authors**: which of the two JSC distributions their
   published numbers use. Their paper and released code disagree.
 
-## 8. Conclusion
+## 9. Conclusion
 
 A weightless neural network runs on an entry-level FPGA, bit-exactly, on two datasets that differ
 by a factor of 49 in input width. The same exporter and generator produce both, with dataset facts
@@ -311,7 +357,134 @@ establish that one of them is local and the other is worse than a constant corre
 
 ---
 
-## Appendix — where everything is
+## References
+
+[1] A. Bacellar, Z. Susskind, M. Breternitz Jr., E. John, L. John, P. Lima, F. França.
+*Differentiable Weightless Neural Networks.* ICML, PMLR 235:2277–2295, 2024. arXiv:2410.11112.
+**Cite version 5**; version 1 reports different area figures for the same configurations.
+
+[2] A. Bacellar et al. *Distributive Thermometer: A New Unary Encoding for Weightless Neural
+Networks.* ESANN, 2022.
+
+[3] M. Mecik, M. Kumm. *Implementation and Analysis of Thermometer Encoding in DWN FPGA
+Accelerators.* Asilomar, 2025. arXiv:2512.15251.
+
+[4] Z. Susskind et al. *Weightless Neural Networks for Efficient Edge Inference* (BTHOWeN). PACT,
+2022. arXiv:2203.01479.
+
+[5] Z. Susskind et al. *ULEEN: A Novel Architecture for Ultra-Low-Energy Edge Neural Networks.*
+ACM TACO 20(4), 2023. arXiv:2304.10618.
+
+[6] M. Andronic, G. Constantinides. *PolyLUT: Learning Piecewise Polynomials for Ultra-Low Latency
+FPGA LUT-based Inference.* ICFPT, pp. 60–68, 2023. arXiv:2309.02334.
+
+[7] M. Andronic, G. Constantinides. *NeuraLUT: Hiding Neural Network Density in Boolean
+Synthesizable Functions.* FPL, 2024. arXiv:2403.00849.
+
+[8] B. Lou et al. *PolyLUT-Add: FPGA-based LUT Inference with Wide Inputs.* 2024. arXiv:2406.04910.
+
+[9] B. Lou et al. *SparseLUT: Sparse Connectivity Optimization for Lookup Table-based Deep Neural
+Networks.* 2025. arXiv:2503.12829.
+
+[10] A. Khataei, K. Bazargan. *TreeLUT: An Efficient Alternative to Deep Neural Networks for
+Inference Acceleration Using Gradient Boosted Decision Trees.* FPGA, pp. 14–24, 2025.
+arXiv:2501.01511.
+
+[11] Y. Umuroglu, N. Fraser, M. Blott et al. *LogicNets: Co-Designed Neural Networks and Circuits
+for Extreme-Throughput Applications.* FPL, pp. 291–297, 2020.
+
+[12] *A Survey on LUT-based Deep Neural Networks Implemented in FPGAs.* 2025. arXiv:2506.07367.
+
+[13] S. Summers et al. *conifer: Fast inference of Boosted Decision Trees in FPGAs for particle
+physics.* JINST 15, P05026, 2020. arXiv:2002.02534.
+
+[14] F. Fahim et al. *hls4ml: An Open-Source Codesign Workflow to Empower Scientific Low-Power
+Machine Learning Devices.* 2021.
+
+Per-row provenance and confidence for every published figure quoted here:
+[`cc/literature/`](./cc/literature/).
+
+## Appendix A — Reproducing this
+
+Requires Python 3.12 and Vivado 2025.2. A board is needed only for the silicon check; everything
+else runs without one. Training needs a GPU and runs off-machine, but **every result here
+reproduces from committed checkpoints without training anything.**
+
+```
+# Bit-exactness in simulation — the claim everything else rests on. Exits non-zero on any
+# disagreement. No precision flags: the word width comes from the dataset descriptor.
+python scripts/run_gate1.py                                  # JSC
+python scripts/run_gate1.py --checkpoint <mnist ckpt> --rtl-dir build/mnist/rtl
+
+# The full reproduction: 12 checks without a board, 22 with one. Areas must match EXACTLY,
+# or this machine's numbers are not comparable to the ones reported here.
+python scripts/verify_phase1.py
+python scripts/verify_phase1.py --with-board
+
+# One synthesis run, reporting network / encoder / whole design separately — the split §1.3
+# and §6.1 are about.
+python scripts/run_synth.py --impl
+
+# The comparison tables and figures in §7, from the committed measurements.
+python cc/literature/table.py --benchmark jsc
+python cc/literature/table.py --benchmark mnist
+python cc/literature/plot.py  --benchmark mnist --snapshot
+```
+
+⚠️ The full sweeps are tens of hours of Vivado. Every measurement is already committed under
+`docs/results*/`, so re-running is unnecessary to read or check any number here.
+
+## Appendix B — Glossary
+
+**argmax** — the circuit selecting the highest-scoring class. Ties resolve to the lowest index,
+matching numpy and torch, which the hardware must reproduce exactly.
+
+**bit-exact** — producing identical output to a reference on *every* input, not merely similar
+output. The verification standard used throughout.
+
+**block RAM (BRAM)** — dedicated memory blocks, separate from lookup tables. All designs here use
+none.
+
+**DSP block** — a hardware multiplier-accumulator. Weightless networks use none by construction,
+which is the architectural point.
+
+**Fmax** — the highest clock frequency at which a design meets timing. The board runs at 100 MHz,
+so a design below that does not run, whatever its area.
+
+**fixed-point, Q3.12 / Q0.8** — a signed number with that many integer and fractional bits. Q3.12
+is 16 bits covering [−8, +8); Q0.8 is 9 bits covering [−1, 1).
+
+**initiation interval (II)** — cycles between successive inputs. II = 1 means one result per clock,
+which every design here achieves.
+
+**iso-area / iso-accuracy** — comparing at matched size (which is more accurate?) or matched
+accuracy (which is smaller?), rather than comparing single points.
+
+**latency** — input to result, given in cycles *and* nanoseconds. Cycles are a property of the
+design; nanoseconds also depend on the part, which is why cross-silicon comparisons use cycles.
+
+**lookup table (LUT)** — the FPGA's basic logic element. A 6-input LUT stores 64 bits and returns
+one per input combination.
+
+**noise floor** — the spread in accuracy when a configuration is retrained under different seeds.
+Measured at 0.15 points (JSC) and 0.24 (MNIST). Differences below it are not results.
+
+**out-of-context synthesis** — building a design without surrounding system logic, so measurements
+describe the design alone. Standard practice, and used by all work cited here.
+
+**Pareto frontier** — the configurations not beaten on both accuracy and size at once.
+
+**place-and-route** — the stage after synthesis that assigns logic to physical sites and wires it.
+Its area and timing numbers are the quotable ones; post-synthesis figures are optimistic.
+
+**popcount** — counting the ones in a group of bits. The DWN's only arithmetic.
+
+**thermometer encoding** — turning a real value into bits by comparing it against a series of
+thresholds. *Distributive* places thresholds at quantiles of the training data rather than evenly.
+
+**z, n** — thresholds per input feature; inputs per neuron.
+
+## Appendix C — where everything is
 
 | | |
 |---|---|
