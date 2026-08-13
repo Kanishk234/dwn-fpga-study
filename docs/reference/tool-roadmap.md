@@ -278,16 +278,58 @@ obvious `torch.save(model.state_dict())` silently loses the encoder.
 3. **It must fail loudly on a bare `state_dict`**, naming the missing thermometer rather than
    emitting a broken encoder.
 
-### ⚠️ Q9 — fractional bits are not derivable, and the CLI shape depends on the answer
+### ✅ Q9 — RESOLVED 2026-08-13: ask for the INPUT precision, never for fractional bits
 
-Integer width **is** derivable exactly (`required_int_bits()`), and per-config: MNIST needs Q0.8 at
-z≤8 and **Q1.8 at z=25**, where one quantile threshold lands on exactly 1.0. `widen_for_checkpoint()`
-in `dse/run.py` already does this.
+The original framing was wrong. Three separate quantities were being conflated, and only one of
+them is genuinely undecidable.
 
-**Fractional width is not derivable from a checkpoint at all** — it depends on whether quantisation
-changes predictions, which depends on data the tool does not have. So the tool must **ask**,
-**default and say so loudly**, or **measure against user-supplied data**. All three are defensible;
-they produce different CLIs, so decide before writing one.
+**1. Integer width — derivable exactly, always.** `required_int_bits()`, per config. MNIST needs
+Q0.8 at z≤8 and **Q1.8 at z=25**, where one quantile threshold lands on exactly 1.0.
+`widen_for_checkpoint()` in `dse/run.py` already does this. No user input.
+
+**2. The comparator-merge floor — derivable exactly, from the thresholds.** Below
+`ceil(-log2(min gap between distinct thresholds))`, two distinct thresholds quantise to the same
+value and **two comparators collapse into one**. Measured:
+
+| checkpoint | min gap | implied floor | we used |
+|---|---|---|---|
+| MNIST `1x300` | 3.922e-03 | **8** | **8** |
+| MNIST `1x1000 z=25` | 3.922e-03 | **8** | 8 |
+| JSC `1x50 z=200` | 3.576e-07 | 22 | 12 |
+
+⚠️ **This is a warning, not the answer.** JSC shows why: the rule demands 22 bits and 12 is fine,
+because thresholds 3.6e-7 apart have essentially no data between them, so merging them costs
+nothing measurable. Report it; do not enforce it.
+
+**3. Whether quantisation flips an encoder bit — NOT derivable from a checkpoint.** A bit flips
+when a *data point* lands in the sub-LSB interval immediately above a threshold. That is a property
+of the data.
+
+#### The reframe: `--input-bits`, not `--frac-bits`
+
+"How many fractional bits?" is a question no user can answer. **"What precision is your input?"**
+is one they almost always can — and it determines the answer exactly when the input has a native
+quantum.
+
+**MNIST is the proof, and it is a proof rather than an observation.** Pixels are `k/255`, and
+thresholds are quantiles of those same values, so both sit on the same grid. With frac = 8,
+`floor(k · 256/255)` is strictly increasing over k = 0…255, so ordering is preserved exactly and
+the quantised encoding is **identical** to the float one for every possible input. That is why we
+measured 0 divergence across all 10,000 test samples — not luck, and not something that needed
+measuring at all once the argument is made.
+
+**So the policy is:**
+
+| input | what the tool does |
+|---|---|
+| native n-bit integers, scaled (images, most sensors) | `frac = n` → **provably lossless**, say so |
+| user supplies a sample | infer: if every value is `k/(2ⁿ−1)`, take n. Otherwise measure bit-error at candidate widths |
+| genuinely continuous, no sample | default, and report the measured bit-error on self-generated random vectors — labelled a **stress test, not a proof** |
+
+**The tool never asks for fractional bits, and never silently picks one.** ⚠️ And a measured
+bit-error on the tool's own random vectors must not be reported as a guarantee:
+`docs/jsc/report.md` §5.6 records this project fitting *and* validating an encoder narrowing on the
+same 1,000 samples, and 8 of 15 features coming out too narrow as a result.
 
 **Q1 was the highest-leverage question in this document, and it is now answered: generator-only.**
 That removes B2, B3 and the whole MNIST harness rework in one stroke.

@@ -43,14 +43,18 @@ project reads is our own. And a DWN is *two objects* — thermometer thresholds 
 the format, own both ends, and fail loudly on a bare `state_dict`.
 `docs/reference/checkpoint-format.md` is most of the specification already.
 
-**Q9. Fractional bits are not derivable.** Integer bits are, exactly and per-config. Fractional
-bits depend on data the tool does not have. Ask, default loudly, or measure — all defensible, all
-produce different CLIs.
+~~**Q9. Fractional bits.**~~ ✅ **Resolved — see roadmap Q9.** Short version: the tool asks for
+`--input-bits` (the *input's* precision), never for fractional bits. When the input has a native
+quantum — 8-bit pixels, most sensors — `frac = n` is **provably** lossless, not merely measured.
+MNIST is the proof: pixels are `k/255`, `floor(k·256/255)` is strictly increasing over k = 0…255,
+so ordering is preserved exactly, which is why 0 of 10,000 samples diverged. Continuous inputs get
+a default plus a measured bit-error, labelled a stress test rather than a proof.
 
 **Q3. Which upstream commits to support.** One pin is honest and cheap; a range needs a
 compatibility layer.
 
-**Q4. The name.** `dwn2rtl` is a placeholder used in discussion only.
+**Q4. The name.** `dwn2rtl` is a placeholder used in discussion only. The study repository it came
+from is **`dwn-fpga-study`**.
 
 ## 4. The file inventory
 
@@ -93,10 +97,13 @@ Make it the tool's first CI check rather than an assumption.
 
 ## 7. Suggested first steps
 
-1. Decide **Q9** (fractional bits) — it determines the CLI.
-2. Create the repo; copy the eight verbatim files; `pyproject.toml`; a CLI entry point.
-3. Port the exporter and emitters unchanged, then the vector generator in its rewritten form.
-4. Get `iverilog` green on one emitted design end to end.
+1. Create the repo; copy the eight verbatim files **unchanged** as the first commit, so the
+   rewrites are visible as their own commits afterwards. Then `pyproject.toml` and a CLI entry
+   point.
+2. Port the exporter and emitters, then the vector generator in its rewritten form.
+3. Implement the precision policy from roadmap Q9 — derive integer bits, take `--input-bits`,
+   warn on the comparator-merge floor.
+4. Get `iverilog` green on one emitted design end to end. **This is the first real gate.**
 5. Only then: yosys estimates, multi-version support, docs.
 
 ## 8. Pointers back
@@ -109,3 +116,6 @@ Make it the tool's first CI check rather than an assumption.
 | `docs/reference/datapath.md` | what each stage costs and how much generalises |
 | `REPORT.md` | the evidence the tool's README should cite |
 | `docs/mnist/report.md` §2 | the seven hard-coded dataset facts, and why none was findable by inspection |
+
+All paths above are relative to the study repository, **`dwn-fpga-study`**. From inside the tool
+repo they are that repo's paths, not this one's.
