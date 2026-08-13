@@ -284,7 +284,10 @@ def main() -> int:
         src = os.path.join(REPO, 'build', 'dse', 'train_grid.json')
         if os.path.exists(src):
             shutil.copy(src, os.path.join(out, 'train_grid.json'))
-        print(f'\nsnapshot -> docs/results/  ({len(rows)} configs) -- commit these')
+        # The path, not a literal: this printed 'docs/results/' while writing to
+        # docs/results-mnist/, which reads exactly like the JSC snapshot has just
+        # been overwritten -- alarming, and wrong.
+        print(f'\nsnapshot -> docs/{DS.results_dir}/  ({len(rows)} configs) -- commit these')
         print('  sweep-results.json/.csv + train_grid.json'
               '  (figures: dse/plot.py --snapshot)')
     return 0
