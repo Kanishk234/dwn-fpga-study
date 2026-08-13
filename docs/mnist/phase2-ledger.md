@@ -356,11 +356,29 @@ impossible. It is not — the percentage is wrong, not the build.
 | Slice LUTs | 20,800 |
 | **Slices** | **8,150** → 8,150 x 4 = **32,600 LUT sites** |
 
-8,150 slices is the **XC7A50T's** count. The 35T and 50T are the same die; the 35T is a
-capacity-binned 50T, so Vivado's device model carries the full 50T fabric while quoting the 35T's
-marketing LUT cap. The log confirms the build is real: Placer Task ran, `route_design` completed,
-`post_route.dcp` written, 0 errors, clean DRC. At 21,382 LUTs it used **5,532 of 8,150 slices —
-67.88%**, comfortably placeable.
+**The observation is solid; the mechanism is a hypothesis. Keep them apart.**
+
+*Observed, and not in doubt:* the build is real — Placer Task ran, `route_design` completed,
+`post_route.dcp` was written, 0 errors, clean DRC — and it used **5,532 of 8,150 slices = 67.88%**.
+So **20,800 LUTs is not a hard ceiling on this part**, whatever the reason.
+
+*Hypothesised:* 8,150 slices is the **XC7A50T's** count, and the 35T is a capacity-binned 50T
+sharing the same die, so the physical grid is larger than the licensed LUT figure.
+
+⚠️ **That hypothesis does not fully fit the report, and the gap is worth stating.** If Vivado were
+simply modelling 50T fabric, flip-flops would read 65,200 (8,150 x 8). They read **41,600**, which
+is the 35T's number:
+
+| | LUT | FF | Slices |
+|---|---|---|---|
+| XC7A35T datasheet | 20,800 | 41,600 | 5,200 |
+| XC7A50T datasheet | 32,600 | 65,200 | 8,150 |
+| **this report** | **20,800** | **41,600** | **8,150** |
+
+So the report mixes 35T LUT/FF availables with a 50T slice count. The consistent reading is that
+the LUT and FF "available" columns are licensed caps while the Slice row reports the physical grid
+— but that is inference from one report, not something verified against the part database. **Do not
+state the 50T-die explanation as established.** What is established is the observation above.
 
 **Consequences, and they touch every area number in both studies:**
 
