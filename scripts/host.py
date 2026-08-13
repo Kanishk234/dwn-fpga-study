@@ -536,8 +536,15 @@ def gate1b(board, checkpoint, batch=DEVICE_DEPTH, limit=None):
               f'-- the link is the entire cost')
         print()
 
+    # BOTH of these are SOFTWARE figures. `y_ref` is the quantized golden model, not the board.
+    # They are only the hardware's accuracy when `agree == total`, which is why the label says
+    # so conditionally: on a FAILING run, printing the reference under "on hardware" reports a
+    # healthy number from a board that disagreed. That happened on 2026-08-12 -- a run agreeing
+    # on 1,035 of 10,000 samples displayed "accuracy, Q0.8 (on hardware): 96.1400%", which is
+    # the single most misleading line this script could produce.
+    on_hw = ' (== hardware)' if agree == total else ' -- SOFTWARE ONLY, hardware disagreed'
     print(f'  accuracy, float32 model      : {100*(y_float == y_true).mean():.4f}%')
-    print(f'  accuracy, Q{word-1-frac}.{frac} (on hardware)  : '
+    print(f'  accuracy, Q{word-1-frac}.{frac} reference{on_hw}  : '
           f'{100*(y_ref == y_true).mean():.4f}%')
     print(f'  cost of fixed point          : '
           f'{100*((y_ref == y_true).mean() - (y_float == y_true).mean()):+.4f} pp')
