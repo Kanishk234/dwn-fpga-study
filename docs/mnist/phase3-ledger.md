@@ -24,8 +24,8 @@ its own headline. A wrong turn left visible is worth more than a tidy log.
 | 3L-c | Per-paper MNIST numbers into a machine-readable table | literature | ✅ **done 2026-08-13 — 26 rows, 21 verified** in `cc/literature/mnist_literature.json`. 4 low-priority items left in `pending` |
 | 3L-d | Combined table + Pareto plot against our frontier | literature | ✅ **done 2026-08-13** — `table.py --benchmark mnist`, `plot.py --benchmark mnist --snapshot`; figure in `docs/results-cc-mnist/` |
 | 3L-e | Phase 3 report | literature | ⬜ `docs/mnist/phase3-report.md` |
-| 3M-a | conifer (GBDT) on MNIST | hands-on | ⬜ |
-| 3M-b | hls4ml (quantized MLP) on MNIST | hands-on | ⬜ |
+| 3M-a | conifer (GBDT) on MNIST | hands-on | 🏁 **CLOSED 2026-08-13 at two measured rows** → `docs/results-cc-mnist/`. Iso-area: **DWN +13.45 pp at matched LUTs**; conifer **4.6× faster**. ⚠️ no curve, no measured ceiling |
+| 3M-b | hls4ml (quantized MLP) on MNIST | hands-on | ❌ **CUT 2026-08-13, deliberately.** A published MNIST row exists, it will not fit 784 inputs on this part, and JSC measured this axis in full. Reasons in the log |
 
 ---
 
@@ -372,6 +372,195 @@ comparison against it is meaningless without stating the DSP/BRAM. Same for `CNN
 
 This is the mirror image of the encoder-convention trap: there, others exclude area we include;
 here, others move area into resources we do not use at all. **Both need stating per row.**
+### 2026-08-13 — [hands-on] 🏁 3M-a STOPPED at two measured points. The hands-on half is closed.
+
+Snapshotted to `docs/results-cc-mnist/`. **Two synthesized rows plus one accuracy-only row**, and
+that is the final state — the sweep is not being resumed.
+
+| config | trees | acc% | LUTs | %dev | Fmax | cycles |
+|---|---|---|---|---|---|---|
+| `gbdt_d3_n5` | 50 | 84.31 | **3,653** | 17.56 | **477.3** | 3 |
+| `gbdt_d4_n3` | 30 | 85.90 | 4,427 | 21.28 | **477.3** | 2 |
+| `gbdt_d4_n5` | 50 | 88.34 | — | — | — | — |
+
+`gbdt_d4_n5` is the `--no-synth` smoke test: its accuracy is real and measured, its area is not.
+Kept because a third accuracy point is worth having; marked `not-synthesized` in the snapshot so
+it can never be read as an area result.
+
+#### The comparison that matters, and it is very nearly iso-area
+
+`gbdt_d3_n5` at **3,653 LUTs** and the DWN's `2x[1000,500]` at **3,464 LUTs** are within 5% of the
+same area, on the same part, at the same clock target, under the same encoder-inclusive
+convention:
+
+| | acc% | LUTs | %dev | Fmax |
+|---|---|---|---|---|
+| **DWN `2x[1000,500]`** | **97.76** | 3,464 | 16.65 | 103.8 |
+| conifer `gbdt_d3_n5` | 84.31 | 3,653 | 17.56 | **477.3** |
+| | **−13.45 pp** | +5% area | | **4.6×** |
+
+**13.45 pp at matched area.** That is the number this half of the phase exists to produce, and two
+rows were enough to produce it — an iso-area comparison needs a matched pair, not a curve.
+
+⚠️ **And conifer wins decisively on speed: 477.3 MHz against 103.8, at 3 cycles against 5.** It
+repeated across both configs, so it is a property of the flow rather than a fluke, and it belongs
+in the table with the same weight as the area result. A GBDT's critical path is one comparator
+tree; the DWN's is an encoder plus LUT layers plus a popcount.
+
+#### Why it stopped here — three reasons, and only the first is new
+
+1. **Background runs kept being killed externally**, twice within an hour, both mid-HLS. Config 3
+   (`gbdt_d3_n10`) lost ~58 minutes of HLS and produced no `csynth.xml`, so nothing was
+   salvageable. The cost of another point was not "one hour" but "one hour, repeatedly, until it
+   happens to land between kills".
+2. **HLS is disproportionately expensive here.** 350 comparators took 31 min, 450 took 42, 700 was
+   unfinished at 58 — driven by ensemble size *and* the 784-wide input interface.
+3. **JSC's Phase 3 already carries the trend argument** with a full 14-point curve on the same
+   mechanism. MNIST does not need to re-demonstrate that more trees do not close the gap.
+
+⚠️ **What is lost, stated plainly:** MNIST has **no conifer curve and no measured ceiling**. The
+supported sentence is *"the largest conifer ensemble built was 4,427 LUTs at 85.90%"* — never
+*"conifer's ceiling on this part is X"*. Same form of limitation Phase 2 recorded for the DWN
+ladder stopping at 33% of device.
+
+#### Correction to my own recommendation
+
+**I over-recommended running this sweep.** The reasoning that the hands-on half was needed to
+anchor cross-silicon literature rows was sound, but I sized it as a 13-point curve when an
+iso-area *pair* was sufficient, and it took two rounds of the question being asked before I
+updated. MNIST Phase 3's genuinely new content is the literature half — ULEEN and BTHOWeN
+benchmark MNIST and report no JSC, so it is DWN against its own family for the first time — and
+that needs no Vivado at all.
+
+#### A mislabel in `snapshot()`, fixed, affecting JSC's console output too
+
+The summary printed non-`ok` rows as "over-device". But `status='ok'` means **synthesis
+succeeded**, not that the design fits — so the split was really "synthesized / didn't". JSC's
+snapshot has been reporting *"10 fit, 4 over-device"* when the truth is **"10 fit, 0 over-device,
+4 synth-failed"**: those four are the largest configs and they failed synthesis outright rather
+than reporting a LUT count over the part.
+
+✅ **No published claim is affected** — "over-device" appears nowhere in `docs/phase3-report.md`
+or `REPORT.md`. The committed JSON and CSV are byte-identical; only the printed line changed.
+
+### 2026-08-13 — [hands-on] ❌ 3M-b hls4ml is CUT, and 3M-a is trimmed to six points
+
+**Both predictions from 3M-0 are confirmed on the first two configs**, and the scope decisions
+below follow from that plus a measured cost problem, not from impatience.
+
+| config | trees | acc% | LUTs | %dev | Fmax | LUTs/tree |
+|---|---|---|---|---|---|---|
+| `gbdt_d3_n5` | 50 | 84.31 | 3,653 | 17.56 | **477.3** | 73.1 |
+| `gbdt_d4_n3` | 30 | 85.90 | 4,427 | 21.28 | **477.3** | 147.6 |
+
+**Prediction 2 (per-tree cost) — confirmed precisely.** A depth-*d* tree is 2^*d*−1 comparators,
+so 73.1 at depth 3 predicts 156 at depth 4; measured **147.6**. Tree area is set by depth and
+comparator width, **not** by how many features exist to choose from — 784 features cost conifer
+nothing in area over JSC's 16.
+
+**Prediction 1 (accuracy) — confirmed, by a wide margin.** conifer spends **4,427 LUTs for
+85.90%**; the DWN's `1x100` gets **92.98% in 845**. Five times the area, seven points behind. On
+JSC the gap was arguable; here it is not close.
+
+⚠️ **One genuine conifer advantage, and it repeated across both configs: 477.3 MHz against our
+103.8**, at 3 cycles. That is a real result and belongs in the table with the same weight as the
+area result, not as a footnote.
+
+#### ❌ 3M-b (hls4ml on MNIST) is not being run. Reasons, so this is a decision and not a gap.
+
+1. **A published MNIST hls4ml row already exists** — ternary (Duarte), 260,092 LUTs, in the 3L-a
+   table. The axis is covered by citation in a way conifer's is not: **there is no published
+   MNIST GBDT-on-FPGA row at all**, which is exactly why 3M-a is the half worth keeping.
+2. **It will not fit.** On JSC, hls4ml fit only at quarter width. MNIST's first dense layer scales
+   with input count — **784 against 16** — so the measurement would be "does not fit", which the
+   260,092-LUT literature row already implies on a part 57× larger than ours.
+3. **JSC Phase 3 measured the hls4ml axis in full, under control.** The method is demonstrated;
+   repeating it on a dataset where the answer is known adds no evidence.
+
+⚠️ **What this costs, stated plainly:** MNIST has no *controlled* quantized-MLP comparison — only
+a cited one on different silicon. Any sentence comparing us to hls4ml on MNIST must say so.
+
+#### The trim: 13 → 9 → 6 configs, the second one for time rather than area
+
+The first trim dropped four points predicted several times over the device. The second is about
+**HLS cost, which scales with total comparators AND with the 784-wide input interface**:
+
+| comparators | HLS time |
+|---|---|
+| 350 (`d3_n5`) | 31 min |
+| 450 (`d4_n3`) | 42 min |
+| 700 (`d3_n10`) | still running at 50 min when stopped |
+
+Extrapolating, the four largest survivors (1,400–1,890 comparators) were **2–3 hours each** —
+10–13 hours for the tail alone. Six points remain, five below 47% of device, plus `(5, 5)` at
+77.8% kept as the single high-accuracy anchor: the open question is whether *more trees* ever
+close the gap, and only the largest surviving ensemble can answer it. Cheapest-first ordering
+runs it last, so it is abandonable without losing the other five.
+
+⚠️ **This loses the measured frontier edge.** `(6, 3)` at ~95% of device was the one point whose
+answer was genuinely unknown. Recorded as a stated limit, the same way Phase 2 recorded the DWN
+ladder stopping at 33% — *"the largest conifer config built was X"*, never *"the largest that
+fits is X"*.
+
+#### ⚠️ Vitis HLS stalled once, and it is silent when it does
+
+`gbdt_d4_n3`'s first attempt wedged in a `clang-tidy` pass: processes alive, **zero CPU
+system-wide for 45 s, zero new files**, no error in any log. Killed and restarted; it completed
+normally on the second attempt, so it is not a property of the design.
+
+**Liveness cannot be judged from `vitis_hls`'s own CPU** — the work happens in child processes
+(`clang`, `clang-tidy`), so the parent reads zero while the flow is perfectly healthy. The test
+that distinguishes them is a system-wide CPU sample plus a file count over the same window.
+
+### 2026-08-13 — [hands-on] 3M-0: `cc/` is dataset-aware, and two predictions recorded before measuring
+
+`cc/conifer/run_conifer.py` reads `datasets/` — same option-1 treatment `dse/` got in Phase 2,
+rather than a parallel MNIST path. `--dataset mnist` selects the OpenML name, feature and class
+counts, scaler, split, sweep grid and every output path.
+
+**JSC is provably unchanged**, which is the gate:
+
+```
+sweep identical to the original : True (14 configs, same order)
+paths                           : build/cc/conifer, docs/results-cc   (unchanged)
+X_train sha256[:16]             : 9815d799940ee527
+```
+
+That hash is the real check — `build/cc/jsc_data.npz` was written *before* the refactor and
+`load_data()` still returns it bit-identically.
+
+#### ⚠️ The GBDT grid does NOT transfer between datasets
+
+xgboost builds **`n_estimators × classes`** trees for multiclass. At MNIST's ten classes the same
+`n_estimators` therefore costs **twice the trees, and roughly twice the area**, that it does at
+JSC's five. Copying JSC's grid would have compared a 100-tree ensemble against a 50-tree one and
+recorded them as the same point.
+
+MNIST's grid halves `n_estimators` so total tree count brackets the same region — JSC's `(4, 20)`
+is 100 trees and MNIST's `(4, 10)` is also 100. Both grids live in `datasets/` as data, with the
+reasoning beside them.
+
+#### ⚠️ `SNAPSHOT_DIR` was assigned twice, 380 lines apart
+
+Once near the top and again at `docs/results-cc` below `save()`. The second wins, so every
+`--dataset mnist --snapshot` would have **overwritten JSC's committed rows** while printing a
+plausible message. Removed, with a comment where it used to be saying why it is not there.
+
+Found by reading rather than by running, which is the only way this one surfaces: the failure is
+silent, and its symptom is a corrupted artifact in a *different* dataset's directory.
+
+#### Predictions, recorded before the first measurement
+
+Both are falsifiable, and a surprise in either is a genuine finding rather than a bug.
+
+| | prediction | reasoning |
+|---|---|---|
+| **conifer accuracy** | **will not reach the DWN frontier**, and by a wider margin than on JSC | A GBDT splits one feature at a time. JSC's 16 features are engineered physics variables, each individually informative; MNIST's 784 raw pixels are not — no single pixel carries much, and trees cannot form the linear combinations that make pixels useful |
+| **conifer area** | **per-tree LUT cost close to JSC's ~160 at depth 4** | Tree area is set by depth (a depth-*d* tree is 2^*d*−1 comparators) and comparator width, not by how many features exist to choose from. If this is wrong, the mechanism is worth understanding |
+
+⚠️ The second prediction has a consequence worth stating in advance: if per-tree cost holds and
+MNIST needs *more* trees for accuracy, MNIST's conifer curve sits strictly worse than JSC's on
+both axes — which would make the comparison against DWN more lopsided here, not less.
 
 ### 2026-08-13 — [literature] 3L-a started: four rows verified, and three problems found
 

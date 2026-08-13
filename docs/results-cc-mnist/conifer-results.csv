@@ -1,0 +1,4 @@
+name,depth,trees,status,accuracy_pct,accuracy_xgboost_pct,convert_mismatches,luts,ff,bram,dsp,device_pct,latency_cycles,ii,wns,fmax_mhz,latency_ns,precision,part,clock_ns
+gbdt_d3_n5,3,5,ok,84.31,84.34,19,3653,1007,0,0,17.56,3,1,7.905,477.3,,"ap_fixed<18,8>",xc7a35tcpg236-1,10.0
+gbdt_d4_n3,4,3,ok,85.9,85.89,26,4427,810,0,0,21.28,2,1,7.905,477.3,,"ap_fixed<18,8>",xc7a35tcpg236-1,10.0
+gbdt_d4_n5,4,5,not-synthesized,88.34,88.36,24,,,,,,,,,,,"ap_fixed<18,8>",xc7a35tcpg236-1,10.0
