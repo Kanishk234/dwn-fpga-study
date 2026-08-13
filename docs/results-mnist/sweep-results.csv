@@ -1,0 +1,26 @@
+name,label,status,nodes,n,z,encoding,layers,pipe,clock_ns,accuracy_pct,dwn_core_luts,thermometer_encoder_luts,dwn_top_luts,dwn_top_ff,dwn_top_bram,dwn_top_dsp,device_pct,dwn_top_fmax_mhz,latency,predicted_board_luts,predicted_extrapolated,impl,seconds
+n2_z3_distributive_w1000_q9.8_p1111_c10,1x1000 n=2,ok,1000,2,3,distributive,[1000],1111,10.0,96.3,2257,996,3240,1673,0,0,15.58,95.3,4,3105,True,True,310.8
+n4_z3_distributive_w1000_q9.8_p1111_c10,1x1000 n=4,ok,1000,4,3,distributive,[1000],1111,10.0,97.57,2272,1147,3414,1784,0,0,16.41,92.5,4,3105,True,True,366.1
+n6_z1_distributive_w1000_q9.8_p1111_c10,1x1000 z=1,ok,1000,6,1,distributive,[1000],1111,10.0,97.91,2272,846,3118,1505,0,0,14.99,95.4,4,2970,True,True,370.5
+n6_z25_distributive_w1000_q10.8_p1111_c10,1x1000 z=25,ok,1000,6,25,distributive,[1000],1111,10.0,98.23,2272,2935,5195,2818,0,0,24.98,92.8,4,4773,True,True,984.0
+n6_z2_distributive_w1000_q9.8_p1111_c10,1x1000 z=2,ok,1000,6,2,distributive,[1000],1111,10.0,98.05,2272,1038,3310,1714,0,0,15.91,90.6,4,3038,True,True,406.5
+n6_z3_distributive_w1000_q9.8_p1100_c10,1x1000 2-stage,ok,1000,6,3,distributive,[1000],1100,10.0,97.97,2919,1220,4138,1766,0,0,19.89,54.9,2,3105,True,True,431.5
+n6_z3_distributive_w1000_q9.8_p1101_c10,1x1000 3-stage: no POP reg,ok,1000,6,3,distributive,[1000],1101,10.0,97.97,2919,1220,4125,1769,0,0,19.83,59.8,3,3105,True,True,803.5
+n6_z3_distributive_w1000_q9.8_p1110_c10,1x1000 3-stage: no OUT reg,ok,1000,6,3,distributive,[1000],1110,10.0,97.97,2292,1220,3505,1832,0,0,16.85,84.6,3,3105,True,True,453.4
+n6_z3_distributive_w1000_q9.8_p1111_c10,1x1000,ok,1000,6,3,distributive,[1000],1111,10.0,97.97,2272,1220,3490,1833,0,0,16.78,93.1,4,3105,True,True,362.0
+n6_z3_distributive_w1000_q9.8_p1111_c12,1x1000 clock 12ns (83 MHz),ok,1000,6,3,distributive,[1000],1111,12.0,97.97,2256,1220,3480,1833,0,0,16.73,86.6,4,3105,True,True,316.9
+n6_z3_distributive_w1000_q9.8_p1111_c8,1x1000 clock 8ns (125 MHz),ok,1000,6,3,distributive,[1000],1111,8.0,97.97,2337,1220,3618,1836,0,0,17.39,97.4,4,3105,True,True,360.2
+n6_z3_distributive_w1000x500_q9.8_p1111_c10,2x1000 z=3,ok,1500,6,3,distributive,"[1000, 500]",1111,10.0,97.76,2168,1302,3464,2360,0,0,16.65,103.8,5,2820,True,True,714.6
+n6_z3_distributive_w100_q9.8_p1111_c10,1x100,ok,100,6,3,distributive,[100],1111,10.0,92.98,234,611,845,491,0,0,4.06,123.8,4,852,True,True,662.8
+n6_z3_distributive_w2000_q9.8_p1100_c10,1x2000 2-stage,ok,2000,6,3,distributive,[2000],1100,10.0,98.26,5560,1315,6877,2821,0,0,33.06,48.5,2,5802,True,True,1137.6
+n6_z3_distributive_w2000_q9.8_p1101_c10,1x2000 3-stage: no POP reg,ok,2000,6,3,distributive,[2000],1101,10.0,98.26,5560,1315,6871,2822,0,0,33.03,53.2,3,5802,True,True,1166.0
+n6_z3_distributive_w2000_q9.8_p1110_c10,1x2000 3-stage: no OUT reg,ok,2000,6,3,distributive,[2000],1110,10.0,98.26,4815,1315,6433,2899,0,0,30.93,82.6,3,5802,True,True,1053.2
+n6_z3_distributive_w2000_q9.8_p1111_c10,1x2000,ok,2000,6,3,distributive,[2000],1111,10.0,98.26,4821,1315,6294,2901,0,0,30.26,94.0,4,5802,True,True,1034.4
+n6_z3_distributive_w2000x1000_q9.8_p1111_c10,2x2000 z=3,ok,3000,6,3,distributive,"[2000, 1000]",1111,10.0,98.32,4271,1403,5670,3935,0,0,27.26,92.3,5,5105,True,True,1380.8
+n6_z3_distributive_w200_q9.8_p1111_c10,1x200,ok,200,6,3,distributive,[200],1111,10.0,95.93,420,839,1264,760,0,0,6.08,111.3,4,1091,True,True,728.8
+n6_z3_distributive_w300_q9.8_p1100_c10,1x300 2-stage,ok,300,6,3,distributive,[300],1100,10.0,96.77,825,971,1785,891,0,0,8.58,75.3,2,1326,True,True,580.8
+n6_z3_distributive_w300_q9.8_p1101_c10,1x300 3-stage: no POP reg,ok,300,6,3,distributive,[300],1101,10.0,96.77,817,971,1788,899,0,0,8.6,85.5,3,1326,True,True,797.7
+n6_z3_distributive_w300_q9.8_p1110_c10,1x300 3-stage: no OUT reg,ok,300,6,3,distributive,[300],1110,10.0,96.77,641,971,1611,941,0,0,7.75,96.6,3,1326,True,True,526.4
+n6_z3_distributive_w300_q9.8_p1111_c10,1x300,ok,300,6,3,distributive,[300],1111,10.0,96.77,630,971,1597,945,0,0,7.68,107.5,4,1326,True,True,483.6
+n6_z3_distributive_w500_q9.8_p1111_c10,1x500,ok,500,6,3,distributive,[500],1111,10.0,97.7,1168,1079,2246,1231,0,0,10.8,108.4,4,1820,True,True,551.0
+n6_z8_distributive_w1000_q9.8_p1111_c10,1x1000 z=8,ok,1000,6,8,distributive,[1000],1111,10.0,98.13,2272,1618,3883,2129,0,0,18.67,91.5,4,3444,True,True,519.1
