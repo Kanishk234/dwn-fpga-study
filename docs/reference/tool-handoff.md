@@ -1,8 +1,13 @@
 # Starting the tool — a cold-start handoff
 
-**Read this first, then `tool-roadmap.md` §1–§8.** This file exists so a fresh session in a new
-repository can begin without reconstructing anything from chat history. Everything below is either
-settled or explicitly open; nothing is left implied.
+**Read this first, then `docs/tool-roadmap.md` §1–§8.** This file exists so a session can begin
+without reconstructing anything from chat history. Everything below is either settled or explicitly
+open; nothing is left implied.
+
+**This repository stands alone.** It shares no code, no build and no dependency with the study
+repository the generator came from — the only thing connecting them is that both target
+[Alan Bacellar's DWN implementation](https://github.com/alanbacellar/DWN). References marked
+*(study repo)* are **citations to published evidence, not files you can open from here.**
 
 ---
 
@@ -22,7 +27,7 @@ that Verilog matches the model. Nothing else.
 **The encoder always ships**, and its area is always reported separately from the network's. It is
 intrinsic to a DWN, not preprocessing a user supplies — and on the smallest JSC model it is
 **fourteen times** the network it feeds. Emitting the network alone would commit exactly the
-reporting defect `docs/jsc/report.md` §5.2 criticises in published work.
+reporting defect `docs/jsc/report.md` *(study repo)* §5.2 criticises in published work.
 
 ## 2. Settled, with the reasoning
 
@@ -41,7 +46,7 @@ reporting defect `docs/jsc/report.md` §5.2 criticises in published work.
 project reads is our own. And a DWN is *two objects* — thermometer thresholds live outside the
 `state_dict`, so `torch.save(model.state_dict())` silently loses the encoder. The tool must define
 the format, own both ends, and fail loudly on a bare `state_dict`.
-`docs/reference/checkpoint-format.md` is most of the specification already.
+`docs/checkpoint-format.md` is most of the specification already.
 
 ~~**Q9. Fractional bits.**~~ ✅ **Resolved — see roadmap Q9.** Short version: the tool asks for
 `--input-bits` (the *input's* precision), never for fractional bits. When the input has a native
@@ -56,26 +61,23 @@ compatibility layer.
 **Q4. The name.** `dwn2rtl` is a placeholder used in discussion only. The study repository it came
 from is **`dwn-fpga-study`**.
 
-## 4. The file inventory
+## 4. Where this code came from
 
-Verified: the Gate 1 path compiles **nine files, none from `harness/`**, and the testbenches
-instantiate only `dwn_top`/`dwn_core`. The core deliverable is already cleanly separable.
+Provenance only. The import was a one-time event; none of the left column is a live dependency.
 
-| source | lines | fate |
+| in the study repo | lines | became |
 |---|---|---|
-| `rtl/{lut_node,popcount,argmax,pipe_reg}.v` | 194 | **copy verbatim** |
-| `tb/{dwn_core,dwn_top}_tb.v` | 177 | **copy** — already self-checking (`PASS`/`FAIL`, `$finish`) |
-| `exporter/extract.py` | 296 | copy — it is the golden model too |
-| `rtlgen/emit_core.py`, `emit_encoder.py` | 559 | copy |
-| `tb/gen_vectors.py` | 215 | **rewrite** — drop the real-data half, keep the random half |
-| `rtlgen/config.py` | 254 | **rewrite** — sweep-shaped (`build_dir`, `pipe_slug`, sweep names) |
-| `datasets/__init__.py` | 352 | **extract ~40 lines** — precision only; the sweep axes are not tool material |
-| `scripts/run_gate1.py` | 282 | **rewrite** — hardcodes xsim paths; must become simulator-agnostic |
+| `rtl/{lut_node,popcount,argmax,pipe_reg}.v` | 194 | `src/dwn2rtl/rtl/` — **verbatim** |
+| `tb/{dwn_core,dwn_top}_tb.v` | 177 | `src/dwn2rtl/rtl/tb/` — **verbatim**, already self-checking |
+| `exporter/extract.py` | 296 | `src/dwn2rtl/extract.py` — it is the golden model too |
+| `rtlgen/emit_core.py`, `emit_encoder.py` | 559 | `src/dwn2rtl/emit_*.py`, CLI entry points stripped |
+| `tb/gen_vectors.py` | 215 | `src/dwn2rtl/vectors.py` — **rewritten**, random inputs only |
+| `datasets/__init__.py` | 352 | `src/dwn2rtl/precision.py` — **~40 lines extracted**, sweep axes left behind |
+| `rtlgen/config.py` | 254 | **not copied** — sweep-shaped; a small config object was written fresh |
+| `scripts/run_gate1.py` | 282 | `src/dwn2rtl/verify.py` — **rewritten**, simulator-agnostic |
 
-≈2,300 copied, ≈1,100 rewritten.
-
-⚠️ **Two files in this repo are not UTF-8** — `rtl/example-model-1x50/{dwn_core,dwn_top}.v`. They
-contain no paths, but a repo-wide text tool will crash on them.
+**Why the split was clean:** the study repo's Gate 1 path compiled nine files, **none from the
+board harness**, and the testbenches instantiate only `dwn_top` / `dwn_core`.
 
 ## 5. Vectors come from the model, not from data
 
@@ -106,16 +108,29 @@ Make it the tool's first CI check rather than an assumption.
 4. Get `iverilog` green on one emitted design end to end. **This is the first real gate.**
 5. Only then: yosys estimates, multi-version support, docs.
 
-## 8. Pointers back
+## 8. In this repository
 
 | | |
 |---|---|
-| `docs/reference/tool-roadmap.md` | the audited work list — defects, generality gaps, packaging, order |
-| `docs/reference/reusable-generator.md` | earlier scoping; kept for the reasoning |
-| `docs/reference/checkpoint-format.md` | the schema, verified against the pinned upstream commit |
-| `docs/reference/datapath.md` | what each stage costs and how much generalises |
-| `REPORT.md` | the evidence the tool's README should cite |
-| `docs/mnist/report.md` §2 | the seven hard-coded dataset facts, and why none was findable by inspection |
+| `docs/tool-roadmap.md` | the audited work list — defects, generality gaps, packaging, order |
+| `docs/checkpoint-format.md` | the checkpoint schema, verified against the pinned upstream commit |
+| `CLAUDE.md` | ground rules: the gate, the design invariants, commit conventions |
 
-All paths above are relative to the study repository, **`dwn-fpga-study`**. From inside the tool
-repo they are that repo's paths, not this one's.
+## 9. External citations — evidence, not dependencies
+
+These were measured in the study repository **`dwn-fpga-study`** and **cannot be opened from
+here.** They are worth citing in this project's README, because they are the evidence the generator
+works. Nothing in this repo requires them to exist.
+
+| claim worth citing | measured in |
+|---|---|
+| 77 configurations, all bit-exact against the golden model | both studies' sweeps |
+| 166,000/166,000 and 10,000/10,000 correct **on physical silicon** | JSC and MNIST Gate 1b |
+| the generator reproduces the original authors' area/accuracy at matched convention | MNIST study §7.3 |
+| the encoder can be 14× the network it feeds, and published counts omit it | JSC study §5.2 |
+| seven hard-coded dataset assumptions, none findable by inspection | MNIST study §2 |
+| noise floors of 0.15 pp (JSC) and 0.24 pp (MNIST) | MNIST reduction study |
+
+**The one thing the two repositories share** is their target: Alan Bacellar's DWN implementation,
+<https://github.com/alanbacellar/DWN>. Pin it here independently — do not assume the study repo's
+pin, and re-read `docs/checkpoint-format.md` against whatever commit this project pins.
