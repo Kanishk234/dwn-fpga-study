@@ -15,7 +15,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-# Per-benchmark inputs. JSC's paths are its historical ones and must not move -- REPORT.md,
+# Per-benchmark inputs. JSC's paths are its historical ones and must not move -- docs/jsc-report.md,
 # README.md and the `jsc-complete` tag reference docs/results/ and docs/results-cc/.
 BENCHMARKS = {
     'jsc': {

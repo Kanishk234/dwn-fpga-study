@@ -166,7 +166,7 @@ def required_int_bits(thresholds):
 
     ⚠️ Its counterpart is NOT derivable. How many FRACTIONAL bits are needed depends on whether
     quantisation changes predictions, which depends on the data, not the checkpoint. Deriving a
-    fractional width from thresholds alone reproduces the mistake in REPORT.md 5.6, where a
+    fractional width from thresholds alone reproduces the mistake in docs/jsc-report.md 5.6, where a
     narrowing was fitted and validated on the same 1,000 samples and 8 of 15 features came out
     too narrow. Report a floor as a floor; call a width "safe" only after measuring on held-out
     data (experiments/experiment_encoder_width.py does that).

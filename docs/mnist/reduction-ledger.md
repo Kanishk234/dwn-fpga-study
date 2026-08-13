@@ -152,7 +152,7 @@ engineering conclusion, reached on area alone, with no accuracy claim in it.
 
 ⚠️ **Four samples is a floor, not a distribution** — three degrees of freedom. A strict improvement
 on JSC's two, and still crude. Quote the observed spread, not a standard deviation. And if the
-spread comes out above ~0.5 pp that is itself a finding, because `REPORT.md` separates JSC
+spread comes out above ~0.5 pp that is itself a finding, because `docs/jsc-report.md` separates JSC
 configurations by less.
 
 ### 2026-08-11 — ✅ THE ANSWER: the taper works, and it still does not pay

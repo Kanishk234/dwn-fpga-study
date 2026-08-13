@@ -7,7 +7,7 @@ The University of Texas at Austin
 
 > **Version.** Every MNIST figure in this report was measured on the `mnist` branch after the
 > descriptor refactor, and is reproduced by `docs/results-mnist/sweep-results.json` and
-> `docs/results-cc-mnist/`. The companion JSC study is `REPORT.md`, whose figures are pinned to the
+> `docs/results-cc-mnist/`. The companion JSC study is `docs/jsc-report.md`, whose figures are pinned to the
 > `jsc-complete` tag; the two sets of numbers describe different commits and must not be mixed in
 > one table. Where this report cites a JSC figure it uses the tagged value.
 
@@ -362,7 +362,7 @@ snapshot; §4.3 gives the `1x2000` set.
 
 ## Appendix B — Reproducing this
 
-Assumes the first study's toolchain (`REPORT.md` Appendix C), plus `scikit-learn` and `pandas`.
+Assumes the first study's toolchain (`docs/jsc-report.md` Appendix C), plus `scikit-learn` and `pandas`.
 
 ```
 # Gate 1 — bit-exactness in simulation, no board needed. No precision flags:

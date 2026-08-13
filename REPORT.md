@@ -1,882 +1,329 @@
-# A Weightless Neural Network on an Entry-Level FPGA, and Two Defects in How Its Field Compares Results
+# Weightless Neural Networks on an Entry-Level FPGA: Two Datasets, and Two Defects in How the Field Compares Results
 
 **Kanishk Sama · Krithik Sama**
 The University of Texas at Austin
 
 ---
 
-> **Version.** Every JSC figure in this report was measured at the git tag **`jsc-complete`**.
-> A later change to `rtl/argmax.v` — a balanced reduction, needed so that ten-class models meet
-> the board clock — moved the smallest design by two lookup tables (0.12%) and the headline design
-> by 0.02%. No frontier point or conclusion moves, but the printed digits are pinned to that tag
-> rather than to whatever the repository currently builds. Checking it out reproduces them exactly.
+> **Scope and versions.** This report covers both datasets. The per-dataset studies have the depth:
+> [`docs/jsc-report.md`](./docs/jsc-report.md) and [`docs/mnist/report.md`](./docs/mnist/report.md).
+> JSC figures are measured at the tag **`jsc-complete`**, MNIST figures at **`mnist-complete`**;
+> later work shifted some JSC areas by ≤0.12%, so the two sets describe different commits. Every
+> table below states which dataset it is about, and **no table mixes them**.
 
 ## Abstract
 
-Differentiable Weightless Neural Networks (DWNs) replace the multiply-accumulate arithmetic of a
-conventional neural network with lookup tables, which map directly onto the lookup tables an FPGA
-is physically built from. Published DWN results target large data-centre FPGAs. We ask whether the
-architecture survives on hardware a student can afford: a Digilent Basys 3, built around a Xilinx
-Artix-7 XC7A35T with 20,800 lookup tables, roughly one fifty-seventh the logic of the device used
-in the original work.
+A Differentiable Weightless Neural Network (DWN) replaces multiply-accumulate arithmetic with
+lookup tables, which map directly onto the lookup tables an FPGA is built from. Published results
+target data-centre parts. We implement the architecture in hand-written Verilog and measure it on a
+Digilent Basys 3 — a $150 board with a Xilinx Artix-7 XC7A35T, 20,800 lookup tables, roughly one
+fifty-seventh the logic of the device the original work used.
 
-We built a hand-written Verilog implementation and a generator that compiles a trained checkpoint
-into synthesizable hardware, verified every configuration bit-exactly against a software reference,
-and deployed one to the board, where it classified all 166,000 test samples with zero mismatches.
-We then put 54 configurations through synthesis and place-and-route to map the accuracy/area/latency
-frontier, and compared the result against both standard routes to FPGA inference — a
-gradient-boosted decision tree through conifer, and a quantised neural network through hls4ml —
-each compiled to the same part through the same synthesis flow.
+We report two datasets. **Jet substructure classification** (16 features, 5 classes) is the
+standard low-latency FPGA-ML benchmark; **MNIST** (784 features, 10 classes) is a deliberately
+different second target chosen to test whether the generator had been fitted to one problem. In
+total **77 configurations** are place-and-routed, every one verified bit-exact against its software
+model in simulation, and one configuration per dataset verified bit-exact **on the physical board**
+across the whole test set — 166,000 and 10,000 samples respectively.
 
-The largest model in the original paper fits comfortably: 76.18% accuracy in 12,751 lookup tables,
-61.3% of the device, using no DSP blocks and no block RAM. Against a boosted tree on identical
-silicon, the weightless network is 1.5 to 1.7 percentage points more accurate at every area
-budget, and needs 2.3 to 6.0 times fewer lookup tables at matched accuracy; the tree, however, runs
-roughly four times faster. The published hls4ml network does not fit the device at all — it needs
-twelve times its capacity, and remains twice too large after sixteenfold resource sharing. Shrunk
-until it fits, it is smaller than the weightless network on neither accuracy, latency nor
-multiplier usage.
+The second dataset is what makes three findings available. The **encoder-convention defect** —
+published lookup-table counts that silently exclude the input encoder — recurs on MNIST and is
+*width-dependent* there, so no fixed correction factor repairs a mis-conventioned table. The
+**dataset-ambiguity defect** — "JSC" naming two different datasets ~1.05 points apart — turns out
+**not** to apply to MNIST, establishing that it is specific to that benchmark rather than endemic.
+And **the encoder's share of a design inverts between the two problems**, from 94% of the smallest
+JSC design to 21% of the largest MNIST one, which is why a single area model calibrated on one
+dataset does not transfer.
 
-Our most transferable finding is not a hardware measurement. In assembling the comparison we found
-that the standard results table for this benchmark — reproduced in the original DWN paper, in
-subsequent work, and in a 2025 survey — is unsound in two independent ways. First, "jet substructure
-classification" refers to two different datasets whose accuracies differ by about 1.05 percentage
-points, and published tables mix them freely. Second, reported area figures mix two conventions:
-some include the input encoder and some omit it, and for one model three different published
-figures exist. Both defects originate in primary sources and propagate by citation. We give the
-corrected comparison and release the tooling that enforces the distinction.
+We do not claim the architecture is the best available on either dataset. On MNIST, ULEEN — a
+weightless network of the same lineage — is more accurate than anything we built. What we show is
+that the architecture runs, bit-exactly and at competitive area, on hardware two orders of
+magnitude cheaper than the literature assumes.
 
 ---
 
-## 1. Introduction
+## 1. What was built
 
-A neural network is normally a great deal of arithmetic. An FPGA, by contrast, is built from small
-memories called lookup tables: a 6-input lookup table is a 64-bit memory that returns one bit for
-each of the 64 possible input patterns. Implementing arithmetic on an FPGA means assembling it out
-of these memories, which is indirect and expensive.
+The upstream authors released PyTorch training code and no hardware. Everything below the training
+step is ours:
 
-Weightless neural networks invert that relationship. Instead of learning multiplicative weights,
-they learn the *contents of lookup tables* directly. A neuron is a table; inference is a memory
-read. There is no multiplication anywhere in the network. When such a model is placed on an FPGA,
-one learned neuron becomes one physical lookup table — the model and the hardware are the same
-kind of object.
+```
+checkpoint ──► exporter ──► lookup tables, wiring, thresholds
+                              │
+                              ├──► RTL generator ──► Verilog (core, encoder, top)
+                              └──► golden model  ──► test vectors + expected outputs
+                                                        │
+                                              self-checking testbench
+```
 
-Differentiable Weightless Neural Networks [1] made this practical by showing how to train such
-tables with gradient descent, building on a line of weightless architectures that runs through
-ULEEN [12]. The published results are strong, but they are demonstrated on a
-Xilinx Virtex UltraScale+ VU9P, a data-centre part with roughly 1.18 million lookup tables. The
-obvious question — whether the approach still works when the device is small — was open, and it is
-not a question that theory answers, because on a small device the cost of preparing the *input* can
-exceed the cost of the network itself.
+A DWN neuron is a 6-input lookup table, which is exactly what an Artix-7 slice provides — measured,
+not assumed: 50 neurons synthesize to exactly 50 lookup tables. The rest of a design is the
+**thermometer encoder**, which turns real-valued inputs into the bits the tables index, and a
+**reduction stage** — per-class popcounts and an argmax tree.
 
-This report answers it. Our contributions:
+**No design in either study uses a single DSP or block RAM.** The network lives entirely in logic.
 
-1. **A complete open implementation for a small FPGA.** Hand-written Verilog primitives plus a
-   generator that turns a trained checkpoint into synthesizable hardware, with a verification
-   procedure that proves bit-exactness against a software reference on every configuration. No
-   comparable open implementation targeting small FPGAs existed.
+Both datasets are produced by the same code. Dataset facts — feature counts, word widths, sweep
+axes — live in a descriptor package and nowhere else; the exporter, generator, RTL and testbenches
+do not know which problem they are compiling. Reaching that state required removing seven separate
+hard-coded assumptions, described in [`docs/mnist/report.md`](./docs/mnist/report.md) §2.
 
-2. **A design-space exploration the original work could not perform**, because it reports three
-   model sizes and nothing in between. Fifty-four configurations, place-and-routed on the real
-   part, mapping accuracy against area and latency — including the input encoder, which published
-   figures routinely exclude.
+## 2. Verification
 
-3. **A controlled comparison against both standard toolchains** — a gradient-boosted decision tree
-   through conifer and a quantised neural network through hls4ml — on identical silicon through an
-   identical synthesis flow, rather than across papers and parts.
+Two gates, both required before any area number is quoted.
 
-4. **Two defects in the field's standard comparison table**, with corrected results and tooling
-   that prevents the errors mechanically rather than by convention.
+**Gate 1 — bit-exact in simulation.** Generated RTL must match a numpy golden model derived from
+the same checkpoint, on every vector including adversarial ones. **77 of 77 configurations pass.**
+Random vectors matter as much as real ones: score ties are common, and both numpy and torch break
+them toward the lowest class index, so the hardware must too.
 
-### 1.1 What we did not do
+**Gate 1b — bit-exact on silicon.** The full test set is streamed to the board over UART and scored
+on-chip.
 
-We did not measure the accuracy of hls4ml's quantised hardware. We built and synthesized it, and
-Section 6.3 reports its area, latency and multiplier usage; but establishing what the twelve-bit
-design *scores* requires compiling and running the generated C++, which our machine cannot do. The
-accuracy we report for it is its full-precision figure, which is an upper bound. Section 6.3 says
-so at every point where the number appears.
+| | JSC | MNIST |
+|---|---|---|
+| hardware vs software | **166,000 / 166,000** | **10,000 / 10,000** |
+| fixed-point vs float32 | 30 differ (0.018%) | **0 differ** |
+| core throughput | 99.5 M/s | 76.2 M/s |
 
-We also did not test on a second dataset, and Section 8 says what that leaves unproven.
+An area number without a correctness result is a number about the wrong design, so the sweep
+refuses to synthesize a configuration whose Gate 1 fails.
 
----
+## 3. Results
 
-## 2. Background
+### 3.1 JSC — 52 configurations
 
-### 2.1 Lookup tables, in hardware and in the model
-
-The Artix-7 XC7A35T contains 20,800 six-input lookup tables. Each stores 64 bits and, given six
-input bits, returns the stored bit at that address. Everything else on the device — arithmetic,
-control, comparison — is built from these.
-
-A weightless neuron with *n* inputs is a table of 2^n learned bits, addressed by its inputs. For
-*n* = 6 this is exactly the shape of the hardware primitive. We measured the correspondence
-directly: a 50-neuron layer synthesizes to exactly 50 lookup tables. The mapping is one-to-one,
-not approximate.
-
-### 2.2 The architecture
-
-A DWN processes data in four stages.
-
-**Binarization.** Real-valued input features are converted to bits by *thermometer encoding*: each
-feature is compared against a series of thresholds, producing a bit per threshold. A feature above
-seven of two hundred thresholds yields seven ones followed by 193 zeros — a "thermometer" reading.
-We use the distributive variant [2], where thresholds are placed at quantiles of the training
-distribution rather than at even intervals, which is more accurate for skewed features.
-
-**Lookup layers.** Groups of *n* bits address a table; each table emits one bit; those bits address
-the next layer. Which bits feed which table is *learned* during training and then frozen, so the
-wiring costs nothing at inference.
-
-**Reduction.** The final layer's bits are divided equally among the output classes and counted —
-a *popcount*, the number of ones in a group.
-
-**Decision.** The class with the highest count wins, resolved by an argmax circuit.
-
-No stage multiplies. The entire network is memory reads, one adder tree, and one comparison tree.
-
-### 2.3 The encoder is not free
-
-Thermometer encoding is usually described as preprocessing, but in a fully parallel FPGA design it
-is hardware: one comparator per threshold that any neuron actually reads. With sixteen input
-features and two hundred thresholds each, the encoder's output is 3,200 bits wide.
-
-This matters more than it appears. In the smallest configuration we measured, the encoder occupies
-1,519 lookup tables against the network's 108 — **fourteen times the model it feeds**. Published
-figures for this architecture generally exclude it. An independent group reached the same
-conclusion concurrently and measured the omission at up to 3.2× [3].
-
----
-
-## 3. Implementation
-
-### 3.1 Structure
-
-Four Verilog modules are written by hand: the lookup-table neuron, the popcount adder tree, the
-argmax comparator tree, and a pipeline register. Everything model-specific — table contents,
-wiring indices, encoder thresholds — is generated from a trained checkpoint. A 50-neuron model
-compiles to 50 table constants and 300 wire indices; transcribing those by hand would teach nothing
-and risk a silent single-character error.
-
-Input features are represented as 16-bit signed fixed-point numbers with 12 fractional bits, a
-format written Q3.12: one sign bit, three integer bits, twelve fractional bits, covering [−8, +8).
-Section 7 shows this choice was the most consequential unexamined parameter in the project.
-
-### 3.2 Verification
-
-**Nothing was considered working until it matched a software reference bit-for-bit on every test
-vector, including edge cases.** This rule was applied without exception, including to code that
-looked obviously correct.
-
-The software reference quantizes exactly as the hardware does, so agreement is exact rather than
-approximate, and any discrepancy is a real defect rather than rounding. Every configuration in this
-report passed before any area figure was recorded.
-
-Two experiences justify the strictness.
-
-**A verification harness that cannot fail is not verification.** Our generator originally checked
-its own output by re-deriving the expected tables with the same function that produced them. It
-reported complete agreement while the design was wrong on 958 of 1,504 test vectors. A check must
-be independent of the thing it checks.
-
-**A packing bug invisible at the size we tested.** Table contents were packed using a library
-routine that pads short byte sequences on the wrong side. For *n* ≥ 3 a table is a whole number of
-bytes and nothing goes wrong. For *n* = 2 every entry landed at the wrong address. We had tested
-only *n* = 6. Worse, the resulting failure would have looked exactly like an outcome we already
-expected on independent grounds — the sort of coincidence that turns a bug into a "finding".
-
-### 3.3 On real hardware
-
-One configuration was deployed to a Basys 3: 50 neurons, *n* = 6, 200 thresholds per feature. Test
-vectors were streamed over a serial link, classified on the board, and compared against the
-software reference.
-
-**All 166,000 test samples matched exactly.** The complete design, including the serial interface
-and vector storage, occupies 2,058 lookup tables — 9.9% of the device — and uses no DSP blocks. The
-network core is 108 lookup tables against the 110 reported in the original paper for the same
-configuration.
-
----
-
-## 4. Design-space exploration
-
-### 4.1 Method
-
-Fifty-four configurations were trained and put through synthesis and place-and-route on the target
-part at a 10 ns clock, out of context (that is, without surrounding system logic, so measurements
-reflect the design alone).
-
-The counts are easy to conflate, so precisely: **54** configurations attempted, **52** built (two
-were unbuildable for a reason given in Section 8), **51** fit within the device, and **42** of those
-also reach the board's 100 MHz clock. Of that last group, 41 met the exact target they were
-synthesized against; the forty-second was deliberately built against a more demanding 125 MHz
-target, missed it by 0.02 ns, and still runs comfortably above 100 MHz — so it is usable on the
-board even though it failed its own constraint. Area and accuracy figures below are drawn from the
-52 built configurations; usability on the board refers to the 42.
-
-Axes swept: number of neurons (50 to 3,000); thresholds per feature (8 to 800); inputs per neuron
-(2, 4, 6); encoding scheme; layer count; and pipeline depth.
-
-**Measurement noise.** Repeating identical configurations gave a run-to-run spread of **0.15
-percentage points**. We treat any accuracy difference below this as no difference, and say so
-wherever it matters.
-
-### 4.2 Results
-
-![Accuracy against area across the sweep](./docs/results/frontier.png)
-
-**Figure 1.** Accuracy against area for the configurations measured on our device. Each point is a
-complete design, placed and routed, including the input encoder. The frontier is the set of
-configurations not beaten on both accuracy and size at once.
-
+![JSC accuracy against area](./docs/results/frontier.png)
 
 | | |
 |---|---|
-| Largest model that fits | **76.18%**, 12,751 lookup tables (**61.3%** of device), 101.3 MHz, 4 cycles |
-| Best accuracy that fits | 76.35% at 66.0% of device |
-| Cheapest near-plateau | 75.95% at 33.6% of device |
-| Every configuration | 0 DSP blocks, 0 block RAM |
+| reference config `1x50` | 73.84%, **108** core lookup tables (the paper reports 110) |
+| largest that fits and meets the clock | `1x1600` — 76.35%, 18,777 LUTs, **90.3%** of the device |
+| the paper's largest model | `1x2400` fits at **61%** of the device, once `z` is not overpaid for |
+| latency | 4 cycles, one result per clock |
 
-Four findings follow.
+Two findings the original work could not have seen, because it reports three model sizes and
+nothing between them: the paper's thermometer setting `z=200` sits **past its own knee** — `z=50`
+gives up 0.24 points for 40% less silicon — and **what runs out first is the clock, not the chip**.
 
-**The original paper's largest model fits on a $150 board.** Its 2,400-neuron configuration was
-expected not to — our own early estimate exceeded 100% of the device. It uses 61.3%. The estimate
-was wrong because it assumed the paper's threshold count was necessary.
+### 3.2 MNIST — 25 configurations
 
-**The paper's threshold count is past its own knee.** The original work fixes 200 thresholds per
-feature everywhere and never reports what that costs. Reducing to 50 gives up 0.24 percentage
-points for **40% less silicon**. Increasing to 400 or 800 is *worse* on accuracy while costing
-more. This is the parameter that decides whether the largest model fits, and it had never been
-measured.
+![MNIST accuracy against area](./docs/results-mnist/frontier.png)
 
-**The encoder dominates small models and stops dominating large ones.** The encoder-to-network
-ratio falls from 14.1× at 50 neurons to 2.8× at 2,400. Conclusions drawn at one model size do not
-transfer, which is a pattern we hit repeatedly (Section 8).
-
-![Encoder against network area across model sizes](./docs/results/area_split.png)
-
-**Figure 2.** Where the area goes. At 50 neurons the input encoder costs fourteen times the network
-it feeds; by 2,000 neurons the ratio has fallen to 2.8×. Any statement about the encoder being a
-large or small share of a weightless design is meaningless without the model size attached.
-
-**What runs out is the clock, not the chip.** Every configuration too large for the board still had
-a third of its area unused — it simply could not be clocked at 100 MHz. The binding constraint is
-timing, and the critical path is the popcount adder tree, whose depth grows with layer width.
-
----
-
-## 5. Comparing against published work is harder than it looks
-
-This section is the report's most transferable contribution. Both problems below are properties of
-the *literature*, not of our measurements, and both are still present in current papers.
-
-### 5.1 "Jet substructure classification" is two datasets
-
-The benchmark used throughout this field is jet classification from Large Hadron Collider data:
-sixteen physics-derived features, five classes. There are two distributions of it.
-
-| | OpenML version | CERNBox version |
-|---|---|---|
-| Source | `hls4ml_lhc_jets_hlf`, OpenML dataset 42468 | CERNBox LHC Jets |
-| Samples | ~830,000 | 986,806 |
-| Used by | DWN, TreeLUT, hls4ml — **and this work** | LogicNets, PolyLUT, PolyLUT-Add, NeuraLUT, AmigoLUT, ReducedLUT, SparseLUT |
-
-The authors of NeuraLUT-Assemble state the situation plainly [4]:
-
-> "Both datasets target the same jet classification task, but the CERNBox version contains 986806
-> instances, while the OpenML version has about 830000. […] Experimentally, we observed that models
-> trained on the OpenML dataset achieve higher accuracy."
-
-**The gap is about 1.05 percentage points, and it can be measured cleanly** because two methods
-report both. FPGN [5] gives NeuraLUT-Assemble at 76.0% on OpenML against 75.0% on CERNBox, and
-itself at 76.0% against 74.9%. Two independent within-method measurements, both ~1.0.
-
-That is **seven times our measurement noise**, and larger than almost every difference these papers
-argue about. Yet the standard comparison table lists both kinds of row together. It does so in the
-original DWN paper, in the follow-up encoder analysis, and in a 2025 survey of the field [6], which
-divides the benchmark by accuracy band and never mentions that two data sources exist.
-
-![Published results on the CERNBox distribution](./docs/results-cc/jsc-cernbox.png)
-
-**Figure 3.** Published results on the CERNBox distribution. None of our measurements appear here,
-and that is deliberate: we train on the OpenML distribution, and placing our points on this axis
-would credit us with roughly a percentage point we did not earn. Most of the methods usually
-compared against DWN live on this figure, not the next one.
-
-**Consequence.** The comparison most often quoted — DWN against LogicNets, PolyLUT and NeuraLUT —
-is across datasets. Those are CERNBox results [10, 11]. On the OpenML data the honest peer group is smaller
-and stronger: DWN, TreeLUT, NeuraLUT-Assemble, FPGN, and hls4ml.
-
-### 5.2 Area figures mix two conventions
-
-The original DWN paper reports its largest model at **4,972 lookup tables**. That figure excludes
-the thermometer encoder. Including it, the same model measures **7,011** [3]. A third figure,
-**6,302**, appears in an independent reimplementation [5] whose convention is not stated.
-
-Three published numbers, one model, and nothing in the tables distinguishes them. Our figures are
-always complete designs, so quoting ours against the 4,972 understates us by roughly the encoder's
-entire cost.
-
-**We verified the convention for the other architectures rather than assuming it.** They take
-already-quantised inputs directly into table address lines and have no expansion stage, so the
-question does not arise for them. TreeLUT quantises its inputs "as a pre-processing step" [7] —
-off-chip, exactly as our feature scaling is. And the encoder analysis [3] states that it was DWN
-specifically whose published evaluations "reported only the resource usage of the LUT layer and the
-classification logic". DWN is the outlier.
-
-### 5.3 Both defects begin upstream
-
-The DWN paper's own results table lists hls4ml — an OpenML result — beside PolyLUT and NeuraLUT,
-which are CERNBox results, and reports its own area core-only against their complete designs. Both
-errors are present in the primary source and inherited by everything that cites it.
-
-We therefore enforce the distinctions in software rather than in prose: our plotting tool refuses
-to place two datasets on one axis, and refuses to draw a frontier across two area conventions. A
-convention that must be remembered will eventually be forgotten; we made our own tools reject the
-mistake. An early version of our own figure connected core-only points to encoder-included ones —
-the very error the figure exists to expose — which is why the check is now mechanical.
-
----
-
-## 6. Comparison results
-
-### 6.1 Against a boosted decision tree, on identical silicon
-
-Gradient-boosted decision trees are the standard alternative for tabular problems of this kind. We
-trained fourteen, compiled them to hardware with conifer [8], and put them through **the same
-synthesis flow, the same part, and the same clock target** as every weightless configuration. Ten
-fit the device.
-
-This is the comparison the field usually cannot make, because published numbers come from different
-parts and different tool versions. Here only the model differs.
-
-**At a fixed area budget, which model is more accurate:**
-
-| Budget (lookup tables) | Weightless | Boosted tree | Difference |
-|---|---|---|---|
-| 4,000 | 75.27% | 73.64% | **+1.63 pp** |
-| 8,000 | 75.95% | 74.36% | **+1.59 pp** |
-| 12,751 | 76.18% | 74.50% | **+1.68 pp** |
-| 20,800 (whole device) | 76.35% | 74.88% | **+1.48 pp** |
-
-**At a fixed accuracy target, which model is smaller:**
-
-| Target | Weightless | Boosted tree | Ratio |
-|---|---|---|---|
-| 73.6% | 1,619 | 3,774 | **2.3×** |
-| 74.2% | 2,541 | 7,602 | **3.0×** |
-| 74.5% | 2,541 | 15,363 | **6.0×** |
-| ≥74.9% | 3,381 | never reaches it | — |
-
-Both tables read off a finite set of measured configurations, so a row gives the smallest design
-that *clears* the target rather than one sitting exactly on it: the 2,541-table entry scores
-74.75%, and the 3,381-table entry 75.27%.
-
-**A boosted tree does not reach the weightless network's accuracy on this device at any size that
-fits.** The best fitting tree reaches 74.88% using 73.9% of the device. The weightless network
-reaches that accuracy in 3,381 lookup tables and continues to 76.35%.
-
-**Where the tree wins, and it is not close.** It closes timing at **477 MHz** where our design
-manages 101, and its latency is 4.2–16.8 ns against our 27–40 ns. The reason is structural: our
-critical path is a 2,400-input popcount tree, while a boosted tree is a shallow cascade of
-comparisons. Measured in *clock cycles* the two are comparable — 2 to 8 against our 4 — which is
-why latency should always be reported both ways. A design's nanosecond figure is a property of the
-part it ran on as much as of the design.
-
-**The fair summary is that the weightless network wins accuracy per unit area and the tree wins
-speed.** Both configurations use zero DSP blocks and zero block RAM.
-
-### 6.2 A conversion bug that would have invalidated every tree result
-
-Worth recording because it produced no error message. Recent versions of the boosting library fit a
-per-class base score that the hardware compiler could not read, emitting one class's initial value
-as *not a number*. That single value made the class score undefined for every sample and rendered
-the final comparison arbitrary — **127,034 of 166,000 predictions wrong** — while producing
-perfectly plausible-looking hardware that synthesized without complaint.
-
-It was caught by evaluating the compiler's own emitted model description with an independent
-implementation: the same principle as our hardware verification, applied one level up.
-
-### 6.3 Against a quantised neural network, on identical silicon
-
-hls4ml is the standard route from a trained neural network to FPGA hardware in this field, and its
-jet-classification design is the one published comparisons cite. We rebuilt that architecture —
-three hidden layers of 64, 32 and 32 neurons — trained it on our data, compiled it with hls4ml, and
-put it through the same synthesis flow, the same part and the same clock target as everything else.
-
-hls4ml can trade area for time: a *reuse factor* of four makes one multiplier serve four
-multiplications. We swept that against layer width and numeric precision.
-
-| Layers | Reuse | Word | Accuracy | Lookup tables | Against 20,800 | DSP |
-|---|---|---|---|---|---|---|
-| 64/32/32 | 1 | 16-bit | 76.69% | 259,492 | 12.5× over | 3,214 |
-| 64/32/32 | 4 | 16-bit | 76.69% | 189,608 | 9.1× over | 1,064 |
-| 32/16/16 | 4 | 16-bit | 76.33% | 52,927 | 2.5× over | 340 |
-| 64/32/32 | 16 | 16-bit | 76.69% | 45,844 | 2.2× over | 266 |
-| 32/16/16 | 4 | 12-bit | 76.33% | 26,883 | 1.3× over | 340 |
-| **16/8/8** | 4 | 12-bit | **75.67%** | **8,749** | **42.1% — fits** | **53** |
-
-**The published architecture does not fit at any sharing factor we tried**, and is still twice too
-large when each multiplier performs sixteen multiplications. Fitting the device needs quarter-width
-layers, twelve-bit arithmetic and fourfold sharing together, and costs 1.02 percentage points.
-
-**Sharing buys more area than narrowing does.** One to four saved 1.4×; four to sixteen saved a
-further 4.1×. The full-width network at sixteenfold sharing is *smaller* than the half-width network
-at fourfold — 45,844 against 52,927 — while scoring 0.36 points better. Sharing costs latency rather
-than accuracy, which is what makes it the better lever, and the fitting design pays that bill below.
-
-**At matched area, against the weightless network:**
-
-| At about 8,700 lookup tables | hls4ml | Weightless |
-|---|---|---|
-| Accuracy | 75.67%\* | **76.05%** |
-| DSP blocks | **53** of 90 | **0** |
-| Block RAM | 2 | **0** |
-| Latency | 34 cycles | **4 cycles** |
-| Throughput | one result per 4 cycles | **one per cycle** |
-
-Smaller, more accurate, no DSP blocks, no block RAM, **8.5× lower latency at four times the
-throughput** — and the weightless network continues to 76.18% at 12,751 lookup tables, an accuracy
-hls4ml does not reach at any size that fits this device.
-
-\* **This is the full-precision figure, not the quantised design's.** Establishing what the
-twelve-bit hardware scores means compiling and running hls4ml's generated C++, which this machine
-cannot do. The real number is lower, so the comparison above already flatters hls4ml. The tree
-comparison has no equivalent gap, because conifer emits a declarative model description that could
-be evaluated independently.
-
-**This is where "no DSP blocks" stops being a slogan.** Fifty-three of the device's ninety
-multipliers, against zero for every weightless and every tree configuration measured here.
-
-#### Two silent failures, one of which nearly reached this report
-
-hls4ml stores weights differently depending on the sharing factor: below a threshold it embeds them
-as constants, above it it loads them from data files at elaboration, by a path relative to the
-working directory. We were assembling the generated Verilog in a different directory, so those files
-were never found, every weight read as zero, and the synthesizer discarded the resulting dead
-arithmetic. **A three-layer network reported 235 lookup tables and no DSP blocks — and reported it
-as a success.** Two configurations were recorded that way before the numbers were disbelieved.
-
-The second was a unit. Latency is reported in nanoseconds for one configuration style and
-microseconds for another; a pattern expecting nanoseconds matched nothing and stored zero cycles,
-concealing the fourfold initiation interval entirely.
-
-Both are the failure this report keeps returning to — a measurement that is plausible, precise and
-wrong. Our tooling now refuses to synthesize a design whose modules are not all defined or whose
-weight files are absent, and every tree configuration was re-checked against the corrected latency
-parser and found unchanged.
-
-### 6.4 Against published work, on our dataset
-
-Restricted to the OpenML data, so the rows are comparable. DWN appears twice because two
-conventions exist.
-
-| Method | Accuracy | Lookup tables | Encoder included | Part |
-|---|---|---|---|---|
-| **This work** (best accuracy) | **76.35%** | 13,729 | yes | XC7A35T |
-| DWN, as published | 76.3% | 4,972 | **no** | VU9P |
-| DWN, encoder included [3] | 76.3% | 7,011 | yes | VU9P |
-| **This work** (headline) | **76.18%** | **12,751** | yes | XC7A35T |
-| hls4ml [9, 10] | 76.0% | 63,251 | n/a | VU9P |
-| TreeLUT [7] | 76.0% | 2,234 | n/a | VU9P |
-| NeuraLUT-Assemble [4] | 76.0% | **1,780** | n/a | VU9P |
-| FPGN [5] | 76.0% | 3,345 | unstated | VU9P |
-| Boosted tree (this work) | 74.88% | 15,363 | n/a | XC7A35T |
-| hls4ml shrunk to fit (this work) | 75.67%\* | 8,749 | n/a | XC7A35T |
-
-![Accuracy against area, OpenML distribution](./docs/results-cc/jsc-openml.png)
-
-**Figure 4.** Everything measured on our device against everything published on the same
-distribution. Marker fill separates designs whose area includes the input encoder from those
-reporting the network alone — the two are not interchangeable, and the same model appears in both
-forms. The dashed line is our device's capacity.
-
-**Read honestly: we are not competitive on raw area with the specialised compilers.** The best
-published design reaches 76.0% in 1,780 lookup tables; ours needs 12,751.
-
-Three things make the numbers less unlike than they appear, and all three should be stated whenever
-they are quoted:
-
-- **Ours include the encoder.** The 4,972 figure does not, and the encoder is a substantial
-  fraction of a weightless design.
-- **Ours run on a $150 board**, an Artix-7 at 100 MHz, not a data-centre part at 700 MHz. Area
-  transfers approximately between devices; clock speed does not.
-- **The row that shares both our dataset and our convention is DWN at 7,011.** That is the honest
-  point of comparison, and against it our 12,751 reflects a smaller, slower device.
-
-### 6.5 What is still missing
-
-Both baselines are measured, but each is a single tool rather than a category. conifer is not the
-strongest available tree compiler: TreeLUT reports 76.0% in 2,234 lookup tables where our best
-fitting conifer design needs 15,363 for 74.88% — roughly seven times denser at better accuracy.
-That gap belongs to the compiler, not to decision trees, and Section 6.1 should be read as a
-comparison against conifer specifically.
-
-The open question on the hls4ml side is its quantised accuracy (Section 6.3). Everything else about
-that design — area, multiplier usage, latency, throughput — is measured.
-
----
-
-## 7. The input word was six bits too wide
-
-The concurrent encoder analysis [3] reports an encoder of 201 lookup tables where ours, for the
-same model and the same threshold count, uses 1,519. Investigating a 7.6× discrepancy produced the
-largest single area result in the project.
-
-**The cause is comparator width, and nothing else.** That work normalises features to [−1, 1) and
-quantises them to 6–9 bits. We carried a 16-bit word whose three integer bits exist only because
-our features are standardised to roughly ±4.5, and whose twelve fractional bits are far finer than
-the spacing between adjacent thresholds. Rebuilt at 8 bits, our encoder for that same 50-neuron
-model measures **182** lookup tables against their 201. No structural technique was missing; the
-numbers were simply wider than they needed to be. (The table below is for the largest fitting
-configuration, whose encoder is far bigger; the two should not be read against each other.)
-
-We then measured accuracy and area across widths on the largest fitting configuration. Accuracy was
-evaluated on all 166,000 test samples, not a subset.
-
-| Input word | Encoder area | Reduction | Accuracy change | Acceptable? |
-|---|---|---|---|---|
-| 16 bits (as built) | 5,753 | — | — | — |
-| 12 bits | 4,157 | 1.38× | −0.111 pp | yes |
-| **11 bits** | **992** | **5.80×** | **−0.142 pp** | **yes** |
-| 10 bits | 891 | 6.46× | −0.219 pp | no |
-| 8 bits | 655 | 8.78× | −1.092 pp | no |
-
-![Encoder area and accuracy against input word width](./docs/results/encoder-width.png)
-
-**Figure 5.** Area and accuracy as the input word narrows, measured separately and plotted on a
-shared horizontal axis rather than against two vertical scales. The point of the figure is where
-the two limits sit relative to one another, not their heights.
-
-**There is a cliff between 12 and 11 bits** — a 4.7× area drop for one bit — where the comparator
-stops needing a carry chain and collapses into plain lookup-table logic. The narrowest width that
-preserves accuracy lands on the cheap side of that cliff **by exactly one bit**. Had the cliff sat
-one bit lower, the usable saving would have been 1.38× instead of 5.80×. That is luck, and it means
-neither limit can be extrapolated to another configuration without measuring both again.
-
-Two further observations:
-
-**The accuracy limit moves with model size, in the direction we did not expect.** On the small
-model, accuracy survived down to 10 bits; on the large one, only to 11. Larger networks tolerate
-*less* input precision, because each comparator feeds far more neurons — about 19 here against 1.5
-in the small model — so a single wrong encoder bit propagates much further.
-
-**Most of the saving needs no retraining.** A comparison is unchanged by any monotonic rescaling
-applied to both the value and the threshold, so mapping each feature's threshold range onto the
-available word is an export-time transformation, not a training change.
-
-**We have not adopted it**, for a reason that also validates an earlier finding: the binding
-constraint on this device is timing, not area, and the encoder is not on the critical path. Making
-it six times smaller does not make a single additional configuration reachable. Projected, the
-headline design would fall from 61.3% of the device to about 38%. That is worth having; it is not
-worth destabilising a verified flow for at this stage.
-
----
-
-## 8. Limitations and threats to validity
-
-**Two baselines, each a single tool.** conifer and hls4ml are both measured here, but neither is
-the best available compiler for its model class — TreeLUT is roughly seven times denser than conifer
-at better accuracy (Section 6.5). The comparison is against these tools, not against decision trees
-or quantised networks in general.
-
-**hls4ml's accuracy is its full-precision figure.** Establishing what the quantised hardware scores
-needs a compiler we do not have (Section 6.3), so the real number is lower and every hls4ml
-comparison here already flatters it.
-
-**A dependency on an unanswered question.** The original DWN paper states that its jet-substructure
-data follows NeuraLUT's, which would make it the CERNBox distribution — but its released code loads
-the OpenML distribution, an independent reimplementation classifies it as OpenML, its accuracies
-exceed every published CERNBox result, and our own reproduction on OpenML landed within 0.12
-percentage points of its reported figure. Four lines of evidence against one sentence. **We have
-asked the authors and have not yet received a reply.** If the answer is CERNBox, our accuracy
-comparison against their largest model is across datasets and must be withdrawn; nothing else in
-this report depends on it.
-
-**A single dataset.** Every result here is jet substructure classification. Whether the generator
-generalises is asserted by its parameterisation and not yet demonstrated on a second problem.
-
-**Two configurations could not be built**, and the reason is a real limitation rather than a bug:
-evenly-spaced thermometer thresholds span the full data range and exceed what our chosen
-fixed-point format represents. A wider integer range would have fixed it at identical area, but the
-encoding axis showed differences below our noise floor, so we recorded the failure instead of
-extending the format.
-
-**Datapath precision was fixed** across all 54 configurations, and Section 7 shows it was the
-largest unexamined parameter in the project.
-
-**Estimated figures are marked as such.** The projected area in Section 7 is derived from a measured
-encoder but the complete design was not rebuilt at that width.
-
-**A recurring failure mode, stated because it shaped the methodology.** Four times we drew a
-conclusion from one configuration and generalised it: that the encoder cost a fixed multiple of the
-network; that the reduction circuit was negligible; that input precision did not matter; that a
-narrowing result validated on a subset held on the full test set. Each was corrected by measuring
-at a second point. Any claim of the form "X is a small fraction of the design" should be read with
-the range it was measured over attached.
-
----
-
-## 9. Conclusion
-
-A weightless neural network runs well on an entry-level FPGA. The largest configuration in the
-original work fits in 61.3% of a device costing about $150, reaches 76.18% accuracy, uses no DSP
-blocks and no block RAM, and matches its software reference exactly on all 166,000 test samples.
-Against a boosted decision tree on identical silicon it is 1.5–1.7 percentage points more accurate
-at every area budget and 2.3–6.0× smaller at matched accuracy, while being roughly four times
-slower. Against a quantised neural network through hls4ml the margin is wider and of a different
-kind: the published design needs twelve times the device, and the largest version that fits is
-beaten on accuracy, on latency, on throughput, and on the fifty-three multipliers it spends where
-the weightless network spends none.
-
-The parameter that decides whether the largest model fits is the number of thermometer thresholds,
-which the original work fixes without reporting its cost; reducing it saves 40% of the silicon for
-0.24 percentage points. What runs out first on this device is the clock, not the area.
-
-But the finding most likely to matter to others concerns the comparison itself. The standard results
-table for this benchmark mixes two datasets that differ by about 1.05 percentage points, and mixes
-area figures that do and do not include the input encoder. Both defects begin in primary sources
-and spread by citation. Any conclusion drawn from that table — including several of the comparisons
-that motivated this project — needs rechecking against which dataset and which convention each row
-actually uses.
-
----
-
-## References
-
-[1] A. Bacellar, Z. Susskind, M. Breternitz Jr., E. John, L. John, P. Lima, F. França.
-*Differentiable Weightless Neural Networks.* International Conference on Machine Learning (ICML),
-PMLR 235:2277–2295, 2024. arXiv:2410.11112. **Cite version 5**; version 1 reports different area
-figures for the same configurations.
-
-[2] A. Bacellar, Z. Susskind, L. Villon, I. Miranda, L. Araújo, D. Dutra, M. Breternitz Jr.,
-L. John, P. Lima, F. França. *Distributive Thermometer: A New Unary Encoding for Weightless Neural
-Networks.* ESANN, 2022.
-
-[3] M. Mecik, M. Kumm. *Implementation and Analysis of Thermometer Encoding in DWN FPGA
-Accelerators.* Asilomar Conference on Signals, Systems, and Computers, 2025. arXiv:2512.15251.
-
-[4] M. Andronic, G. Constantinides. *NeuraLUT-Assemble: Hardware-aware Assembling of Sub-Neural
-Networks for Efficient LUT Inference.* 2025. arXiv:2504.00592.
-
-[5] J. Liang, H. Qin, et al. *FPGN: Redefining Ultra-Fast Programmable Gate-based Neural
-Acceleration with Differentiable LUTs.* 2026. arXiv:2607.08427.
-
-[6] *A Survey on LUT-based Deep Neural Networks Implemented in FPGAs.* 2025. arXiv:2506.07367.
-
-[7] A. Khataei, K. Bazargan. *TreeLUT: An Efficient Alternative to Deep Neural Networks for
-Inference Acceleration Using Gradient Boosted Decision Trees.* ACM/SIGDA International Symposium on
-Field Programmable Gate Arrays (FPGA), pp. 14–24, 2025. arXiv:2501.01511.
-
-[8] S. Summers et al. *conifer: Fast inference of Boosted Decision Trees in FPGAs for particle
-physics.* Journal of Instrumentation 15, P05026, 2020. arXiv:2002.02534.
-
-[9] F. Fahim et al. *hls4ml: An Open-Source Codesign Workflow to Empower Scientific Low-Power
-Machine Learning Devices.* 2021. Figures as tabulated in [10].
-
-[10] M. Andronic, G. Constantinides. *PolyLUT: Learning Piecewise Polynomials for Ultra-Low Latency
-FPGA LUT-based Inference.* International Conference on Field Programmable Technology (ICFPT),
-pp. 60–68, 2023. arXiv:2309.02334.
-
-[11] Y. Umuroglu, Y. Akhauri, N. Fraser, M. Blott. *LogicNets: Co-Designed Neural Networks and
-Circuits for Extreme-Throughput Applications.* International Conference on Field-Programmable Logic
-and Applications (FPL), pp. 291–297, 2020.
-
-[12] Z. Susskind, A. Arora, I. Miranda, A. Bacellar, L. Villon, R. Katopodis, L. Araújo, D. Dutra,
-P. Lima, F. França, M. Breternitz Jr., L. John. *ULEEN: A Novel Architecture for Ultra-Low-Energy
-Edge Neural Networks.* ACM Transactions on Architecture and Code Optimization 20(4), 2023.
-
----
-
-## Appendix A — How configurations are named
-
-A configuration is written **`W×N z=T`**, and where a value is omitted it takes the default shown.
-
-| Element | Meaning | Default |
-|---|---|---|
-| `W` | number of lookup-table layers | 1 |
-| `N` | neurons in each layer | — |
-| `z=T` | thermometer thresholds per input feature | 200 |
-| `n` | input bits per neuron | 6 |
-
-So `1x2400 z=50` is one layer of 2,400 neurons, each reading 6 bits, with 50 thresholds per
-feature. `1x50` is one layer of 50 neurons at the default 200 thresholds.
-
-Boosted-tree configurations are written `gbdt_dD_nR`: maximum depth `D`, `R` boosting rounds. Since
-the task has five classes, each round produces five trees, so `gbdt_d3_n40` is 200 trees of depth 3.
-
----
-
-## Appendix B — Complete measurements
-
-All figures are post-place-and-route on `xc7a35tcpg236-1` at a 10 ns clock, synthesized out of
-context. Accuracy is on the full 166,000-sample test set.
-
-### B.1 Weightless network, representative configurations
-
-| Configuration | Accuracy | Network | Encoder | Total | Device | Clock | Cycles |
+| config | acc% | core | encoder | total | % device | Fmax | cycles |
 |---|---|---|---|---|---|---|---|
-| `1x50` | 73.84% | 108 | 1,519 | 1,619 | 7.8% | 147.1 MHz | 4 |
-| `1x200` | 75.32% | 466 | 4,570 | 5,036 | 24.2% | 113.9 MHz | 4 |
-| `1x360 z=50` | 75.61% | 868 | 3,957 | 4,825 | 23.2% | 108.5 MHz | 4 |
-| `1x800 z=50` | 75.95% | 1,893 | 4,970 | 6,981 | 33.6% | 104.9 MHz | 4 |
-| `1x1200 z=50` | 76.05% | 2,875 | 5,384 | 8,444 | 40.6% | 102.3 MHz | 4 |
-| **`1x2400 z=50`** | **76.18%** | 6,850 | 5,753 | **12,751** | **61.3%** | 101.3 MHz | 4 |
-| `1x1600 z=100` | 76.35% | 4,153 | 9,260 | 13,729 | 66.0% | 101.8 MHz | 4 |
+| `2x[1000,500]` | **97.76** | 2,168 | 1,302 | 3,464 | 16.65 | 103.8 | 5 |
+| `1x500` | 97.70 | 1,168 | 1,079 | 2,246 | 10.80 | 108.4 | 4 |
+| `1x300` | 96.77 | 630 | 971 | 1,597 | 7.68 | 107.5 | 4 |
+| `1x100` | 92.98 | 234 | 611 | 845 | 4.06 | 123.8 | 4 |
 
-Full results for all 54 configurations, including those that did not fit, accompany this report as
-machine-readable data.
+Only five configurations meet the board's 100 MHz clock; the two most accurate designs in the sweep
+(98.32% and 98.26%) miss it. **Depth buys timing, not accuracy** — `2x[1000,500]` and `1x1000` are
+the same size and statistically the same accuracy, but the two-layer model gets a fifth pipeline
+stage for free and reaches 103.8 MHz where the flat one manages 93.1.
 
-### B.2 Boosted decision trees, all fitting configurations
+## 4. What two datasets show that one cannot
 
-| Configuration | Trees | Accuracy | Lookup tables | Device | Cycles | Clock |
-|---|---|---|---|---|---|---|
-| `gbdt_d3_n10` | 50 | 73.64% | 3,774 | 18.1% | 3 | 477.3 MHz |
-| `gbdt_d4_n5` | 25 | 73.63% | 4,019 | 19.3% | 2 | 477.3 MHz |
-| `gbdt_d3_n20` | 100 | 74.24% | 7,602 | 36.6% | 5 | 477.3 MHz |
-| `gbdt_d5_n5` | 25 | 74.36% | 7,836 | 37.7% | 5 | 477.3 MHz |
-| `gbdt_d4_n10` | 50 | 74.19% | 8,005 | 38.5% | 3 | 477.3 MHz |
-| `gbdt_d6_n3` | 15 | 74.50% | 9,376 | 45.1% | 8 | 477.3 MHz |
-| **`gbdt_d3_n40`** | 200 | **74.88%** | 15,363 | 73.9% | 7 | 477.3 MHz |
-| `gbdt_d5_n10` | 50 | 74.77% | 15,605 | 75.0% | 6 | 477.3 MHz |
-| `gbdt_d6_n5` | 25 | 74.80% | 15,898 | 76.4% | 8 | 477.3 MHz |
-| `gbdt_d4_n20` | 100 | 74.75% | 16,052 | 77.2% | 5 | 477.3 MHz |
+This section is the reason the combined report exists.
 
-Four further configurations (75.09%–75.50%) exceeded the device and are excluded. All use zero DSP
-blocks and zero block RAM.
+### 4.1 The encoder's share inverts, and that is why area models do not transfer
 
-### B.3 Quantised neural network, all configurations
+![JSC core against encoder](./docs/results/area_split.png)
+![MNIST core against encoder](./docs/results-mnist/area_split.png)
 
-Layer widths are the three hidden layers; the input is 16 features and the output 5 classes.
-Accuracy is the full-precision model's, an upper bound on the quantised design's (Section 6.3).
-Configurations larger than the device are reported with the resources they would have required.
+| encoder as a share of the whole design | smallest | largest |
+|---|---|---|
+| **JSC** | **94%** (`1x50`) | 42% (`1x3000 z=50`) |
+| **MNIST** | 72% (`1x100`) | **21%** (`1x2000`) |
 
-| Layers | Reuse | Word | Accuracy | Lookup tables | DSP | Cycles | II |
-|---|---|---|---|---|---|---|---|
-| 64/32/32 | 1 | 16-bit | 76.69% | 259,492 | 3,214 | 30 | 1 |
-| 64/32/32 | 4 | 16-bit | 76.69% | 189,608 | 1,064 | 38 | 4 |
-| 32/16/16 | 4 | 16-bit | 76.33% | 52,927 | 340 | 35 | 4 |
-| 64/32/32 | 16 | 16-bit | 76.69% | 45,844 | 266 | 82 | 16 |
-| 32/16/16 | 4 | 12-bit | 76.33% | 26,883 | 340 | 35 | 4 |
-| **16/8/8** | 4 | 12-bit | **75.67%** | **8,749** | **53** | **34** | **4** |
+On JSC the encoder dominates at every size we measured. On MNIST it **saturates**: across a
+twenty-fold range of model size it grows only 611 → 1,315 lookup tables, because 784 × z bits far
+exceed the input slots any layer that fits can read, so widening the model buys new comparators
+only until the learned mapping stops finding new ones.
 
-Only the last fits. It also uses 2 block RAMs; every weightless and every tree configuration uses
-none.
+The consequence is concrete. An area model calibrated on JSC under-predicts MNIST by 8–19% and
+mis-predicts comparator counts by up to 108%, and **cost per comparator differs 5× between the two
+datasets** (0.47 against 0.09 lookup tables per comparator bit) because MNIST's quantile thresholds
+cluster near zero where comparisons collapse. One dataset cannot reveal this; two make it
+unavoidable.
 
-### B.4 Encoder area against input word width
+### 4.2 Precision is a property of the data, not of the flow
 
-Measured on `1x2400 z=50`, 746 wired comparators, encoder synthesized alone.
+JSC's 16-bit input word is **six bits wider than necessary**, and narrowing it costs accuracy that
+has to be measured on held-out data:
 
-| Input word | Lookup tables | Per comparator | Distinct thresholds |
+![JSC encoder area against input word width](./docs/results/encoder-width.png)
+
+MNIST's nine-bit word loses **nothing at all**: 56,835 feature values saturate at the word boundary
+and not one changes an encoder bit. The reason is structural — MNIST pixels are natively 8-bit, so
+there are only 256 distinct input values and nine bits cannot lose information, where JSC's
+features are continuous and quantising them genuinely discards some.
+
+Integer width is derivable exactly from a checkpoint. **Fractional width is not derivable at all**
+and must be chosen and stated — a constraint any tool built on this work inherits.
+
+### 4.3 A measured noise floor, which overturned one of our own results
+
+Four MNIST configurations trained under four seeds each: the spread is **0.24 points**, and the
+same seed does not reproduce — a rerun differed by up to 0.17 points, almost certainly GPU
+non-determinism. JSC's floor, measured the same way, is 0.15.
+
+It withdrew three claims including one of ours: a two-layer taper that appeared to be the best
+model in the MNIST study at 98.32% averages **98.19%** over four seeds against a single-layer
+model's **98.29%**. The advantage did not merely fail to clear the floor — it reversed.
+
+**Nothing in this report ranks two designs on an accuracy gap below the relevant floor.** That rule
+excludes several comparisons we would otherwise have been able to make, and it is why §5.2 matters.
+
+## 5. Two defects in how this field compares results
+
+### 5.1 Lookup-table counts mix conventions
+
+Published counts frequently exclude the input encoder; ours never do. On JSC the DWN paper reports
+its largest model at 4,972 lookup tables — network only. With the encoder it is 7,011. Three
+different published numbers exist for that one model.
+
+MNIST shows the correction is **not a constant**. Read against the wrong convention our `1x300` at
+1,597 lookup tables against the paper's 692 looks like a 2.3× failure; on core only it is **630** —
+smaller. Because the encoder's share runs from 72% to 21% across the ladder, no single multiplier
+repairs a mis-conventioned table. **Every row must carry its own convention**, which is what the
+figures below encode in marker fill.
+
+### 5.2 Accuracy is reported at incomparable precision
+
+The two most-cited MNIST comparators print `96%`. That spans ±0.5 points — **twice our measured
+floor** — so two such rows cannot be ranked against each other at all. An independent re-run puts
+the same named models at 95.20% and 95.42%, so those rows are an upper bound and our margins over
+them are understated rather than overstated.
+
+### 5.3 ✅ And one defect that turns out to be local
+
+JSC Phase 3's largest correction was that **"JSC" names two different datasets** — an OpenML
+distribution (~830k samples) and a CERNBox one (~987k) — routinely listed in one table, with the
+same method scoring ~1.05 points higher on OpenML. That is seven times our measurement noise.
+
+![The same methods on the CERNBox JSC distribution](./docs/results-cc/jsc-cernbox.png)
+
+The figure above is the *same comparison as §6.1* on the other JSC distribution. It is a separate
+figure rather than a second series on one axis for exactly the reason under discussion: the two are
+not the same benchmark, and drawing them together would show a gap that is partly the data.
+
+**MNIST has one canonical split**, so the entire class of correction is absent. Establishing the
+*scope* of a defect requires a second dataset: the single-dataset study could not tell whether this
+was endemic to the field or specific to that benchmark. It is specific.
+
+Our comparison scripts refuse to plot two datasets on one axis or draw a frontier across two
+conventions — enforced in code rather than in a footnote.
+
+## 6. Comparison against published and re-implemented work
+
+### 6.1 JSC
+
+![JSC accuracy against area, ours and published](./docs/results-cc/jsc-openml.png)
+
+Against **conifer** (gradient-boosted trees) on identical silicon, 14 configurations, 10 fitting:
+DWN is 1.5–1.7 points more accurate at any area budget, and uses 2.3–6.0× fewer lookup tables at
+matched accuracy. The ensemble tops out at 74.88% using 74% of the device. **conifer wins clearly
+on speed** — 477 MHz against 101.
+
+Against **hls4ml** (quantised MLP), 6 configurations, 1 fitting. At ~8,700 lookup tables it reaches
+75.67% using 53 DSPs and 34 cycles, against our 76.05% with **0 DSPs and 4 cycles**.
+
+Against the published LUT-DNN literature we are **not competitive on raw area**: the best published
+design reaches 76.0% in 1,780 lookup tables against our 12,751. What differs is that ours includes
+the encoder and runs on a $150 board.
+
+### 6.2 MNIST
+
+![MNIST accuracy against area, ours and published](./docs/results-cc-mnist/mnist.png)
+
+26 rows, 21 read directly from the primary paper's own table.
+
+**Against its own family.** BTHOWeN is a weightless network on `xc7z020clg400-1` — the same
+7-series family and speed grade as our part, where the LUT-DNN literature sits on a Virtex
+UltraScale+ two process generations ahead:
+
+| | acc% | LUTs | cycles |
 |---|---|---|---|
-| 16 bits | 5,753 | 7.71 | 745 / 746 |
-| 13 bits | 4,916 | 6.59 | 739 |
-| 12 bits | 4,157 | 5.57 | 734 |
-| 11 bits | 992 | 1.33 | 731 |
-| 10 bits | 891 | 1.19 | 720 |
-| 9 bits | 794 | 1.06 | 687 |
-| 8 bits | 655 | 0.88 | 596 |
+| BTHOWeN Small | 93.4 | 15,756 | 25 |
+| BTHOWeN Large | 95.2 | 151,704 | 74 |
+| **this work `2x[1000,500]`** | **97.76** | **3,464** | **5** |
+| **this work `1x300`** | **96.77** | **1,597** | **4** |
 
-### B.5 Published results, OpenML dataset only
+**⚠️ ULEEN, the other weightless comparator, is more accurate than we are** — 98.46% against 97.76%
+— and cannot be placed in a lookup-table column at all, because its published results are ASIC area
+in mm² and model size in KiB. Our answer against ULEEN is area and latency, not accuracy.
 
-Sources and per-row conventions accompany this report as machine-readable data. Rows on the CERNBox
-distribution are deliberately excluded; see Section 5.1.
+**Against conifer at matched area** on our own silicon: 97.76% against 84.31% at 3,464 against
+3,653 lookup tables — 13.45 points — but conifer is again **4.6× faster**. Two synthesized points
+only; there is no MNIST conifer curve.
 
-| Method | Accuracy | Lookup tables | Latency | Part |
+Of every published MNIST design in the table with an FPGA lookup-table count, **only BTHOWeN-Small
+would also fit this board.** NeuraLUT needs 2.6× the device, PolyLUT 3.4×, hls4ml 12.5×.
+
+### 6.3 Our implementation reproduces the original work
+
+| | ours | DWN paper | ratio | Δ acc |
 |---|---|---|---|---|
-| DWN `lg`, core only [1] | 76.3% | 4,972 | 7.3 ns | VU9P |
-| DWN `lg`, with encoder [3] | 76.3% | 7,011 | 2.1 ns | VU9P |
-| DWN `lg`, reimplemented [5] | 76.3% | 6,302 | 14.4 ns | VU9P |
-| hls4ml [9] | 76.0% | 63,251 | 45.0 ns | VU9P |
-| TreeLUT I [7] | 76.0% | 2,234 | 2.7 ns | VU9P |
-| NeuraLUT-Assemble [4] | 76.0% | 1,780 | 2.1 ns | VU9P |
-| FPGN [5] | 76.0% | 3,345 | 5.5 ns | VU9P |
-| DWN `md`, with encoder [3] | 75.6% | 1,697 | 2.6 ns | VU9P |
-| TreeLUT II [7] | 75.0% | 796 | 1.1 ns | VU9P |
-| DWN `sm`, with encoder [3] | 74.0% | 311 | 2.0 ns | VU9P |
+| MNIST `1x300` vs `sm` | 96.77% / **630** | 97.1% / 692 | **0.91×** | −0.33 pp |
+| MNIST `1x2000` vs `lg` | 98.26% / **4,821** | 98.3% / 4,082 | 1.18× | −0.04 pp |
+| JSC `1x50` vs `sm` | 73.84% / **108** | 74.0% / 110 | **0.98×** | −0.16 pp |
+
+This is stronger evidence of correctness than Gate 1 provides. Gate 1 shows our RTL matches *our*
+golden model; this shows the whole pipeline lands where the authors' independent implementation
+lands, on both datasets and at matched convention.
+
+## 7. Limitations
+
+- **Neither frontier has a measured edge.** JSC reached 90.3% of the device and MNIST 33%, both
+  bounded by what was trained rather than by what fit. *"The largest model that fits"* is
+  unsupported for either dataset.
+- **Two datasets is two, not many.** The claim is that the flow is not fitted to one problem, not
+  that it generalises to all. A third dataset would test the descriptor contract properly.
+- **Accuracy comparisons are bounded by noise floors** — ours (0.15 and 0.24 points) and, for
+  several published rows, their own rounding. Gaps under ~1 point against a whole-percent row are
+  not interpretable in either direction.
+- **Cross-silicon comparison is unavoidable.** Lookup-table counts transfer between Xilinx
+  families; **nanoseconds do not.** Latency is reported in cycles throughout.
+- **The MNIST conifer comparison is two points, not a curve**, and hls4ml was not measured on MNIST
+  at all — a scope cut citing the published row, not a finding.
+- **The area model is not usable** on either dataset for projection and no projected area appears
+  in this report. It was built to filter configurations too large to build, and across both studies
+  it filtered zero, because both were bounded by training rather than by area.
+- **One JSC question is open with the original authors**: which of the two JSC distributions their
+  published numbers use. Their paper and released code disagree.
+
+## 8. Conclusion
+
+A weightless neural network runs on an entry-level FPGA, bit-exactly, on two datasets that differ
+by a factor of 49 in input width. The same exporter and generator produce both, with dataset facts
+confined to a descriptor, and every shared component verified to reproduce the first study exactly
+after each change.
+
+On JSC it reaches 76.35% using 90% of a $150 board, and the original paper's largest model — once
+thought not to fit — uses 61%. On MNIST it reaches 97.76% at 3,464 lookup tables and 103.8 MHz,
+2.56 points above a weightless network of the same lineage at 43.8× fewer lookup tables, while
+remaining 0.70 points below ULEEN, which publishes no FPGA area.
+
+The methodological findings may outlast the measurements. Two defects in this field's standard
+comparison table are real and traceable to primary sources; a second dataset was required to
+establish that one of them is local and the other is worse than a constant correction can fix.
 
 ---
 
-## Appendix C — Reproducing this work
+## Appendix — where everything is
 
-Everything below is committed alongside this report. Training requires a GPU and was run off-machine;
-everything else runs locally against a Xilinx toolchain.
-
-| Step | What it does |
+| | |
 |---|---|
-| Verify the implementation | Regenerates hardware from a checkpoint and proves it bit-exact against the software reference |
-| Verify on the board | Streams all 166,000 test vectors to the device and compares every prediction |
-| One synthesis run | Reports network, encoder and complete design separately |
-| The full sweep | Runs verification, synthesis and place-and-route for every configuration; resumable |
-| Comparison tables and figures | Regenerates everything in Sections 5 and 6 |
+| [`docs/jsc-report.md`](./docs/jsc-report.md) | the JSC study in full, with appendices and glossary |
+| [`docs/mnist/report.md`](./docs/mnist/report.md) | the MNIST study in full |
+| [`docs/results/`](./docs/results/) · [`docs/results-cc/`](./docs/results-cc/) | JSC measurements and comparison figures |
+| [`docs/results-mnist/`](./docs/results-mnist/) · [`docs/results-cc-mnist/`](./docs/results-cc-mnist/) | MNIST measurements and comparison figures |
+| [`cc/literature/`](./cc/literature/) | published results as machine-readable tables, with per-row provenance and confidence |
+| [`docs/`](./docs/) · [`docs/mnist/`](./docs/mnist/) | per-phase reports and the dated ledgers, which keep the wrong turns visible |
 
-Two properties of the released data are worth noting. Trained checkpoints are not included — they
-total roughly 933 MB — but every measurement derived from them is, in about 10 KB. And the raw
-build outputs are regenerable but expensive, so the measurement snapshots are committed as the
-evidence that each configuration was genuinely built rather than estimated.
-
----
-
-## Glossary
-
-**argmax** — the circuit that selects the highest-scoring class. Ties resolve to the lowest index.
-
-**block RAM (BRAM)** — dedicated memory blocks on an FPGA, separate from lookup tables. All designs
-here use none.
-
-**bit-exact** — producing identical output to a reference implementation on every input, not merely
-similar output. The verification standard used throughout.
-
-**boosted decision tree (GBDT)** — an ensemble of decision trees trained in sequence, each
-correcting its predecessors. The standard strong baseline for tabular data.
-
-**critical path** — the slowest chain of logic between two registers. It sets the maximum clock
-frequency.
-
-**DSP block** — a hardware multiplier-accumulator on an FPGA. Weightless networks use none by
-construction, which is the architectural point.
-
-**FPGA** — a chip whose logic is configured after manufacture, built largely from lookup tables.
-
-**Fmax** — the highest clock frequency at which a design meets timing.
-
-**fixed-point, Q3.12** — a 16-bit signed number with three integer and twelve fractional bits,
-representing values in [−8, +8) in steps of 1/4096.
-
-**initiation interval (II)** — how many clock cycles must pass between successive inputs. II = 1
-means one result per clock.
-
-**iso-accuracy / iso-area** — comparing designs at matched accuracy (which is smaller?) or at
-matched size (which is more accurate?), rather than comparing single points.
-
-**latency** — the delay from input to result, given both in clock cycles and nanoseconds. Cycles
-are a property of the design; nanoseconds also depend on the part.
-
-**lookup table (LUT)** — the FPGA's basic logic element. A 6-input lookup table stores 64 bits and
-returns one of them per input combination.
-
-**out-of-context synthesis** — building a design without surrounding system logic, so measurements
-describe the design alone. Standard practice for comparison, and used by all work cited here.
-
-**Pareto frontier** — the set of configurations not beaten on both accuracy and size at once. The
-meaningful output of a design-space exploration.
-
-**percentage point (pp)** — an absolute difference between percentages. 76.2% versus 74.9% is 1.3
-percentage points, not 1.7%.
-
-**place-and-route** — assigning logic to physical locations and connecting it. Its timing figures
-are trustworthy; post-synthesis estimates are systematically optimistic.
-
-**popcount** — counting the ones in a group of bits. How class scores are computed here.
-
-**RTL** — a hardware description at the level of registers and the logic between them; Verilog is
-one such language.
-
-**thermometer encoding** — converting a real value to bits by comparing it against a series of
-thresholds, giving a run of ones followed by zeros. *Distributive* thermometer encoding places
-thresholds at quantiles of the training data rather than at even intervals.
-
-**weightless neural network (WNN)** — a network whose learned parameters are the contents of lookup
-tables rather than multiplicative weights. Inference is memory lookup; there is no arithmetic.
-
-**wiring (learned mapping)** — which encoder bits feed which neuron. Learned during training, then
-frozen, so it costs nothing at inference.
+**Built on** the architecture of *Differentiable Weightless Neural Networks*, Bacellar et al.,
+ICML 2024 ([arXiv:2410.11112](https://arxiv.org/abs/2410.11112)), whose authors released training
+code and no hardware. Training uses their implementation, pinned as a submodule. The RTL and its
+generator, the verification harness, the board design, both design-space explorations and every
+measurement reported here are ours.

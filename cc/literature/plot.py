@@ -27,7 +27,7 @@ sys.path.insert(0, HERE)
 from table import (BENCHMARKS, load_conifer, load_hls4ml,        # noqa: E402
                    load_literature, load_ours, use_benchmark)
 
-# Per-benchmark output dirs. JSC keeps docs/results-cc/ -- REPORT.md and the jsc-complete tag
+# Per-benchmark output dirs. JSC keeps docs/results-cc/ -- docs/jsc-report.md and the jsc-complete tag
 # reference it. The two studies are NEVER plotted together: their accuracy scales differ by ~20
 # points and their encoder economics run opposite (docs/mnist/phase2-ledger.md).
 OUTDIRS = {'jsc':   (os.path.join(REPO, 'build', 'cc', 'literature'),

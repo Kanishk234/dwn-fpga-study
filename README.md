@@ -264,14 +264,15 @@ small model sizes.
 
 ## Documentation
 
-**Start here:** [**`REPORT.md`**](./REPORT.md) — the full write-up as a standalone document.
-Background, method, results, comparison, limitations, appendices and a glossary; readable without
-any other file in this repository.
+**Start here:** [**`REPORT.md`**](./REPORT.md) — both datasets in one document, in the form the
+literature uses: shared method once, results per dataset, and the findings that need two datasets
+to see. The two per-dataset studies below have the depth.
 
 | | |
 |---|---|
-| [**`REPORT.md`**](./REPORT.md) | **the JSC study** — standalone, with appendices and glossary |
-| [**`docs/mnist/report.md`**](./docs/mnist/report.md) | **the MNIST study** — the same, for the second dataset |
+| [**`REPORT.md`**](./REPORT.md) | **the combined report** — both datasets, and what neither shows alone |
+| [`docs/jsc-report.md`](./docs/jsc-report.md) | the JSC study, standalone, with appendices and glossary |
+| [`docs/mnist/report.md`](./docs/mnist/report.md) | the MNIST study, in the same form |
 | [`docs/phase1-report.md`](./docs/phase1-report.md) · [`phase2-`](./docs/phase2-report.md) · [`phase3-`](./docs/phase3-report.md) | JSC, per phase: what was built, the sweep, the comparison |
 | [`docs/mnist/`](./docs/mnist/) | MNIST, per phase — plus the learnable-reduction and noise-floor studies |
 | [`docs/results/`](./docs/results/) · [`results-cc/`](./docs/results-cc/) | JSC measurements and comparison figures |

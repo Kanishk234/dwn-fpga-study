@@ -48,7 +48,7 @@ runs and the other does not.
 | NeuraLUT | 96% | 54,798 | `xcvu9p` |
 
 ⚠️ **Read this with the same care Phase 1 asked for.** Our area convention includes the encoder,
-which is the stricter choice (`REPORT.md` §5.2), but the published rows were measured on a
+which is the stricter choice (`docs/jsc-report.md` §5.2), but the published rows were measured on a
 different part at a different clock target. It is evidence the approach is in the right range, not
 a claim to have beaten either.
 
@@ -417,7 +417,7 @@ method as §5.3 — an anomaly explained by hypothesis instead of by inspection.
 ```
 
 **Prove JSC parity before trusting a single sweep point.** Expect **110 / 1,519 / 1,621** — not the
-108 / 1,519 / 1,619 that `REPORT.md` and `README.md` quote, which are the `jsc-complete` tag's
+108 / 1,519 / 1,619 that `docs/jsc-report.md` and `README.md` quote, which are the `jsc-complete` tag's
 pre-argmax-tree figures. Both are right; they describe different commits.
 
 Checkpoints are not in git (one JSC file exceeds GitHub's 100 MB limit). `docs/results-mnist/`

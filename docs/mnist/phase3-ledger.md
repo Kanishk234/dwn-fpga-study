@@ -71,7 +71,7 @@ Also from that measurement: **the same seed does not reproduce**, by up to 0.17 
 
 ### 2.2 The encoder-convention trap carries over unchanged
 
-`docs/phase3-plan.md` §4.1 and `REPORT.md` §5.2. Published LUT counts are frequently **core-only**,
+`docs/phase3-plan.md` §4.1 and `docs/jsc-report.md` §5.2. Published LUT counts are frequently **core-only**,
 excluding the input encoder; ours are encoder-inclusive, which is the stricter convention.
 
 For MNIST this matters *less* than for JSC but is still real: the encoder is **72.3%** of `1x100`
@@ -289,7 +289,7 @@ against, and it is the most consequential comparison in the study.
 
 Our `1x300` is **1,597 LUTs** against the paper's `sm` at **692** — a 2.3× gap that would be the
 headline of a careless table. **The paper's rows exclude the thermometer encoder** (brief §6,
-`REPORT.md` §5.2); ours include it. Compared like for like, on core only:
+`docs/jsc-report.md` §5.2); ours include it. Compared like for like, on core only:
 
 | | ours | DWN paper | ratio | Δ acc |
 |---|---|---|---|---|
@@ -441,7 +441,7 @@ snapshot has been reporting *"10 fit, 4 over-device"* when the truth is **"10 fi
 than reporting a LUT count over the part.
 
 ✅ **No published claim is affected** — "over-device" appears nowhere in `docs/phase3-report.md`
-or `REPORT.md`. The committed JSON and CSV are byte-identical; only the printed line changed.
+or `docs/jsc-report.md`. The committed JSON and CSV are byte-identical; only the printed line changed.
 
 ### 2026-08-13 — [hands-on] ❌ 3M-b hls4ml is CUT, and 3M-a is trimmed to six points
 

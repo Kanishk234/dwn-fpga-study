@@ -3,9 +3,9 @@
 Start with a **report** if you want results, a **ledger** if you want the reasoning and the
 wrong turns, and the **brief** if you want the plan the whole thing follows.
 
-**Files at this level are the JSC study** — the original dataset, and everything `REPORT.md`
+**Files at this level are the JSC study** — the original dataset, and everything `docs/jsc-report.md`
 describes. The second dataset lives in its own directory: [`mnist/`](./mnist/), indexed
-[below](#the-mnist-study). The asymmetry is deliberate rather than tidy: `REPORT.md`, the root
+[below](#the-mnist-study). The asymmetry is deliberate rather than tidy: `docs/jsc-report.md`, the root
 `README.md` and the `jsc-complete` tag all reference these paths, and breaking a published
 artifact to gain symmetry is a bad trade. Dimensions and per-dataset settings live in
 `datasets/`, never in the shared code.
@@ -63,7 +63,7 @@ dataset-agnostic, and both datasets now reproduce from the same code.
 
 | | |
 |---|---|
-| [`mnist/report.md`](./mnist/report.md) | **Start here** — the standalone MNIST study, in the same form as `REPORT.md` |
+| [`mnist/report.md`](./mnist/report.md) | **Start here** — the standalone MNIST study, in the same form as `docs/jsc-report.md` |
 | [`mnist/phase1-report.md`](./mnist/phase1-report.md) | Bring-up: one bug pattern found seven times, and what generalising actually required |
 | [`mnist/phase2-report.md`](./mnist/phase2-report.md) | The sweep: 25 configurations, and two Phase 1 predictions retracted |
 | [`mnist/phase3-report.md`](./mnist/phase3-report.md) | The comparison: DWN against its own weightless family for the first time |

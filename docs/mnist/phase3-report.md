@@ -72,7 +72,7 @@ So a fixed multiplier cannot fix a mis-conventioned table. **Every row must stat
 convention**, which is why `docs/results-mnist/sweep-results.json` carries `dwn_core_luts` and
 `thermometer_encoder_luts` separately, and why the figure encodes convention in marker fill.
 
-This is the defect `REPORT.md` §5.2 criticises in the JSC literature. It recurs on MNIST, and the
+This is the defect `docs/jsc-report.md` §5.2 criticises in the JSC literature. It recurs on MNIST, and the
 width-dependence makes it *worse* here, not better.
 
 ### 3.2 Accuracy is often printed to whole percent — coarser than our noise floor

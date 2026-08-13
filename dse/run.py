@@ -126,7 +126,7 @@ def use_dataset(name):
     """Point every sweep path at `name`'s artifacts. Call before anything reads them.
 
     JSC's paths are its historical ones and must stay put: docs/results/ and
-    training/artifacts/sweeps/ are referenced by REPORT.md, README.md and the `jsc-complete` tag,
+    training/artifacts/sweeps/ are referenced by docs/jsc-report.md, README.md and the `jsc-complete` tag,
     and build/dse/results.json holds 54 measured configs that a moved path would silently re-run
     from scratch. The layout is recorded per dataset in `datasets/` rather than special-cased
     here.

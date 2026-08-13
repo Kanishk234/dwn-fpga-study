@@ -43,7 +43,7 @@ JSC's features are continuous, and quantising them genuinely discards informatio
 | NeuraLUT | 96% | 54,798 |
 
 ⚠️ **Read this comparison with care.** The area convention is ours (encoder included, which is the
-stricter choice — see `REPORT.md` §5.2), but the published rows were measured on different parts
+stricter choice — see `docs/jsc-report.md` §5.2), but the published rows were measured on different parts
 at different clock targets, and this is a bring-up configuration rather than a tuned one. It is
 evidence that the approach is in the right range, not a claim to have beaten either.
 

@@ -122,7 +122,7 @@ class Dataset:
 
     # ---- where this dataset's sweep artifacts live ----
     # Explicit strings rather than a rule derived from `name`, because JSC's are HISTORICAL:
-    # docs/results/ and training/artifacts/sweeps/ are referenced by REPORT.md, README.md and the
+    # docs/results/ and training/artifacts/sweeps/ are referenced by docs/jsc-report.md, README.md and the
     # `jsc-complete` tag, and build/dse/results.json holds 54 measured configs that would be
     # re-run from scratch if the path moved. CLAUDE.md forbids moving an existing JSC artifact,
     # so the exception is recorded here as data instead of as a special case in dse/.
@@ -144,7 +144,7 @@ class Dataset:
 
     # ---- Phase 3, the controlled comparison ----
     # Where cc/ writes. Split from `results_dir` because the CC snapshot is its own artifact:
-    # docs/results-cc/ is named in REPORT.md and docs/phase3-handoff.md §2.6 and must not move.
+    # docs/results-cc/ is named in docs/jsc-report.md and docs/phase3-handoff.md §2.6 and must not move.
     cc_results_dir: str = ''       # under docs/
 
     # The conifer GBDT sweep, as data. NOT transferable between datasets, because xgboost builds
@@ -252,7 +252,7 @@ JSC = Dataset(
                             seed=20260802),
     slug_prefix='',                # JSC's grid writes bare slugs
     results_dir='results',
-    cc_results_dir='results-cc',   # named in REPORT.md and phase3-handoff.md -- do not move
+    cc_results_dir='results-cc',   # named in docs/jsc-report.md and phase3-handoff.md -- do not move
     # 14 configs, measured 2026-08-10. Reproduces cc/conifer/run_conifer.py's original SWEEP
     # exactly; the ordering (cheapest-first by total trees) is applied in cc/, not here.
     cc_gbdt_grid=((3, 10), (3, 20), (3, 40), (3, 80),
@@ -269,7 +269,7 @@ JSC = Dataset(
              ((2400,), 100), ((2400,), 50), ((3000,), 50)),
     notes=('Jet substructure classification, the OpenML distribution (dataset 42468) -- NOT the '
            'CERNBox one, which scores about 1.05 pp lower and is what the LogicNets/PolyLUT/'
-           'NeuraLUT line of work uses. See REPORT.md section 5.1.'),
+           'NeuraLUT line of work uses. See docs/jsc-report.md section 5.1.'),
 )
 
 MNIST = Dataset(

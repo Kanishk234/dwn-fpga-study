@@ -79,7 +79,7 @@ Real work, no current failure. Ordered by whether MNIST is blocked without them.
 **F1 was the one that decided whether MNIST fits at all**, and it delivered: MNIST runs at
 **Q0.8, a 9-bit word**, and the format turned out to be *lossless on the full test set* —
 0 of 10,000 predictions differ from float32 despite 56,835 values saturating, because 8-bit pixels
-have only 256 distinct values. `REPORT.md` §7's JSC finding (11-bit gives a 5.80× smaller encoder
+have only 256 distinct values. `docs/jsc-report.md` §7's JSC finding (11-bit gives a 5.80× smaller encoder
 for 0.142 pp) generalised, and then some.
 
 ⚠️ **And it moved the headline constraint.** Phase 1 projected the paper's `2x[1000,500]` at
@@ -140,11 +140,11 @@ n=2 and n=4 without a trained model. It also makes `verify()` fully self-contain
 **On V4 — this is the design question the tool turns on.** Precision splits cleanly:
 
 - **integer bits** — derivable exactly from the checkpoint's thresholds, and the *renormalisation*
-  trick in `REPORT.md` §7 removes the question entirely: map each feature affinely into [−1, 1) and
+  trick in `docs/jsc-report.md` §7 removes the question entirely: map each feature affinely into [−1, 1) and
   the integer width is 1 for every dataset, forever, with no retraining because a comparison is
   unchanged by a monotonic rescale applied to both sides.
 - **fractional bits** — **not** derivable from the checkpoint. Whether quantisation changes
-  predictions depends on the data. `REPORT.md` §5.6's scar applies directly: the encoder-narrowing
+  predictions depends on the data. `docs/jsc-report.md` §5.6's scar applies directly: the encoder-narrowing
   result was fitted and validated on the same 1,000 samples, and 8 of 15 features were narrowed too
   far. A tool that picks fractional width from a checkpoint-only heuristic reproduces that bug for
   every user.
@@ -211,7 +211,7 @@ checkpoint today, with no input from anyone:
 | pipeline depth | a safe default, JSC-proven at four stages | |
 
 **Exactly one thing is not derivable: how many FRACTIONAL bits are safe.** That depends on whether
-quantisation changes predictions, which depends on the data. §4's V4 argument, and REPORT.md §5.6
+quantisation changes predictions, which depends on the data. §4's V4 argument, and docs/jsc-report.md §5.6
 is the scar — a narrowing fitted and validated on the same 1,000 samples put 8 of 15 features too
 narrow.
 
@@ -266,7 +266,7 @@ about it. It needs documenting rather than building.
 
 **The encoder always ships, and its area is always reported separately.** Thermometer encoding is
 not preprocessing a user can supply — it is intrinsic to a DWN, and on the smallest JSC model it is
-fourteen times the network it feeds. `REPORT.md` §5.2 criticises published work for reporting
+fourteen times the network it feeds. `docs/jsc-report.md` §5.2 criticises published work for reporting
 core-only LUT counts; a tool of ours that emitted the network and left the encoder to the user
 would commit exactly that error, and hand users a number that understates their design by most of
 its cost.
@@ -281,7 +281,7 @@ correct. It belongs in the tool's README as evidence, not as a feature.
 
 Recorded so they are not silently reconsidered:
 
-- **Adopting the encoder narrowing for JSC.** `REPORT.md` §7 argues against it — the binding
+- **Adopting the encoder narrowing for JSC.** `docs/jsc-report.md` §7 argues against it — the binding
   constraint on this device is timing, and the encoder is not on the critical path. F1 makes it
   *possible*; it should not become the default.
 - **Learnable Reduction.** ~~Never explored enough to belong in a tool.~~ **Now explored, and the
@@ -292,7 +292,7 @@ Recorded so they are not silently reconsidered:
   the tool's docs rather than a feature: a **mild** 2:1 taper (`2x[2000,1000]`) is the best model
   in the study with half the adder tree. So the tool should keep emitting `GroupSum` and say
   nothing about pyramids.
-- **Reorganising the JSC artifacts.** `mnist/plan.md` §1.4 — `REPORT.md` and the `jsc-complete`
+- **Reorganising the JSC artifacts.** `mnist/plan.md` §1.4 — `docs/jsc-report.md` and the `jsc-complete`
   tag reference current paths.
 
 ---
@@ -345,5 +345,5 @@ what moved is that the *before* column is empty.
 - `docs/mnist/phase2-ledger.md` — the sweep, and M2c, which is R2 under another name
 - `docs/mnist/reduction-ledger.md` — why Learnable Reduction stays out of scope (§7)
 - `docs/reusable-generator.md` — whether to build the tool at all, and how to split it off
-- `REPORT.md` §7 — the precision measurement F1 exists to expose
+- `docs/jsc-report.md` §7 — the precision measurement F1 exists to expose
 - `docs/checkpoint-format.md` — what the exporter reads, verified against JSC only (M4)

@@ -38,7 +38,7 @@ EXPECTED = {
     # at five classes and is what lets ten classes meet the board clock at all.
     #
     # The pre-change values are not lost: they are reproducible at the `jsc-complete` tag, which
-    # is what REPORT.md's JSC figures are measured at and now say so. Pinning a published result
+    # is what docs/jsc-report.md's JSC figures are measured at and now say so. Pinning a published result
     # to a tag is the right mechanism; freezing the RTL to protect a printed number is not.
     #
     # docs/results/sweep-results.json still holds chain-era areas. Anything synthesized after

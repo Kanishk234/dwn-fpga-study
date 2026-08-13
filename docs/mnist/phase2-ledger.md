@@ -135,7 +135,7 @@ current, correct set is:
 | whole board design | **1,893** LUTs, 864 FF, 8 BRAM | was 2,058, then 2,060 |
 | Gate 1b | **166,000 / 166,000** | |
 
-`REPORT.md` and `README.md` quote the **`jsc-complete` tag's** figures (108 / 1,619 / 2,058) and
+`docs/jsc-report.md` and `README.md` quote the **`jsc-complete` tag's** figures (108 / 1,619 / 2,058) and
 say so. Both are right; they describe different commits. Do not mix them in one table.
 
 **If parity fails, stop.** Past that point an MNIST result cannot be attributed — a difference
@@ -713,7 +713,7 @@ descriptor fields rather than special cases in code:
 | checkpoints | `training/artifacts/sweeps/` | `.../sweeps-mnist/` |
 
 JSC's are recorded as data with a comment saying they are historical: `docs/results/` is
-referenced by `REPORT.md`, `README.md` and the `jsc-complete` tag, and `build/dse/results.json`
+referenced by `docs/jsc-report.md`, `README.md` and the `jsc-complete` tag, and `build/dse/results.json`
 holds 54 measured configs that a moved path would silently re-run from scratch. Verified
 unchanged — `--list` byte-identical, 54/54 results found, 40/40 checkpoints resolve.
 
