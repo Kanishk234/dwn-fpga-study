@@ -19,9 +19,9 @@ its own headline. A wrong turn left visible is worth more than a tidy log.
 
 | Step | What | Who | Status |
 |---|---|---|---|
-| 3L-a | Refresh the MNIST literature list | literature | ⬜ |
-| 3L-b | Confirm the encoder convention applies unchanged | literature | ⬜ — likely a re-check, not new work |
-| 3L-c | Per-paper MNIST numbers into a machine-readable table | literature | ⬜ `cc/literature/mnist_literature.json` |
+| 3L-a | Refresh the MNIST literature list | literature | ✅ **done 2026-08-13** — 9 papers + a dedicated survey |
+| 3L-b | Confirm the encoder convention applies unchanged | literature | ✅ **done 2026-08-13 — it applies, and it is the biggest single correction.** Reading DWN's core-only rows against our encoder-inclusive ones would have shown us 2.3x too large |
+| 3L-c | Per-paper MNIST numbers into a machine-readable table | literature | ✅ **done 2026-08-13 — 26 rows, 21 verified** in `cc/literature/mnist_literature.json`. 4 low-priority items left in `pending` |
 | 3L-d | Combined table + Pareto plot against our frontier | literature | ⬜ |
 | 3L-e | Phase 3 report | literature | ⬜ `docs/mnist/phase3-report.md` |
 | 3M-a | conifer (GBDT) on MNIST | hands-on | ⬜ |
@@ -147,6 +147,91 @@ Suggested order for the literature half, matching what worked for JSC:
 ---
 
 ## Log
+
+### 2026-08-13 — [literature] 3L-a/3L-c substantially complete: 26 rows, 21 verified
+
+PolyLUT-Add read directly — **third independent confirmation** that PolyLUT HDR is 96% / 70,673
+(its own paper, NeuraLUT, and PolyLUT-Add all print it identically). PolyLUT-Add itself reaches the
+same accuracy at **14,810 LUTs, a 4.8× reduction**, the best LUT-DNN area in the table.
+
+⚠️ **The 97.5% / 75,131 figure appears in none of the three.** Its probable source is the **2025
+extended PolyLUT paper** (arXiv:2501.08043, "…Hardware-Aware Structured Pruning") — a later,
+different configuration. Recorded as an *additional* row to find, not a correction. Do not
+attribute it to the 2023 PolyLUT.
+
+#### A dedicated survey exists, and it is accurate
+
+`arXiv:2506.07367`, "A Survey on LUT-based Deep Neural Networks Implemented in FPGAs". Its Table I
+is the most complete MNIST comparison found. **Its rows for DWN (692/422, 1,413/1,143, 4,082/3,385),
+PolyLUT (70,673/4,681), NeuraLUT (54,798/3,757) and PolyLUT-Add (14,810/2,609) match the primaries
+we read directly, exactly** — so it transcribes reliably, and its other rows can be trusted enough
+to record at `confidence: reported`:
+
+| | acc | LUT | Fmax | latency |
+|---|---|---|---|---|
+| **TreeLUT (I)** | 97% | **4,478** | 791 | 2.5 ns |
+| TreeLUT (II) | 96% | 3,499 | 874 | 2.3 ns |
+| AmigoLUT-LogicNet-XS ×2 | 94.7% | 9,711 | 569 | 12.3 ns |
+| AmigoLUT-NeuraLUT ×4 | 95.5% | 16,081 | 925 | 7.6 ns |
+| ReducedLUT (HDR-5L) | 95.7% | 47,484 | 295 | 17 ns |
+
+**TreeLUT is the closest competitor to DWN on area** — a GBDT, LUT-only with no BRAM or DSP, at 97%
+in 4,478 LUTs. DWN `sm` still beats it 6.5× (692 LUTs at 97.1%). This is also the direct
+counterpart to Phase 3's conifer work on JSC, where a GBDT did not reach DWN either.
+
+⚠️ **The survey should be read in full for 3L-d.** It may already perform the cross-paper
+normalisation this phase is attempting, in which case it is the thing to cite rather than redo.
+
+#### Where 3L-a and 3L-c stand
+
+**26 rows: 21 verified (read from the primary paper's own table), 5 reported (survey).** Every
+number above was read from a PDF directly rather than through a summarizer — which mattered, since
+the summarizer's first answer on PolyLUT was wrong.
+
+Remaining in `pending` are all low-priority: TsetlinWiSARD, LogicNets' documented absence of an
+MNIST benchmark, the 2025 PolyLUT, and reading the survey in full.
+
+### 2026-08-13 — [literature] the "96%" rows are an upper bound, and sparsity is free accuracy
+
+**20 verified rows.** SparseLUT Table IV re-runs the same baselines and prints them to **two
+decimals** — a direct test of the rounding problem flagged this morning.
+
+| model | its own paper | SparseLUT's re-run | Δ |
+|---|---|---|---|
+| NeuraLUT HDR-5L | **96%** | **95.20%** | −0.8 pp |
+| PolyLUT HDR (D=2) | — | 95.42% | — |
+
+⚠️ **NeuraLUT's own "96%" and an independent re-run of the same named model differ by 0.8 pp.**
+Whether that is rounding-up or re-run variance is not resolvable from the papers. Either way the
+"96%" rows should be read as an **upper bound**, which means **our margin over them is understated,
+not overstated** — the safe direction, but it must be stated rather than quietly enjoyed.
+
+Not a conflict: SparseLUT's PolyLUT rows use D=1/D=2 while PolyLUT's own MNIST HDR uses **D=4**, so
+those are different configurations. Only the NeuraLUT row is a like-for-like disagreement.
+
+#### SparseLUT itself is the interesting result, and it is free
+
+SparseLUT changes only the **sparse connectivity**, not the LUT contents: *"SparseLUT does not alter
+the number of LUT entries in the generated RTL design"*, and Fig 7 shows matching LUT/FF and no
+`F_max` penalty. So it buys accuracy at **zero hardware cost**:
+
+| | acc | LUTs |
+|---|---|---|
+| NeuraLUT HDR-5L | 95.20% | 54,798 |
+| **SparseLUT-NeuraLUT** | **96.96%** | **54,798** (same) |
+| SparseLUT-PolyLUT-Add | 97.26% | — |
+
+**+1.76 pp for nothing.** That is directly relevant to us: our first layer's wiring is *learned*
+(`learnable` mapping), which is the same lever SparseLUT pulls on architectures that use random
+sparsity. It is a plausible part of why our `1x300` core lands at 630 LUTs against the paper's 692
+— worth one line in the report, and **not** a claim to make without measuring.
+
+Their "Dense" upper bounds are worth recording too: **98.55%** (PolyLUT) and **98.61%** (NeuraLUT)
+for fully-connected equivalents. That brackets what this family can reach on MNIST at all, and our
+98.26% at `1x2000` sits just under it.
+
+⚠️ **Still unresolved:** the 97.5% / 75,131 PolyLUT figure is not in SparseLUT's table either (it
+has no LUT column). Moved to `pending` against PolyLUT-Add.
 
 ### 2026-08-13 — [literature] ✅ the paper's own MNIST rows, and our implementation reproduces them
 
