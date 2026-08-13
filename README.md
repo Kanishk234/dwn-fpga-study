@@ -37,11 +37,12 @@ student FPGA board, far smaller and cheaper than the chips the original paper us
 | 1 — Core | Get the model running on the board | ✅ **complete** |
 | 2 — Design Space Exploration | Map how big/accurate/fast it can go | ✅ **complete** |
 | 3 — Controlled Comparison | Compare against standard tools + published results | ✅ **complete** |
-| Stretch — second dataset (MNIST) | Repeat 2 & 3 on a different problem | next |
+| Second dataset (MNIST) | Repeat all three on a different problem | ✅ **complete** |
 
-> **Reproducing these numbers:** they are measured at the git tag **`jsc-complete`**. Later RTL
-> improvements shift some areas by a couple of lookup tables (≤0.12%); `git checkout jsc-complete`
-> reproduces the exact figures below.
+> **Reproducing these numbers.** JSC figures are measured at the git tag **`jsc-complete`**, MNIST
+> figures at **`mnist-complete`**. Later RTL improvements shift some JSC areas by a couple of
+> lookup tables (≤0.12%), so `git checkout jsc-complete` reproduces the JSC figures exactly. The
+> two sets describe different commits and should not be mixed in one table.
 
 ### Phase 1 — it works on silicon
 
@@ -69,7 +70,7 @@ placed-and-routed on the real part.
 | The measured edge | timing, not area: two configs use <81% of the chip yet miss 100 MHz |
 | Every config | **0 DSPs, 0 block RAM** |
 
-**Three findings the original paper could not have seen**, because it reports three model sizes
+**Four findings the original paper could not have seen**, because it reports three model sizes
 and nothing between them:
 
 1. **The paper's largest model runs on a $150 board.** Its 2400-neuron `lg` config was thought
@@ -150,6 +151,38 @@ runs on a **$150 board** rather than a data-centre FPGA.
 
 **Read this next:** [`docs/phase3-report.md`](./docs/phase3-report.md) — the comparison, both
 literature defects, and what we chose not to measure.
+
+### Second dataset — does the generator generalise, or did it learn one problem?
+
+The same exporter and RTL generator, on a deliberately unfavourable target: **784 input features
+instead of 16**, ten classes instead of five, and a natively 8-bit input where JSC's is continuous.
+25 configurations, all place-and-routed.
+
+![MNIST accuracy vs area, ours and published](./docs/results-cc-mnist/mnist.png)
+
+| | |
+|---|---|
+| Hardware vs software | **10,000 / 10,000** exact, on the board |
+| Best design meeting 100 MHz | **97.76%**, 3,464 LUTs (16.7% of the chip), 5 cycles |
+| Smallest usable | 96.77% in **1,597 LUTs** (7.7%) |
+| vs **BTHOWeN** — a weightless network of the same lineage, on comparable silicon | **+2.56 points at 43.8× fewer LUTs** |
+| vs the DWN paper's own MNIST numbers | within **9%** at matched accounting convention |
+| vs a boosted-tree ensemble at the same area on the same part | **+13.45 points**, but 4.6× slower |
+
+**The port is the result, not the accuracy.** Seven places in the flow silently hard-coded a fact
+about the first dataset — a feature count, a byte width, a class-index width. All are gone; dataset
+facts now live in a descriptor, and adding a third dataset means adding a descriptor and nothing
+else. Both datasets reproduce exactly from the same code.
+
+Two things carry beyond MNIST. The **encoder-convention defect** recurs, and is *width-dependent*
+here — the encoder is 72.3% of the design at 100 neurons and 20.9% at 2,000 — so no single
+multiplier can repair a mis-conventioned table. And the **dataset-ambiguity defect does not apply**,
+which establishes that it was specific to JSC rather than endemic to the field.
+
+⚠️ Of every published MNIST design with an FPGA lookup-table count, **only one other would fit this
+board.** NeuraLUT needs 2.6× the chip, PolyLUT 3.4×, hls4ml 12.5×.
+
+**Read this next:** [`docs/mnist/report.md`](./docs/mnist/report.md) — the standalone MNIST study.
 
 ## Running it yourself
 
@@ -237,14 +270,15 @@ any other file in this repository.
 
 | | |
 |---|---|
-| [**`REPORT.md`**](./REPORT.md) | **the complete report** — standalone, with appendices and glossary |
-| [`docs/phase1-report.md`](./docs/phase1-report.md) | what was built, what broke, how to reproduce it |
-| [`docs/phase2-report.md`](./docs/phase2-report.md) | the design-space exploration and its results |
-| [`docs/phase3-report.md`](./docs/phase3-report.md) | the controlled comparison, and two defects in the literature's own tables |
-| [`docs/results/`](./docs/results/) | every measurement, both figures, the trained grid |
-| [`docs/results-cc/`](./docs/results-cc/) | the conifer measurements and the comparison figures |
+| [**`REPORT.md`**](./REPORT.md) | **the JSC study** — standalone, with appendices and glossary |
+| [**`docs/mnist/report.md`**](./docs/mnist/report.md) | **the MNIST study** — the same, for the second dataset |
+| [`docs/phase1-report.md`](./docs/phase1-report.md) · [`phase2-`](./docs/phase2-report.md) · [`phase3-`](./docs/phase3-report.md) | JSC, per phase: what was built, the sweep, the comparison |
+| [`docs/mnist/`](./docs/mnist/) | MNIST, per phase — plus the learnable-reduction and noise-floor studies |
+| [`docs/results/`](./docs/results/) · [`results-cc/`](./docs/results-cc/) | JSC measurements and comparison figures |
+| [`docs/results-mnist/`](./docs/results-mnist/) · [`results-cc-mnist/`](./docs/results-cc-mnist/) | MNIST measurements and comparison figures |
+| [`cc/literature/`](./cc/literature/) | published results as machine-readable tables, with per-row provenance |
 | [`docs/project-brief.md`](./docs/project-brief.md) | the full technical plan |
-| [`docs/phase1-ledger.md`](./docs/phase1-ledger.md) · [`phase2-ledger.md`](./docs/phase2-ledger.md) · [`phase3-ledger.md`](./docs/phase3-ledger.md) | dated working logs |
+| ledgers — [`docs/`](./docs/) and [`docs/mnist/`](./docs/mnist/) | dated working logs, including what was tried and retracted |
 
 ## Repository
 
@@ -255,6 +289,7 @@ any other file in this repository.
 | `rtlgen/` | that export → Verilog |
 | `rtl/` `tb/` | hand-written primitives · golden-model testbench |
 | `harness/` | UART, vector store, benchmark FSM — the board design |
+| `datasets/` | **per-dataset facts, as data** — the only place a feature count or word width lives |
 | `dse/` | the sweep: grid, runner, area model, report, plots |
 | `scripts/` | Gate 1, synthesis, bitstream, board host |
 | `cc/` | the comparisons: conifer, hls4ml, and the published-literature table |
@@ -279,8 +314,9 @@ the board design, the design-space exploration, and every measurement reported h
 repository ships PyTorch training only — no RTL, no HLS, no FPGA flow — which is the gap this
 project exists to fill.
 
-The benchmark is **jet substructure classification (JSC)**, the standard low-latency FPGA-ML task,
-via the `hls4ml_lhc_jets_hlf` dataset.
+The benchmarks are **jet substructure classification (JSC)**, the standard low-latency FPGA-ML
+task, via the `hls4ml_lhc_jets_hlf` dataset — and **MNIST**, on the canonical 10,000-sample test
+split, as a second and deliberately different problem.
 
 ## Team
 
