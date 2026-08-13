@@ -132,7 +132,7 @@ def plot_frontier(rows, path, ds_label='JSC'):
     ax.axvline(DEVICE_LUTS, color=INK_2, linewidth=1.5, linestyle=(0, (4, 3)), alpha=0.6)
     # Ceiling label at the BOTTOM of the line. At full grid size the top-right corner is where
     # the largest frontier point and its direct label land, and the two overlapped.
-    ax.annotate(f'{DEVICE_LUTS:,} LUT cap (not the fabric limit)', (DEVICE_LUTS, ax.get_ylim()[0]),
+    ax.annotate(f'XC7A35T = {DEVICE_LUTS:,} LUTs', (DEVICE_LUTS, ax.get_ylim()[0]),
                 textcoords='offset points', xytext=(-6, 8), fontsize=8,
                 color=INK_2, ha='right', va='bottom')
     # Headroom so a direct label on the topmost point is not clipped by the axis.
@@ -201,11 +201,11 @@ def plot_area_split(rows, path, ds_label='JSC'):
         # Label on the LEFT. The bars ascend, so the right end is where the tallest bar and its
         # ratio label sit -- and that bar is the one that breaks the ceiling, i.e. the whole
         # point of the figure. Never obscure it.
-        ax.annotate(f'{DEVICE_LUTS:,} LUT cap', (-0.5, DEVICE_LUTS),
+        ax.annotate(f'XC7A35T = {DEVICE_LUTS:,}', (-0.5, DEVICE_LUTS),
                     textcoords='offset points', xytext=(4, 5), ha='left',
                     fontsize=8, color=INK_2)
     else:
-        ax.annotate(f'{DEVICE_LUTS:,}-LUT cap — above this scale '
+        ax.annotate(f'XC7A35T ceiling {DEVICE_LUTS:,} LUTs — above this scale '
                     f'(largest here is {top/DEVICE_LUTS:.0%} of it)',
                     (0.99, 0.99), xycoords='axes fraction', ha='right', va='top',
                     fontsize=8, color=INK_2)
