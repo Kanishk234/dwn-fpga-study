@@ -12,6 +12,20 @@ The catch: the paper's authors released the training code, but never the hardwar
 it from scratch — hand-writing the actual chip-level circuit (Verilog) and running it on a $150
 student FPGA board, far smaller and cheaper than the chips the original paper used.
 
+---
+
+### 📄 [**Read the report →**](./REPORT.md)
+
+The full write-up: both datasets, how it was built and verified, what it costs in silicon, and how
+it compares against published work. Written to be read on its own — background, results, figures,
+limitations and a glossary.
+
+Per-dataset detail: [**JSC**](./docs/jsc/report.md) (16 features, the standard FPGA-ML benchmark) ·
+[**MNIST**](./docs/mnist/report.md) (784 features, the second dataset). Everything below is the
+short version.
+
+---
+
 ## What we're doing
 
 1. **Build it.** Take a trained model, hand-write the digital circuit for it, and get it running on a
